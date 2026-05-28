@@ -6,6 +6,7 @@ const onlineQuizProvider = "Supabase";
 const supabaseUrl = window.FRIENDZZY_SUPABASE_URL || "https://henagvofjujsksuuuhfe.supabase.co";
 const supabasePublishableKey = window.FRIENDZZY_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_u54a7Fx1Dz7fxP_FjSmTGw_Eb_uSfM0";
 const starLeaderboardKey = "bestieStarLeaderboard";
+const gameLeaderboardsKey = "bestieGameLeaderboards";
 const guestStarNicknameKey = "bestieStarLeaderboardGuestNickname";
 const usedNicknamesKey = "bestieUsedNicknames";
 const playerProfilesKey = "bestieQuizPlayerProfiles";
@@ -141,6 +142,96 @@ const onlineQuizSharing = {
   },
 };
 window.bestieOnlineQuizSharing = onlineQuizSharing;
+
+function normalizeOnlineFriendProfile(profile) {
+  if (!profile) {
+    return null;
+  }
+
+  const friendCode = normalizeFriendCode(profile.friend_code || profile.friendCode || "");
+  const emojiAvatar = profile.emoji_avatar || profile.emojiAvatar || profile.avatar?.emojiAvatar || defaultEmojiAvatar;
+
+  if (!friendCode) {
+    return null;
+  }
+
+  return {
+    nickname: profile.nickname || "Friend",
+    friendCode,
+    stars: Number.parseInt(profile.stars || "0", 10) || 0,
+    avatar: {
+      ...createDefaultAvatar(),
+      ...(profile.avatar || {}),
+      emojiAvatar,
+    },
+  };
+}
+
+const onlineFriendCodes = {
+  get isConfigured() {
+    return isSupabaseConfigured();
+  },
+  async saveProfile(profile) {
+    const safeProfile = ensureFriendProfile(profile);
+    const avatar = getUnlockedAvatar(safeProfile.avatar || createDefaultAvatar());
+
+    return supabaseRequest("profiles?on_conflict=friend_code", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=representation",
+      body: {
+        nickname: safeProfile.nickname,
+        normalized_nickname: normalizeNickname(safeProfile.nickname),
+        emoji_avatar: avatar.emojiAvatar || defaultEmojiAvatar,
+        friend_code: normalizeFriendCode(safeProfile.friendCode),
+        stars: safeProfile.stars || 0,
+        updated_at: new Date().toISOString(),
+      },
+    });
+  },
+  async findProfileByFriendCode(friendCode) {
+    const query = new URLSearchParams({
+      select: "nickname,normalized_nickname,emoji_avatar,friend_code,stars,created_at,updated_at",
+      friend_code: `eq.${normalizeFriendCode(friendCode)}`,
+      limit: "1",
+    });
+    const data = await supabaseRequest(`profiles?${query.toString()}`);
+    return normalizeOnlineFriendProfile(Array.isArray(data) ? data[0] : null);
+  },
+  async saveFriend(ownerProfile, friendProfile) {
+    const safeOwnerCode = normalizeFriendCode(ownerProfile.friendCode);
+    const safeFriend = normalizeOnlineFriendProfile(friendProfile);
+
+    if (!safeOwnerCode || !safeFriend) {
+      return null;
+    }
+
+    return supabaseRequest("friends?on_conflict=owner_friend_code,friend_friend_code", {
+      method: "POST",
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        owner_friend_code: safeOwnerCode,
+        friend_friend_code: safeFriend.friendCode,
+        friend_nickname: safeFriend.nickname,
+        friend_emoji_avatar: safeFriend.avatar?.emojiAvatar || defaultEmojiAvatar,
+      },
+    });
+  },
+  async loadFriends(ownerFriendCode) {
+    const query = new URLSearchParams({
+      select: "friend_friend_code,friend_nickname,friend_emoji_avatar,created_at",
+      owner_friend_code: `eq.${normalizeFriendCode(ownerFriendCode)}`,
+      order: "created_at.desc",
+    });
+    const data = await supabaseRequest(`friends?${query.toString()}`);
+
+    return (data || []).map((friend) => normalizeOnlineFriendProfile({
+      nickname: friend.friend_nickname,
+      friend_code: friend.friend_friend_code,
+      emoji_avatar: friend.friend_emoji_avatar,
+    })).filter(Boolean);
+  },
+};
+window.bestieOnlineFriendCodes = onlineFriendCodes;
 
 const themeRewards = {
   "secret-notebook-theme": {
@@ -853,13 +944,6 @@ let miniGameAwarded = false;
 let miniGameRoundQuestions = [];
 let sharedLinkQuestions = [];
 let selectedChatFriendCode = "";
-let selectedVideoFriendCode = "";
-let localVideoStream = null;
-let videoMicMuted = false;
-let videoCameraOff = false;
-let selectedVoiceFriendCode = "";
-let voiceCallMuted = false;
-let voiceCallPeople = [];
 
 const playerGate = document.querySelector("#player-gate");
 const createPlayerChoice = document.querySelector("#create-player-choice");
@@ -878,8 +962,6 @@ const openShopButton = document.querySelector("#open-shop");
 const openStarLeaderboardButton = document.querySelector("#open-star-leaderboard");
 const openFriendsButton = document.querySelector("#open-friends");
 const openChatButton = document.querySelector("#open-chat");
-const openVoiceCallButton = document.querySelector("#open-voice-call");
-const openVideoCallButton = document.querySelector("#open-video-call");
 const editAvatarButton = document.querySelector("#edit-avatar");
 const switchPlayerButton = document.querySelector("#switch-player");
 const createPlayerMessage = document.querySelector("#create-player-message");
@@ -972,33 +1054,6 @@ const chatMessageInput = document.querySelector("#chat-message-input");
 const sendChatMessageButton = document.querySelector("#send-chat-message");
 const clearChatButton = document.querySelector("#clear-chat");
 const chatMessage = document.querySelector("#chat-message");
-const voiceCallCard = document.querySelector("#voice-call-card");
-const voiceFriendList = document.querySelector("#voice-friend-list");
-const voiceSelectedFriend = document.querySelector("#voice-selected-friend");
-const startVoiceCallButton = document.querySelector("#start-voice-call");
-const incomingCallScreen = document.querySelector("#incoming-call-screen");
-const incomingCallText = document.querySelector("#incoming-call-text");
-const acceptCallButton = document.querySelector("#accept-call");
-const declineCallButton = document.querySelector("#decline-call");
-const addFriendToCallButton = document.querySelector("#add-friend-to-call");
-const muteCallButton = document.querySelector("#mute-call");
-const endCallButton = document.querySelector("#end-call");
-const peopleInCallList = document.querySelector("#people-in-call-list");
-const voiceCallStatus = document.querySelector("#voice-call-status");
-const videoCallCard = document.querySelector("#video-call-card");
-const videoFriendList = document.querySelector("#video-friend-list");
-const videoSelectedFriend = document.querySelector("#video-selected-friend");
-const startVideoCallButton = document.querySelector("#start-video-call");
-const incomingVideoCallText = document.querySelector("#incoming-video-call-text");
-const acceptVideoCallButton = document.querySelector("#accept-video-call");
-const declineVideoCallButton = document.querySelector("#decline-video-call");
-const localVideoPreview = document.querySelector("#local-video-preview");
-const localVideoNote = document.querySelector("#local-video-note");
-const friendVideoPlaceholder = document.querySelector("#friend-video-placeholder");
-const muteVideoCallButton = document.querySelector("#mute-video-call");
-const toggleCameraButton = document.querySelector("#toggle-camera");
-const endVideoCallButton = document.querySelector("#end-video-call");
-const videoCallStatus = document.querySelector("#video-call-status");
 const diaryCard = document.querySelector("#diary-card");
 const diaryNote = document.querySelector("#diary-note");
 const diaryMoodPanel = document.querySelector("#diary-mood-panel");
@@ -1018,6 +1073,8 @@ const miniGameResult = document.querySelector("#mini-game-result");
 const miniGameResultTitle = document.querySelector("#mini-game-result-title");
 const miniGameResultMessage = document.querySelector("#mini-game-result-message");
 const miniGameStars = document.querySelector("#mini-game-stars");
+const miniGameLeaderboardTitle = document.querySelector("#mini-game-leaderboard-title");
+const miniGameLeaderboardList = document.querySelector("#mini-game-leaderboard-list");
 const miniGameAgainButton = document.querySelector("#mini-game-again");
 
 function clampQuestionCount(value) {
@@ -1392,8 +1449,19 @@ function ensureFriendProfile(profile, profiles = getPlayerProfiles()) {
     ...profile,
     friendCode: profile.friendCode || generateFriendCode(profile.nickname || "CASE", profiles),
     friends: Array.isArray(profile.friends) ? profile.friends : [],
+    friendProfiles: profile.friendProfiles && typeof profile.friendProfiles === "object" ? profile.friendProfiles : {},
     blockedFriends: Array.isArray(profile.blockedFriends) ? profile.blockedFriends : [],
   };
+}
+
+function syncActiveProfileOnline() {
+  if (!activePlayer || !onlineFriendCodes.isConfigured) {
+    return;
+  }
+
+  onlineFriendCodes.saveProfile(activePlayer).catch((error) => {
+    console.error("Supabase profile sync error:", error);
+  });
 }
 
 function saveActivePlayerProfile() {
@@ -1410,6 +1478,7 @@ function saveActivePlayerProfile() {
   savePlayerProfiles(updatedProfiles);
   registerUsedNickname(activePlayer.nickname);
   syncLeaderboardAvatarsForProfile(activePlayer);
+  syncActiveProfileOnline();
 }
 
 function getGuestRewards() {
@@ -1999,8 +2068,6 @@ function updateProfileBar() {
     openStarLeaderboardButton.hidden = false;
     openFriendsButton.hidden = true;
     openChatButton.hidden = true;
-    openVoiceCallButton.hidden = true;
-    openVideoCallButton.hidden = true;
     editAvatarButton.hidden = false;
     switchPlayerButton.hidden = false;
     return;
@@ -2013,8 +2080,6 @@ function updateProfileBar() {
     openStarLeaderboardButton.hidden = false;
     openFriendsButton.hidden = false;
     openChatButton.hidden = false;
-    openVoiceCallButton.hidden = false;
-    openVideoCallButton.hidden = false;
     editAvatarButton.hidden = false;
     switchPlayerButton.hidden = false;
     return;
@@ -2026,8 +2091,6 @@ function updateProfileBar() {
   openStarLeaderboardButton.hidden = true;
   openFriendsButton.hidden = true;
   openChatButton.hidden = true;
-  openVoiceCallButton.hidden = true;
-  openVideoCallButton.hidden = true;
   editAvatarButton.hidden = false;
   switchPlayerButton.hidden = true;
 }
@@ -2224,8 +2287,6 @@ function hideMainSections() {
   shopCard.classList.add("hidden");
   friendsCard.classList.add("hidden");
   chatCard.classList.add("hidden");
-  voiceCallCard.classList.add("hidden");
-  videoCallCard.classList.add("hidden");
   diaryCard.classList.add("hidden");
 }
 
@@ -2261,6 +2322,10 @@ function showStart() {
     return;
   }
 
+  activeOnlineQuizId = "";
+  onlineLeaderboardEntries = [];
+  sharedQuizMode = "manual";
+  currentSharedQuiz = null;
   hideMainSections();
   updateProfileBar();
   applyPurchasedEffects();
@@ -2304,7 +2369,7 @@ function showStarLeaderboard() {
   starLeaderboardCard.classList.remove("hidden");
 }
 
-function showFriends() {
+async function showFriends() {
   if (!activePlayer) {
     showPlayerGate();
     return;
@@ -2314,6 +2379,7 @@ function showFriends() {
   updateProfileBar();
   friendsMessage.textContent = "";
   friendCodeInput.value = "";
+  await syncOnlineFriendsToLocal();
   renderFriends();
   friendsCard.classList.remove("hidden");
 }
@@ -2324,7 +2390,6 @@ function showChat() {
     return;
   }
 
-  stopVideoPreview();
   hideMainSections();
   updateProfileBar();
   selectedChatFriendCode = "";
@@ -2334,39 +2399,6 @@ function showChat() {
   renderChatFriends();
   updateChatControls();
   chatCard.classList.remove("hidden");
-}
-
-function showVoiceCall() {
-  if (!activePlayer) {
-    showPlayerGate();
-    return;
-  }
-
-  stopVideoPreview();
-  hideMainSections();
-  updateProfileBar();
-  selectedVoiceFriendCode = "";
-  voiceCallMuted = false;
-  voiceCallPeople = [activePlayer.friendCode];
-  renderVoiceCallFriends();
-  updateVoiceCallControls();
-  voiceCallCard.classList.remove("hidden");
-}
-
-function showVideoCall() {
-  if (!activePlayer) {
-    showPlayerGate();
-    return;
-  }
-
-  hideMainSections();
-  updateProfileBar();
-  selectedVideoFriendCode = "";
-  videoMicMuted = false;
-  videoCameraOff = false;
-  renderVideoCallFriends();
-  updateVideoCallControls();
-  videoCallCard.classList.remove("hidden");
 }
 
 function showDiary() {
@@ -2494,6 +2526,11 @@ function startMiniGame(gameId) {
     return;
   }
 
+  activeQuizId = "";
+  activeOnlineQuizId = "";
+  onlineLeaderboardEntries = [];
+  sharedQuizMode = "manual";
+  currentSharedQuiz = null;
   activeMiniGame = gameId;
   miniGameQuestionIndex = 0;
   miniGameCorrectAnswers = 0;
@@ -2602,14 +2639,27 @@ function finishMiniGame() {
     miniGameAwarded = true;
   }
 
+  const nickname = getCurrentLeaderboardNickname();
+  const gameEntry = {
+    id: crypto.randomUUID(),
+    nickname,
+    avatar: activePlayer ? activePlayer.avatar : null,
+    resultTitle,
+    starsEarned: earnedStars,
+    createdAt: Date.now(),
+  };
+  saveGameLeaderboardEntry(activeMiniGame, gameEntry);
+
   miniGameProgress.classList.add("hidden");
   miniGameQuestion.classList.add("hidden");
   miniGameChoices.innerHTML = "";
   miniGameResultTitle.textContent = resultTitle;
   miniGameResultMessage.textContent = resultMessage;
   miniGameStars.textContent = `You earned ${earnedStars} stars!`;
+  renderGameLeaderboard(activeMiniGame);
   miniGameResult.classList.remove("hidden");
   updateProfileBar();
+  renderStarLeaderboard();
 }
 
 function startQuiz(quizQuestions = getSavedQuizzes()[0]?.questions || getSavedQuiz(), source = "custom", mode = "scored", quizId = "") {
@@ -2929,6 +2979,103 @@ function sortLeaderboard(leaderboard) {
     .slice(0, maxLeaderboardEntries);
 }
 
+function getGameLeaderboards() {
+  const savedLeaderboards = localStorage.getItem(gameLeaderboardsKey);
+
+  if (!savedLeaderboards) {
+    return {};
+  }
+
+  try {
+    const leaderboards = JSON.parse(savedLeaderboards);
+    return leaderboards && typeof leaderboards === "object" && !Array.isArray(leaderboards) ? leaderboards : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveGameLeaderboards(leaderboards) {
+  localStorage.setItem(gameLeaderboardsKey, JSON.stringify(leaderboards));
+}
+
+function getGameLeaderboard(gameId) {
+  const leaderboards = getGameLeaderboards();
+  return Array.isArray(leaderboards[gameId]) ? leaderboards[gameId] : [];
+}
+
+function sortGameLeaderboard(leaderboard) {
+  return leaderboard
+    .slice()
+    .sort((firstEntry, secondEntry) => {
+      if (secondEntry.starsEarned !== firstEntry.starsEarned) {
+        return secondEntry.starsEarned - firstEntry.starsEarned;
+      }
+
+      return secondEntry.createdAt - firstEntry.createdAt;
+    })
+    .slice(0, maxLeaderboardEntries);
+}
+
+function saveGameLeaderboardEntry(gameId, entry) {
+  const leaderboards = getGameLeaderboards();
+  leaderboards[gameId] = sortGameLeaderboard([...(leaderboards[gameId] || []), entry]);
+  saveGameLeaderboards(leaderboards);
+}
+
+function getCurrentLeaderboardNickname() {
+  if (activePlayer) {
+    return activePlayer.nickname;
+  }
+
+  return getGuestStarNickname(true) || "Mystery Player";
+}
+
+function renderGameLeaderboard(gameId) {
+  const game = builtInGames[gameId];
+  const leaderboard = sortGameLeaderboard(getGameLeaderboard(gameId));
+  miniGameLeaderboardTitle.textContent = `${game?.title || "Game"} Leaderboard`;
+
+  if (leaderboard.length === 0) {
+    miniGameLeaderboardList.innerHTML = '<p class="empty-leaderboard">No game scores yet. Play a round to appear here.</p>';
+    return;
+  }
+
+  miniGameLeaderboardList.innerHTML = "";
+  leaderboard.forEach((entry, index) => {
+    const row = document.createElement("article");
+    row.className = "leaderboard-entry";
+
+    const rankBadge = document.createElement("div");
+    rankBadge.className = "rank-badge";
+    rankBadge.textContent = index + 1;
+
+    const playerDetails = document.createElement("div");
+    const playerLine = document.createElement("div");
+    playerLine.className = "player-line";
+    const playerAvatar = document.createElement("div");
+    renderAvatar(playerAvatar, getLatestAvatarForNickname(entry.nickname, entry.avatar));
+    const playerName = document.createElement("p");
+    playerName.className = "player-name";
+    playerName.textContent = entry.nickname;
+    playerLine.append(playerAvatar, playerName);
+
+    const playerMessage = document.createElement("p");
+    playerMessage.className = "player-message";
+    const playedAt = entry.createdAt ? new Date(entry.createdAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
+    playerMessage.textContent = playedAt ? `${entry.resultTitle} • ${playedAt}` : entry.resultTitle;
+    playerDetails.append(playerLine, playerMessage);
+
+    const playerScore = document.createElement("div");
+    playerScore.className = "player-score";
+    const score = document.createElement("span");
+    score.textContent = entry.starsEarned;
+    playerScore.append(score, "stars");
+
+    row.append(rankBadge, playerDetails, playerScore);
+    miniGameLeaderboardList.append(row);
+  });
+}
+
 function cleanNickname(nickname) {
   return cleanPlayerNickname(nickname);
 }
@@ -3049,7 +3196,68 @@ function normalizeFriendCode(code) {
 
 function findProfileByFriendCode(code) {
   const friendCode = normalizeFriendCode(code);
-  return getPlayerProfiles().find((profile) => normalizeFriendCode(profile.friendCode || "") === friendCode) || null;
+  const localProfile = getPlayerProfiles().find((profile) => normalizeFriendCode(profile.friendCode || "") === friendCode) || null;
+
+  if (localProfile) {
+    return localProfile;
+  }
+
+  return activePlayer?.friendProfiles?.[friendCode] || null;
+}
+
+function getFriendProfileSnapshot(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  return findProfileByFriendCode(safeFriendCode) || {
+    nickname: "Friend",
+    friendCode: safeFriendCode,
+    stars: 0,
+    avatar: createDefaultAvatar(),
+  };
+}
+
+function buildFriendProfileMap(friendProfiles = {}, profile) {
+  const safeProfile = normalizeOnlineFriendProfile(profile);
+
+  if (!safeProfile) {
+    return friendProfiles && typeof friendProfiles === "object" ? friendProfiles : {};
+  }
+
+  return {
+    ...(friendProfiles && typeof friendProfiles === "object" ? friendProfiles : {}),
+    [safeProfile.friendCode]: safeProfile,
+  };
+}
+
+async function syncOnlineFriendsToLocal() {
+  if (!activePlayer || !onlineFriendCodes.isConfigured) {
+    return;
+  }
+
+  try {
+    await onlineFriendCodes.saveProfile(activePlayer);
+    const onlineFriends = await onlineFriendCodes.loadFriends(activePlayer.friendCode);
+
+    if (onlineFriends.length === 0) {
+      return;
+    }
+
+    const currentFriends = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+    const friendSet = new Set(currentFriends.map(normalizeFriendCode));
+    let friendProfiles = activePlayer.friendProfiles || {};
+
+    onlineFriends.forEach((friendProfile) => {
+      friendSet.add(friendProfile.friendCode);
+      friendProfiles = buildFriendProfileMap(friendProfiles, friendProfile);
+    });
+
+    updateActivePlayerProfile({
+      friends: [...friendSet],
+      friendProfiles,
+    });
+  } catch (error) {
+    console.error("Supabase friends sync error:", error);
+    friendsMessage.textContent = "Online friends could not load right now. Showing saved friends from this browser.";
+  }
 }
 
 async function copyFriendCode() {
@@ -3065,35 +3273,71 @@ async function copyFriendCode() {
   }
 }
 
-function addFriendByCode() {
+async function addFriendByCode() {
   if (!activePlayer) {
     showPlayerGate();
     return;
   }
 
   const friendCode = normalizeFriendCode(friendCodeInput.value);
-  const friendProfile = findProfileByFriendCode(friendCode);
+
+  if (!friendCode) {
+    friendsMessage.textContent = "Please enter a friend code.";
+    return;
+  }
+
+  if (friendCode === normalizeFriendCode(activePlayer.friendCode)) {
+    friendsMessage.textContent = "That is your own friend code.";
+    return;
+  }
+
+  const friends = (Array.isArray(activePlayer.friends) ? activePlayer.friends : []).map(normalizeFriendCode);
+
+  if (friends.includes(friendCode)) {
+    friendsMessage.textContent = "That friend is already in your list.";
+    return;
+  }
+
+  friendsMessage.textContent = "Checking friend code...";
+
+  let friendProfile = null;
+
+  if (onlineFriendCodes.isConfigured) {
+    try {
+      await onlineFriendCodes.saveProfile(activePlayer);
+      friendProfile = await onlineFriendCodes.findProfileByFriendCode(friendCode);
+
+      if (friendProfile) {
+        await onlineFriendCodes.saveFriend(activePlayer, friendProfile);
+      }
+    } catch (error) {
+      console.error("Supabase friend code lookup error:", error);
+      friendsMessage.textContent = "Online friend lookup could not run right now. Trying this browser next.";
+    }
+  }
+
+  friendProfile = friendProfile || findProfileByFriendCode(friendCode);
 
   if (!friendProfile) {
     friendsMessage.textContent = "Friend code not found. Please check and try again.";
     return;
   }
 
-  if (friendProfile.friendCode === activePlayer.friendCode) {
-    friendsMessage.textContent = "That is your own friend code.";
+  const safeFriend = normalizeOnlineFriendProfile(friendProfile);
+
+  if (!safeFriend) {
+    friendsMessage.textContent = "Friend code not found. Please check and try again.";
     return;
   }
 
-  const friends = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+  const friendProfiles = buildFriendProfileMap(activePlayer.friendProfiles, safeFriend);
 
-  if (friends.includes(friendProfile.friendCode)) {
-    friendsMessage.textContent = "That friend is already in your list.";
-    return;
-  }
-
-  updateActivePlayerProfile({ friends: [...friends, friendProfile.friendCode] });
+  updateActivePlayerProfile({
+    friends: [...friends, safeFriend.friendCode],
+    friendProfiles,
+  });
   friendCodeInput.value = "";
-  friendsMessage.textContent = `${friendProfile.nickname} added to My Friends.`;
+  friendsMessage.textContent = `${safeFriend.nickname} added to My Friends.`;
   renderFriends();
 }
 
@@ -3109,7 +3353,9 @@ function removeFriend(friendCode) {
   }
 
   const friends = (activePlayer.friends || []).filter((savedFriendCode) => savedFriendCode !== friendCode);
-  updateActivePlayerProfile({ friends });
+  const friendProfiles = { ...(activePlayer.friendProfiles || {}) };
+  delete friendProfiles[normalizeFriendCode(friendCode)];
+  updateActivePlayerProfile({ friends, friendProfiles });
   friendsMessage.textContent = "Friend removed.";
   renderFriends();
 }
@@ -3119,7 +3365,7 @@ function blockFriend(friendCode) {
     return;
   }
 
-  const shouldBlock = confirm("Block this friend from chat and calls?");
+  const shouldBlock = confirm("Block this friend from chat?");
 
   if (!shouldBlock) {
     return;
@@ -3127,14 +3373,15 @@ function blockFriend(friendCode) {
 
   const blockedFriends = Array.isArray(activePlayer.blockedFriends) ? activePlayer.blockedFriends : [];
   const friends = (activePlayer.friends || []).filter((savedFriendCode) => savedFriendCode !== friendCode);
+  const friendProfiles = { ...(activePlayer.friendProfiles || {}) };
+  delete friendProfiles[normalizeFriendCode(friendCode)];
   updateActivePlayerProfile({
     friends,
+    friendProfiles,
     blockedFriends: blockedFriends.includes(friendCode) ? blockedFriends : [...blockedFriends, friendCode],
   });
   friendsMessage.textContent = "Friend blocked and removed from your list.";
   selectedChatFriendCode = "";
-  selectedVoiceFriendCode = "";
-  selectedVideoFriendCode = "";
   renderFriends();
 }
 
@@ -3229,7 +3476,6 @@ function renderChatFriends() {
     return;
   }
 
-  const profiles = getPlayerProfiles();
   const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
   const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
 
@@ -3239,9 +3485,9 @@ function renderChatFriends() {
   }
 
   availableFriends.forEach((friendCode) => {
-    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
+    const friendProfile = getFriendProfileSnapshot(friendCode);
     const row = document.createElement("article");
-    row.className = selectedChatFriendCode === friendCode ? "friend-entry selected-call-friend" : "friend-entry";
+    row.className = selectedChatFriendCode === friendCode ? "friend-entry selected-friend" : "friend-entry";
 
     const avatar = document.createElement("div");
     renderAvatar(avatar, friendProfile?.avatar || null);
@@ -3249,7 +3495,7 @@ function renderChatFriends() {
     const details = document.createElement("div");
     details.className = "friend-details";
     const name = document.createElement("h3");
-    name.textContent = friendProfile?.nickname || "Friend not found on this device";
+    name.textContent = friendProfile.nickname;
     const code = document.createElement("p");
     code.textContent = friendCode;
     details.append(name, code);
@@ -3408,7 +3654,6 @@ function renderFriends() {
   myFriendCode.textContent = activePlayer.friendCode;
   friendsList.innerHTML = "";
 
-  const profiles = getPlayerProfiles();
   const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
 
   if (friendCodes.length === 0) {
@@ -3417,24 +3662,24 @@ function renderFriends() {
   }
 
   friendCodes.forEach((friendCode) => {
-    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
+    const friendProfile = getFriendProfileSnapshot(friendCode);
     const row = document.createElement("article");
     row.className = "friend-entry";
 
     const avatar = document.createElement("div");
-    renderAvatar(avatar, friendProfile?.avatar || null);
+    renderAvatar(avatar, friendProfile.avatar || null);
 
     const details = document.createElement("div");
     details.className = "friend-details";
 
     const name = document.createElement("h3");
-    name.textContent = friendProfile?.nickname || "Friend not found on this device";
+    name.textContent = friendProfile.nickname;
 
     const code = document.createElement("p");
     code.textContent = friendCode;
 
     const stars = document.createElement("p");
-    stars.textContent = friendProfile ? `Stars: ${friendProfile.stars || 0}` : "This profile is not saved here anymore.";
+    stars.textContent = `Stars: ${friendProfile.stars || 0}`;
 
     details.append(name, code, stars);
 
@@ -3453,320 +3698,6 @@ function renderFriends() {
     row.append(avatar, details, removeButton, blockButton);
     friendsList.append(row);
   });
-}
-
-function renderVoiceCallFriends() {
-  voiceFriendList.innerHTML = "";
-
-  if (!activePlayer) {
-    return;
-  }
-
-  const profiles = getPlayerProfiles();
-  const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
-  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
-
-  if (availableFriends.length === 0) {
-    voiceFriendList.innerHTML = '<p class="empty-leaderboard">No friends available to call. Add a friend code first.</p>';
-    return;
-  }
-
-  availableFriends.forEach((friendCode) => {
-    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
-    const row = document.createElement("article");
-    row.className = selectedVoiceFriendCode === friendCode ? "friend-entry selected-call-friend" : "friend-entry";
-
-    const avatar = document.createElement("div");
-    renderAvatar(avatar, friendProfile?.avatar || null);
-
-    const details = document.createElement("div");
-    details.className = "friend-details";
-    const name = document.createElement("h3");
-    name.textContent = friendProfile?.nickname || "Friend not found on this device";
-    const code = document.createElement("p");
-    code.textContent = friendCode;
-    details.append(name, code);
-
-    const chooseButton = document.createElement("button");
-    chooseButton.className = "secondary-button";
-    chooseButton.type = "button";
-    chooseButton.textContent = voiceCallPeople.includes(friendCode) ? "In Call List" : "Choose Friend";
-    chooseButton.addEventListener("click", () => {
-      selectedVoiceFriendCode = friendCode;
-      updateVoiceCallControls();
-      renderVoiceCallFriends();
-    });
-
-    const blockButton = document.createElement("button");
-    blockButton.className = "secondary-button";
-    blockButton.type = "button";
-    blockButton.textContent = "Block Friend";
-    blockButton.addEventListener("click", () => {
-      blockFriend(friendCode);
-      renderVoiceCallFriends();
-      updateVoiceCallControls();
-    });
-
-    row.append(avatar, details, chooseButton, blockButton);
-    voiceFriendList.append(row);
-  });
-}
-
-function renderPeopleInCall() {
-  peopleInCallList.innerHTML = "";
-  const profiles = getPlayerProfiles();
-  const people = voiceCallPeople.length > 0 ? voiceCallPeople : [activePlayer?.friendCode].filter(Boolean);
-
-  people.forEach((friendCode) => {
-    const profile = friendCode === activePlayer?.friendCode ? activePlayer : profiles.find((savedProfile) => savedProfile.friendCode === friendCode);
-    const row = document.createElement("article");
-    row.className = "friend-entry";
-
-    const avatar = document.createElement("div");
-    renderAvatar(avatar, profile?.avatar || null);
-
-    const details = document.createElement("div");
-    details.className = "friend-details";
-    const name = document.createElement("h3");
-    name.textContent = profile?.nickname || "Invited friend";
-    const status = document.createElement("p");
-    status.textContent = friendCode === activePlayer?.friendCode ? "Host preview" : "Invite preview";
-    details.append(name, status);
-    row.append(avatar, details);
-    peopleInCallList.append(row);
-  });
-}
-
-function updateVoiceCallControls() {
-  const selectedProfile = findProfileByFriendCode(selectedVoiceFriendCode);
-  voiceSelectedFriend.textContent = selectedProfile ? `Selected friend: ${selectedProfile.nickname}` : "Choose a friend to call.";
-  incomingCallText.textContent = selectedProfile ? `${selectedProfile.nickname} would see an incoming call invite after backend setup.` : "No incoming call.";
-  startVoiceCallButton.disabled = !selectedProfile;
-  addFriendToCallButton.disabled = !selectedProfile;
-  acceptCallButton.disabled = true;
-  declineCallButton.disabled = true;
-  muteCallButton.disabled = true;
-  endCallButton.disabled = voiceCallPeople.length <= 1;
-  muteCallButton.textContent = voiceCallMuted ? "Unmute" : "Mute";
-  voiceCallStatus.textContent = "Status: group voice calls need online backend setup before they can work.";
-  renderPeopleInCall();
-}
-
-function renderVideoCallFriends() {
-  videoFriendList.innerHTML = "";
-
-  if (!activePlayer) {
-    return;
-  }
-
-  const profiles = getPlayerProfiles();
-  const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
-  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
-
-  if (availableFriends.length === 0) {
-    videoFriendList.innerHTML = '<p class="empty-leaderboard">No friends available to video call. Add a friend code first.</p>';
-    return;
-  }
-
-  availableFriends.forEach((friendCode) => {
-    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
-    const row = document.createElement("article");
-    row.className = selectedVideoFriendCode === friendCode ? "friend-entry selected-call-friend" : "friend-entry";
-
-    const avatar = document.createElement("div");
-    renderAvatar(avatar, friendProfile?.avatar || null);
-
-    const details = document.createElement("div");
-    details.className = "friend-details";
-    const name = document.createElement("h3");
-    name.textContent = friendProfile?.nickname || "Friend not found on this device";
-    const code = document.createElement("p");
-    code.textContent = friendCode;
-    details.append(name, code);
-
-    const chooseButton = document.createElement("button");
-    chooseButton.className = "secondary-button";
-    chooseButton.type = "button";
-    chooseButton.textContent = "Choose Friend";
-    chooseButton.addEventListener("click", () => {
-      selectedVideoFriendCode = friendCode;
-      updateVideoCallControls();
-      renderVideoCallFriends();
-    });
-
-    const removeButton = document.createElement("button");
-    removeButton.className = "secondary-button";
-    removeButton.type = "button";
-    removeButton.textContent = "Remove Friend";
-    removeButton.addEventListener("click", () => {
-      removeFriend(friendCode);
-      selectedVideoFriendCode = selectedVideoFriendCode === friendCode ? "" : selectedVideoFriendCode;
-      renderVideoCallFriends();
-      updateVideoCallControls();
-    });
-
-    const blockButton = document.createElement("button");
-    blockButton.className = "secondary-button";
-    blockButton.type = "button";
-    blockButton.textContent = "Block Friend";
-    blockButton.addEventListener("click", () => {
-      blockFriend(friendCode);
-      selectedVideoFriendCode = selectedVideoFriendCode === friendCode ? "" : selectedVideoFriendCode;
-      renderVideoCallFriends();
-      updateVideoCallControls();
-    });
-
-    row.append(avatar, details, chooseButton, removeButton, blockButton);
-    videoFriendList.append(row);
-  });
-}
-
-function updateVideoCallControls() {
-  const selectedProfile = findProfileByFriendCode(selectedVideoFriendCode);
-  videoSelectedFriend.textContent = selectedProfile ? `Selected friend: ${selectedProfile.nickname}` : "Choose a friend to video call.";
-  incomingVideoCallText.textContent = selectedProfile ? `${selectedProfile.nickname} would see an incoming video call invite after backend setup.` : "No incoming video call.";
-  startVideoCallButton.disabled = !selectedProfile;
-  acceptVideoCallButton.disabled = true;
-  declineVideoCallButton.disabled = true;
-  muteVideoCallButton.disabled = !localVideoStream;
-  toggleCameraButton.disabled = !localVideoStream;
-  endVideoCallButton.disabled = !localVideoStream;
-  muteVideoCallButton.textContent = videoMicMuted ? "Unmute Microphone" : "Mute Microphone";
-  toggleCameraButton.textContent = videoCameraOff ? "Turn Camera On" : "Turn Camera Off";
-  friendVideoPlaceholder.textContent = selectedProfile
-    ? "Live friend video needs WebRTC and backend signalling."
-    : "Choose a friend first.";
-
-  if (!localVideoStream) {
-    localVideoNote.textContent = "Camera is off.";
-    videoCallStatus.textContent = "Status: live video calls need online backend setup before friends can connect.";
-  }
-}
-
-async function startVideoCallPreview() {
-  const selectedProfile = findProfileByFriendCode(selectedVideoFriendCode);
-
-  if (!selectedProfile) {
-    videoCallStatus.textContent = "Choose a friend first.";
-    return;
-  }
-
-  if (!navigator.mediaDevices?.getUserMedia) {
-    videoCallStatus.textContent = "This browser does not support camera preview here.";
-    return;
-  }
-
-  try {
-    stopVideoPreview({ keepStatus: true });
-    localVideoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    localVideoPreview.srcObject = localVideoStream;
-    videoMicMuted = false;
-    videoCameraOff = false;
-    localVideoNote.textContent = "Camera preview is on. Nothing is recorded or saved.";
-    videoCallStatus.textContent = "Camera preview started. Live friend video needs online backend setup before friends can connect.";
-  } catch {
-    videoCallStatus.textContent = "Camera preview could not start. Check camera permission, then try again.";
-  }
-
-  updateVideoCallControls();
-}
-
-function stopVideoPreview(options = {}) {
-  if (localVideoStream) {
-    localVideoStream.getTracks().forEach((track) => track.stop());
-  }
-
-  localVideoStream = null;
-  videoMicMuted = false;
-  videoCameraOff = false;
-
-  if (localVideoPreview) {
-    localVideoPreview.srcObject = null;
-  }
-
-  if (localVideoNote && !options.keepStatus) {
-    localVideoNote.textContent = "Camera is off.";
-  }
-}
-
-function toggleVideoMic() {
-  if (!localVideoStream) {
-    videoCallStatus.textContent = "Start the camera preview first.";
-    return;
-  }
-
-  videoMicMuted = !videoMicMuted;
-  localVideoStream.getAudioTracks().forEach((track) => {
-    track.enabled = !videoMicMuted;
-  });
-  videoCallStatus.textContent = videoMicMuted ? "Microphone muted." : "Microphone unmuted.";
-  updateVideoCallControls();
-}
-
-function toggleVideoCamera() {
-  if (!localVideoStream) {
-    videoCallStatus.textContent = "Start the camera preview first.";
-    return;
-  }
-
-  videoCameraOff = !videoCameraOff;
-  localVideoStream.getVideoTracks().forEach((track) => {
-    track.enabled = !videoCameraOff;
-  });
-  localVideoNote.textContent = videoCameraOff ? "Camera is off." : "Camera preview is on. Nothing is recorded or saved.";
-  videoCallStatus.textContent = videoCameraOff ? "Camera turned off." : "Camera turned on.";
-  updateVideoCallControls();
-}
-
-function endVideoCallPreview() {
-  stopVideoPreview();
-  videoCallStatus.textContent = "Call ended. Camera and microphone are off.";
-  updateVideoCallControls();
-}
-
-function startVoiceCallPreview() {
-  if (!selectedVoiceFriendCode) {
-    voiceCallStatus.textContent = "Choose a friend first.";
-    return;
-  }
-
-  if (!voiceCallPeople.includes(selectedVoiceFriendCode)) {
-    voiceCallPeople = [...voiceCallPeople, selectedVoiceFriendCode];
-  }
-
-  voiceCallStatus.textContent = "Preview only: a real call would create a backend call room and send an invite.";
-  renderVoiceCallFriends();
-  updateVoiceCallControls();
-}
-
-function addFriendToCallPreview() {
-  if (!selectedVoiceFriendCode) {
-    voiceCallStatus.textContent = "Choose another friend to invite.";
-    return;
-  }
-
-  if (voiceCallPeople.includes(selectedVoiceFriendCode)) {
-    voiceCallStatus.textContent = "That friend is already in the call preview list.";
-    return;
-  }
-
-  voiceCallPeople = [...voiceCallPeople, selectedVoiceFriendCode];
-  voiceCallStatus.textContent = "Preview only: this would send a group call invite after backend setup.";
-  renderVoiceCallFriends();
-  updateVoiceCallControls();
-}
-
-function declineCallPreview() {
-  voiceCallStatus.textContent = "Preview only: the incoming call was declined.";
-}
-
-function endCallPreview() {
-  voiceCallPeople = activePlayer ? [activePlayer.friendCode] : [];
-  selectedVoiceFriendCode = "";
-  voiceCallMuted = false;
-  voiceCallStatus.textContent = "Call ended.";
-  renderVoiceCallFriends();
-  updateVoiceCallControls();
 }
 
 function makeDiaryChoicePanel(panel, title, options, name, lockedMessage, isUnlocked) {
@@ -4658,31 +4589,8 @@ openShopButton.addEventListener("click", showShop);
 openStarLeaderboardButton.addEventListener("click", showStarLeaderboard);
 openFriendsButton.addEventListener("click", showFriends);
 openChatButton.addEventListener("click", showChat);
-openVoiceCallButton.addEventListener("click", showVoiceCall);
-openVideoCallButton.addEventListener("click", showVideoCall);
 copyFriendCodeButton.addEventListener("click", copyFriendCode);
 addFriendButton.addEventListener("click", addFriendByCode);
-startVoiceCallButton.addEventListener("click", startVoiceCallPreview);
-addFriendToCallButton.addEventListener("click", addFriendToCallPreview);
-acceptCallButton.addEventListener("click", () => {
-  voiceCallStatus.textContent = "Preview only: accepting calls needs WebRTC and backend signalling.";
-});
-declineCallButton.addEventListener("click", declineCallPreview);
-muteCallButton.addEventListener("click", () => {
-  voiceCallMuted = !voiceCallMuted;
-  updateVoiceCallControls();
-});
-endCallButton.addEventListener("click", endCallPreview);
-startVideoCallButton.addEventListener("click", startVideoCallPreview);
-acceptVideoCallButton.addEventListener("click", () => {
-  videoCallStatus.textContent = "Preview only: accepting video calls needs WebRTC and backend signalling.";
-});
-declineVideoCallButton.addEventListener("click", () => {
-  videoCallStatus.textContent = "Preview only: the incoming video call was declined.";
-});
-muteVideoCallButton.addEventListener("click", toggleVideoMic);
-toggleCameraButton.addEventListener("click", toggleVideoCamera);
-endVideoCallButton.addEventListener("click", endVideoCallPreview);
 sendChatMessageButton.addEventListener("click", sendTypedChatMessage);
 chatMessageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {

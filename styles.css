@@ -66,8 +66,6 @@ button {
 .friends-card,
 .chat-card,
 .star-leaderboard-card,
-.voice-call-card,
-.video-call-card,
 .diary-card,
 .leaderboard-section,
 .danger-zone {
@@ -154,8 +152,6 @@ h2 {
 .friends-card,
 .chat-card,
 .star-leaderboard-card,
-.voice-call-card,
-.video-call-card,
 .diary-card,
 .leaderboard-section,
 .danger-zone {
@@ -1771,6 +1767,22 @@ h2 {
   box-shadow: 0 8px 18px rgba(109, 74, 130, 0.1);
 }
 
+.game-leaderboard-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(238, 230, 255, 0.78));
+  box-shadow: 0 8px 18px rgba(109, 74, 130, 0.08);
+}
+
+.game-leaderboard-panel h3 {
+  margin: 0;
+  color: var(--plum);
+  overflow-wrap: break-word;
+}
+
 .profile-frame-reward {
   border-color: #d8c7ff;
   box-shadow:
@@ -1997,20 +2009,6 @@ h2 {
   font-weight: 800;
 }
 
-.voice-call-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 16px;
-  margin-top: 16px;
-}
-
-.video-call-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 16px;
-  margin-top: 16px;
-}
-
 .chat-layout {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
@@ -2018,12 +2016,7 @@ h2 {
   margin-top: 16px;
 }
 
-.voice-panel,
-.chat-panel,
-.video-panel,
-.video-box,
-.incoming-call-screen,
-.people-in-call {
+.chat-panel {
   padding: 16px;
   border: 2px solid rgba(255, 255, 255, 0.88);
   border-radius: 22px;
@@ -2031,17 +2024,7 @@ h2 {
   box-shadow: 0 8px 18px rgba(109, 74, 130, 0.1);
 }
 
-.incoming-call-screen,
-.people-in-call {
-  margin-top: 14px;
-}
-
-.voice-status {
-  color: var(--ink);
-  font-weight: 900;
-}
-
-.selected-call-friend {
+.selected-friend {
   outline: 3px solid rgba(255, 143, 189, 0.45);
 }
 
@@ -2112,47 +2095,6 @@ h2 {
 .quick-chat-button {
   min-height: 40px;
   padding: 0 12px;
-}
-
-.video-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin: 14px 0;
-}
-
-.video-box {
-  display: grid;
-  gap: 10px;
-  min-height: 210px;
-  align-content: start;
-  background: linear-gradient(135deg, #ffffff, var(--blue));
-}
-
-#local-video-preview {
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: 18px;
-  background: linear-gradient(135deg, var(--lavender), var(--pink));
-  object-fit: cover;
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7);
-}
-
-#local-video-note,
-#friend-video-placeholder {
-  margin: 0;
-  color: var(--muted);
-  font-weight: 900;
-}
-
-#friend-video-placeholder {
-  display: grid;
-  min-height: 150px;
-  place-items: center;
-  padding: 14px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.66);
-  text-align: center;
 }
 
 .shop-description {
@@ -2284,8 +2226,6 @@ body.theme-secret-notebook .result-card,
 body.theme-secret-notebook .shop-card,
 body.theme-secret-notebook .chat-card,
 body.theme-secret-notebook .star-leaderboard-card,
-body.theme-secret-notebook .voice-call-card,
-body.theme-secret-notebook .video-call-card,
 body.theme-secret-notebook .diary-card,
 body.theme-secret-notebook .leaderboard-section,
 body.theme-secret-notebook .danger-zone {
@@ -2309,8 +2249,6 @@ body.theme-moonlight-library .result-card,
 body.theme-moonlight-library .shop-card,
 body.theme-moonlight-library .chat-card,
 body.theme-moonlight-library .star-leaderboard-card,
-body.theme-moonlight-library .voice-call-card,
-body.theme-moonlight-library .video-call-card,
 body.theme-moonlight-library .diary-card,
 body.theme-moonlight-library .leaderboard-section,
 body.theme-moonlight-library .danger-zone {
@@ -2331,8 +2269,6 @@ body.theme-blush-diary .result-card,
 body.theme-blush-diary .shop-card,
 body.theme-blush-diary .chat-card,
 body.theme-blush-diary .star-leaderboard-card,
-body.theme-blush-diary .voice-call-card,
-body.theme-blush-diary .video-call-card,
 body.theme-blush-diary .diary-card,
 body.theme-blush-diary .leaderboard-section,
 body.theme-blush-diary .danger-zone {
@@ -2353,8 +2289,6 @@ body.theme-secret-garden .result-card,
 body.theme-secret-garden .shop-card,
 body.theme-secret-garden .chat-card,
 body.theme-secret-garden .star-leaderboard-card,
-body.theme-secret-garden .voice-call-card,
-body.theme-secret-garden .video-call-card,
 body.theme-secret-garden .diary-card,
 body.theme-secret-garden .leaderboard-section,
 body.theme-secret-garden .danger-zone {
@@ -2477,8 +2411,6 @@ body.theme-secret-garden .danger-zone {
     .friends-card,
     .chat-card,
     .star-leaderboard-card,
-    .voice-call-card,
-    .video-call-card,
     .diary-card,
     .leaderboard-section,
   .danger-zone {
@@ -2550,13 +2482,7 @@ body.theme-secret-garden .danger-zone {
     grid-template-columns: 1fr;
   }
 
-  .voice-call-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .chat-layout,
-  .video-call-layout,
-  .video-grid {
+  .chat-layout {
     grid-template-columns: 1fr;
   }
 

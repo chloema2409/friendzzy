@@ -68,3 +68,100 @@ using (true);
 create index if not exists quizzes_quiz_id_idx on public.quizzes (quiz_id);
 create index if not exists quiz_scores_quiz_id_score_idx
 on public.quiz_scores (quiz_id, score_percent desc, created_at asc);
+
+-- Friend-code MVP tables.
+-- These policies are intentionally temporary because the current app does not
+-- use Supabase Auth yet. Friend codes act as the short-term player identifier.
+-- Tighten these policies later when real accounts are added.
+
+create table if not exists public.profiles (
+  id uuid primary key default gen_random_uuid(),
+  nickname text not null,
+  normalized_nickname text not null,
+  emoji_avatar text not null default '🌙',
+  friend_code text not null unique,
+  stars integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.friends (
+  id uuid primary key default gen_random_uuid(),
+  owner_friend_code text not null,
+  friend_friend_code text not null,
+  friend_nickname text not null,
+  friend_emoji_avatar text not null default '🌙',
+  created_at timestamptz not null default now(),
+  unique (owner_friend_code, friend_friend_code),
+  check (owner_friend_code <> friend_friend_code)
+);
+
+alter table public.profiles enable row level security;
+alter table public.friends enable row level security;
+
+drop policy if exists "Anyone can find profiles by friend code" on public.profiles;
+create policy "Anyone can find profiles by friend code"
+on public.profiles
+for select
+to anon
+using (true);
+
+drop policy if exists "Anyone can create a temporary friend-code profile" on public.profiles;
+create policy "Anyone can create a temporary friend-code profile"
+on public.profiles
+for insert
+to anon
+with check (
+  char_length(nickname) between 1 and 20
+  and char_length(normalized_nickname) between 1 and 20
+  and friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and stars >= 0
+);
+
+drop policy if exists "Anyone can update a temporary friend-code profile" on public.profiles;
+create policy "Anyone can update a temporary friend-code profile"
+on public.profiles
+for update
+to anon
+using (true)
+with check (
+  char_length(nickname) between 1 and 20
+  and char_length(normalized_nickname) between 1 and 20
+  and friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and stars >= 0
+);
+
+drop policy if exists "Anyone can view temporary friend links" on public.friends;
+create policy "Anyone can view temporary friend links"
+on public.friends
+for select
+to anon
+using (true);
+
+drop policy if exists "Anyone can add a temporary friend link" on public.friends;
+create policy "Anyone can add a temporary friend link"
+on public.friends
+for insert
+to anon
+with check (
+  owner_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and friend_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and owner_friend_code <> friend_friend_code
+  and char_length(friend_nickname) between 1 and 20
+);
+
+drop policy if exists "Anyone can refresh a temporary friend link" on public.friends;
+create policy "Anyone can refresh a temporary friend link"
+on public.friends
+for update
+to anon
+using (true)
+with check (
+  owner_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and friend_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and owner_friend_code <> friend_friend_code
+  and char_length(friend_nickname) between 1 and 20
+);
+
+create index if not exists profiles_friend_code_idx on public.profiles (friend_code);
+create index if not exists friends_owner_friend_code_idx on public.friends (owner_friend_code);

@@ -27,8 +27,6 @@
         <button id="open-star-leaderboard" class="secondary-button" type="button">View Star Leaderboard</button>
         <button id="open-friends" class="secondary-button" type="button">My Friends</button>
         <button id="open-chat" class="secondary-button" type="button">Friend Chat</button>
-        <button id="open-voice-call" class="secondary-button" type="button">Friend Voice Call</button>
-        <button id="open-video-call" class="secondary-button" type="button">Friend Video Call</button>
         <button id="edit-avatar" class="secondary-button" type="button">Edit Avatar</button>
         <button id="switch-player" class="secondary-button" type="button">Switch Player</button>
       </section>
@@ -196,6 +194,10 @@
           <p id="mini-game-result-title" class="result-score"></p>
           <p id="mini-game-result-message" class="result-message"></p>
           <p id="mini-game-stars" class="stars-earned"></p>
+          <div class="game-leaderboard-panel">
+            <h3 id="mini-game-leaderboard-title">Game Leaderboard</h3>
+            <div id="mini-game-leaderboard-list" class="leaderboard-list"></div>
+          </div>
           <div class="result-actions">
             <button id="mini-game-again" class="secondary-button" type="button">Play New Round</button>
             <button class="games-button secondary-button" type="button">Back to Games</button>
@@ -368,7 +370,7 @@
           </div>
           <button class="home-button secondary-button" type="button">Back to Home</button>
         </div>
-        <p class="safety-note">Only add people you know. Friend codes work on this device for now. Online friends need backend setup later.</p>
+        <p class="safety-note">Only add people you know. Friend codes use Supabase online when available, with this browser kept as a safe backup.</p>
         <div class="friend-code-card">
           <div>
             <p class="eyebrow">My Friend Code</p>
@@ -434,95 +436,6 @@
               <button id="clear-chat" class="secondary-button" type="button">Clear Chat</button>
             </div>
             <p id="chat-message" class="friendly-message" aria-live="polite"></p>
-          </div>
-        </div>
-      </section>
-
-      <section id="voice-call-card" class="voice-call-card hidden" aria-labelledby="voice-call-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Friends Only</p>
-            <h2 id="voice-call-title">Friend Voice Call</h2>
-          </div>
-          <button class="home-button secondary-button" type="button">Back to Home</button>
-        </div>
-        <p class="safety-note">Only call people you know. Do not share your real name, school, address, phone number, email, or passwords.</p>
-        <p class="friendly-message">Live voice calls need online backend setup before they can work. This screen is a safe setup preview only.</p>
-        <div class="voice-call-layout">
-          <div class="voice-panel">
-            <h3>My Friends list</h3>
-            <div id="voice-friend-list" class="friends-list"></div>
-          </div>
-          <div class="voice-panel">
-            <h3>Call Controls</h3>
-            <p id="voice-selected-friend" class="voice-status">Choose a friend to call.</p>
-            <button id="start-voice-call" class="save-quiz-button" type="button">Start Voice Call</button>
-            <div id="incoming-call-screen" class="incoming-call-screen">
-              <p class="eyebrow">Incoming Call</p>
-              <p id="incoming-call-text">No incoming call.</p>
-              <div class="result-actions">
-                <button id="accept-call" class="secondary-button" type="button">Accept Call</button>
-                <button id="decline-call" class="secondary-button" type="button">Decline Call</button>
-              </div>
-            </div>
-            <div class="result-actions">
-              <button id="add-friend-to-call" class="secondary-button" type="button">Add Friend to Call</button>
-              <button id="mute-call" class="secondary-button" type="button">Mute</button>
-              <button id="end-call" class="secondary-button" type="button">End Call</button>
-            </div>
-            <div class="people-in-call">
-              <h3>People in Call</h3>
-              <div id="people-in-call-list" class="friends-list"></div>
-            </div>
-            <p id="voice-call-status" class="friendly-message" aria-live="polite">Status: not connected.</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="video-call-card" class="video-call-card hidden" aria-labelledby="video-call-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Friends Only</p>
-            <h2 id="video-call-title">Friend Video Call</h2>
-          </div>
-          <button class="home-button secondary-button" type="button">Back to Home</button>
-        </div>
-        <p class="safety-note">Only video call people you know. Do not share your real name, school, address, phone number, email, or passwords.</p>
-        <p class="friendly-message">Live video calls need online backend setup before friends can connect.</p>
-        <div class="video-call-layout">
-          <div class="video-panel">
-            <h3>My Friends list</h3>
-            <div id="video-friend-list" class="friends-list"></div>
-          </div>
-          <div class="video-panel">
-            <h3>Video Call Controls</h3>
-            <p id="video-selected-friend" class="voice-status">Choose a friend to video call.</p>
-            <button id="start-video-call" class="save-quiz-button" type="button">Start Video Call</button>
-            <div id="incoming-video-call-screen" class="incoming-call-screen">
-              <p class="eyebrow">Incoming Video Call</p>
-              <p id="incoming-video-call-text">No incoming video call.</p>
-              <div class="result-actions">
-                <button id="accept-video-call" class="secondary-button" type="button">Accept Call</button>
-                <button id="decline-video-call" class="secondary-button" type="button">Decline Call</button>
-              </div>
-            </div>
-            <div class="video-grid">
-              <div class="video-box">
-                <p class="eyebrow">My camera preview</p>
-                <video id="local-video-preview" autoplay muted playsinline></video>
-                <p id="local-video-note">Camera is off.</p>
-              </div>
-              <div class="video-box friend-video-placeholder">
-                <p class="eyebrow">Friend’s camera video</p>
-                <div id="friend-video-placeholder">Waiting for backend setup</div>
-              </div>
-            </div>
-            <div class="result-actions">
-              <button id="mute-video-call" class="secondary-button" type="button">Mute Microphone</button>
-              <button id="toggle-camera" class="secondary-button" type="button">Turn Camera Off</button>
-              <button id="end-video-call" class="secondary-button" type="button">End Call</button>
-            </div>
-            <p id="video-call-status" class="friendly-message" aria-live="polite">Status: not connected.</p>
           </div>
         </div>
       </section>
