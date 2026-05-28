@@ -3,16 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bestie Quiz</title>
+    <title>Friendzzy</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="page-shell">
       <section class="hero" aria-labelledby="page-title">
-        <div class="hero-badge" aria-hidden="true">🔎</div>
-        <div>
-          <p class="eyebrow">Bestie Quiz</p>
-          <h1 id="page-title">Choose your quiz case</h1>
+        <div class="brand-lockup">
+          <div class="friendzzy-mark" aria-hidden="true">Fz</div>
+          <div>
+            <p class="brand-domain">Friendzzy.com</p>
+            <p class="brand-wordmark">Friendzzy</p>
+          </div>
+        </div>
+        <div class="hero-copy">
+          <p class="eyebrow">Friendship games and mystery fun</p>
+          <h1 id="page-title">Friendzzy</h1>
+          <p class="hero-subtitle">Create quizzes, play games, collect stars, and share the fun with friends.</p>
+          <div class="hero-actions">
+            <button id="hero-login-button" class="save-quiz-button" type="button">Create / Log In Player</button>
+            <button id="hero-guest-button" class="secondary-button" type="button">Play Without Saving</button>
+          </div>
         </div>
       </section>
 
@@ -21,7 +32,8 @@
         <div>
           <p class="eyebrow">Player</p>
           <p id="profile-name" class="profile-name"></p>
-        <p id="stars-total" class="stars-total">⭐ Stars: 0</p>
+          <p id="profile-friend-code" class="profile-code"></p>
+          <p id="stars-total" class="stars-total">⭐ Stars: 0</p>
         </div>
         <button id="open-shop" class="secondary-button" type="button">Open Shop</button>
         <button id="open-star-leaderboard" class="secondary-button" type="button">View Star Leaderboard</button>
@@ -37,35 +49,35 @@
         <h2 id="player-gate-title">How do you want to play?</h2>
         <p class="safety-note">Your visible player identity is a nickname and friend code. Do not use your real full name, school, phone number, address, or photos.</p>
         <div class="choice-grid">
-          <button class="choice-card" id="create-player-choice" type="button">
+          <button class="choice-card hidden" id="create-player-choice" type="button">
             <span class="choice-icon" aria-hidden="true">✨</span>
-            <span class="choice-title">Create New Player</span>
-            <span class="choice-description">Make a local profile with a nickname and avatar.</span>
+            <span class="choice-title">Player Setup</span>
+            <span class="choice-description">Username and PIN is now the main player system.</span>
           </button>
           <button class="choice-card" id="username-login-choice" type="button">
             <span class="choice-icon" aria-hidden="true">🔢</span>
-            <span class="choice-title">Log In With Username</span>
-            <span class="choice-description">Use a nickname, PIN, and friend code for simple cross-device play.</span>
+            <span class="choice-title">Create / Log In Player</span>
+            <span class="choice-description">Use your username and PIN to play from any device.</span>
           </button>
           <button class="choice-card hidden" id="online-auth-choice" type="button">
             <span class="choice-icon" aria-hidden="true">🔑</span>
-            <span class="choice-title">Parent Online Login</span>
+            <span class="choice-title">Parent Login</span>
             <span class="choice-description">Future parent/guardian login. Email is for login only and is never shown publicly.</span>
           </button>
-          <button class="choice-card" id="login-player-choice" type="button">
+          <button class="choice-card hidden" id="login-player-choice" type="button">
             <span class="choice-icon" aria-hidden="true">🔐</span>
-            <span class="choice-title">Log In to My Player</span>
-            <span class="choice-description">Open a saved player on this browser.</span>
+            <span class="choice-title">Player Login</span>
+            <span class="choice-description">Username and PIN is now the main player system.</span>
           </button>
           <button class="choice-card" id="guest-player-choice" type="button">
             <span class="choice-icon" aria-hidden="true">🎲</span>
             <span class="choice-title">Play Without Saving</span>
-            <span class="choice-description">Play as a guest with no saved rewards.</span>
+            <span class="choice-description">Try the app as a guest. Progress will not be saved.</span>
           </button>
-          <button class="choice-card" id="create-avatar-home" type="button">
+          <button class="choice-card hidden" id="create-avatar-home" type="button">
             <span class="choice-icon" aria-hidden="true">🎭</span>
-            <span class="choice-title">Create Avatar</span>
-            <span class="choice-description">Build or edit your mystery player look.</span>
+            <span class="choice-title">Avatar Setup</span>
+            <span class="choice-description">Avatar choice is now part of the username player account.</span>
           </button>
         </div>
       </section>
@@ -74,11 +86,11 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">Emoji Avatar Picker</p>
-            <h2 id="create-player-title">Create your emoji avatar</h2>
+            <h2 id="create-player-title">Edit your emoji avatar</h2>
           </div>
           <button class="profile-home-button secondary-button" type="button">Back</button>
         </div>
-        <p class="safety-note">Use a nickname, not your full real name. Nickname uniqueness works on this device for now. Online nickname checking needs backend setup later. Do not use email, phone number, address, school name, or photos.</p>
+        <p class="safety-note">Use a nickname, not your full real name. Your emoji avatar belongs to your username account. Do not use email, phone number, address, school name, or photos.</p>
         <form id="create-player-form" class="profile-form">
           <label for="new-player-nickname">Player nickname</label>
           <input id="new-player-nickname" type="text" maxlength="20" autocomplete="off" placeholder="MysteryAce" required />
@@ -87,7 +99,7 @@
           <div id="avatar-preview" class="avatar-preview" aria-hidden="true"></div>
           <div id="avatar-option-panels" class="avatar-option-panels"></div>
           <p id="create-player-message" class="friendly-message" aria-live="polite"></p>
-          <button class="save-quiz-button" type="submit">Save Avatar</button>
+          <button class="save-quiz-button" type="submit">Save Profile</button>
         </form>
       </section>
 
@@ -143,17 +155,23 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">Simple Online Login</p>
-            <h2 id="username-login-title">Log In With Username</h2>
+            <h2 id="username-login-title">Create / Log In Player</h2>
           </div>
           <button class="profile-home-button secondary-button" type="button">Back to Home</button>
         </div>
         <p class="safety-note">Use a nickname, not your real full name. Do not share your PIN with others. Do not enter school, address, phone number, email, or photos.</p>
         <p class="friendly-message">MVP note: this is a simple kid-friendly login, not high security. Do not use it for private sensitive information.</p>
         <form id="username-login-form" class="profile-form">
-          <label for="username-login-name">Username</label>
+          <label for="username-login-name">Username / nickname</label>
           <input id="username-login-name" type="text" maxlength="20" autocomplete="username" placeholder="MysteryAce" required />
           <label for="username-login-pin">PIN</label>
           <input id="username-login-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="off" placeholder="4 to 6 digits" required />
+          <div class="username-avatar-picker">
+            <label>Emoji avatar for new account</label>
+            <p class="friendly-message">Choose one for a new account. You can edit it after logging in.</p>
+            <div id="username-avatar-preview" class="avatar-preview" aria-hidden="true"></div>
+            <div id="username-avatar-option-panels" class="avatar-option-panels"></div>
+          </div>
           <div class="result-actions">
             <button id="username-create-account" class="save-quiz-button" type="button">Create Player Account</button>
             <button id="username-login-account" class="secondary-button" type="button">Log In</button>
@@ -162,9 +180,80 @@
         </form>
       </section>
 
-      <section id="game-menu-card" class="start-card hidden" aria-labelledby="game-menu-title">
-        <p class="eyebrow">Choose a Game</p>
-        <h2 id="game-menu-title">Choose a Game</h2>
+      <section id="game-menu-card" class="start-card dashboard-card hidden" aria-labelledby="game-menu-title">
+        <div class="dashboard-heading">
+          <div>
+            <p class="eyebrow">Friendzzy Hub</p>
+            <h2 id="game-menu-title">Choose what to do next</h2>
+            <p class="section-subtitle">Jump into quizzes, friend links, rewards, diary notes, and games from one polished home base.</p>
+          </div>
+        </div>
+        <div class="feature-grid" aria-label="Friendzzy features">
+          <button class="feature-card" id="feature-bestie-quiz" type="button">
+            <span class="feature-icon" aria-hidden="true">♡</span>
+            <span class="feature-title">Bestie Quiz</span>
+            <span class="feature-description">Create or play a quiz to see who knows you best.</span>
+            <span class="feature-action">Open Bestie Quiz</span>
+          </button>
+          <button class="feature-card" id="feature-games" type="button">
+            <span class="feature-icon" aria-hidden="true">🎮</span>
+            <span class="feature-title">Games</span>
+            <span class="feature-description">Play quick friendship and mystery games for stars.</span>
+            <span class="feature-action">See Games</span>
+          </button>
+          <button class="feature-card" id="feature-my-quizzes" type="button">
+            <span class="feature-icon" aria-hidden="true">📓</span>
+            <span class="feature-title">My Quizzes</span>
+            <span class="feature-description">Manage your saved quizzes and make new ones.</span>
+            <span class="feature-action">Open My Quizzes</span>
+          </button>
+          <button class="feature-card" id="feature-friend-links" type="button">
+            <span class="feature-icon" aria-hidden="true">💌</span>
+            <span class="feature-title">Friend Links</span>
+            <span class="feature-description">Play a shared quiz link or code from a friend.</span>
+            <span class="feature-action">Play Shared Quiz</span>
+          </button>
+          <button class="feature-card" id="feature-friends" type="button">
+            <span class="feature-icon" aria-hidden="true">🗝️</span>
+            <span class="feature-title">My Friends</span>
+            <span class="feature-description">Use friend codes to safely connect with people you know.</span>
+            <span class="feature-action">Open Friends</span>
+          </button>
+          <button class="feature-card" id="feature-chat" type="button">
+            <span class="feature-icon" aria-hidden="true">💬</span>
+            <span class="feature-title">Friend Chat</span>
+            <span class="feature-description">Send safe messages, stickers, and quiz invites.</span>
+            <span class="feature-action">Open Chat</span>
+          </button>
+          <button class="feature-card" id="feature-shop" type="button">
+            <span class="feature-icon" aria-hidden="true">⭐</span>
+            <span class="feature-title">Shop</span>
+            <span class="feature-description">Spend stars on themes, diary extras, and profile rewards.</span>
+            <span class="feature-action">Open Shop</span>
+          </button>
+          <button class="feature-card" id="feature-diary" type="button">
+            <span class="feature-icon" aria-hidden="true">📔</span>
+            <span class="feature-title">Diary</span>
+            <span class="feature-description">Write a short private note when Daily Diary is unlocked.</span>
+            <span class="feature-action">Open Diary</span>
+          </button>
+          <button class="feature-card" id="feature-themes" type="button">
+            <span class="feature-icon" aria-hidden="true">🎀</span>
+            <span class="feature-title">Themes</span>
+            <span class="feature-description">Choose a polished Friendzzy look from the shop.</span>
+            <span class="feature-action">Choose Theme</span>
+          </button>
+          <button class="feature-card" id="feature-star-leaderboard" type="button">
+            <span class="feature-icon" aria-hidden="true">🏆</span>
+            <span class="feature-title">Star Leaderboard</span>
+            <span class="feature-description">See who has collected the most stars.</span>
+            <span class="feature-action">View Stars</span>
+          </button>
+        </div>
+        <div class="games-section-heading">
+          <p class="eyebrow">Games Section</p>
+          <h3>Pick a game</h3>
+        </div>
         <div class="game-grid">
           <button class="choice-card game-card" id="play-bestie-game" type="button">
             <span class="choice-icon" aria-hidden="true">♡</span>
@@ -381,7 +470,7 @@
           </div>
         </form>
         <p id="leaderboard-nickname-message" class="friendly-message" aria-live="polite"></p>
-        <p class="safety-note">Use a nickname, not your real full name. Nickname uniqueness works on this device for now. Online nickname checking needs backend setup later.</p>
+        <p class="safety-note">Use a nickname, not your real full name.</p>
 
         <div class="result-actions">
           <button class="home-button secondary-button" type="button">Back to Home</button>
@@ -390,7 +479,7 @@
         </div>
       </section>
 
-      <section class="leaderboard-section" aria-labelledby="leaderboard-title">
+      <section id="leaderboard-section" class="leaderboard-section hidden" aria-labelledby="leaderboard-title">
         <div class="section-heading">
           <div>
             <p class="eyebrow">Top 10</p>
@@ -434,7 +523,7 @@
           </div>
           <button class="home-button secondary-button" type="button">Back to Home</button>
         </div>
-        <p class="safety-note">Only add people you know. Friend codes use Supabase online when available, with this browser kept as a safe backup.</p>
+        <p class="safety-note">Only add people you know. Friend codes help you connect safely with friends.</p>
         <div class="friend-code-card">
           <div>
             <p class="eyebrow">My Friend Code</p>
@@ -499,7 +588,7 @@
           <button class="home-button secondary-button" type="button">Back to Home</button>
         </div>
         <p class="safety-note">Only chat with people you know. Do not share your real name, school, address, phone number, email, or passwords.</p>
-        <p class="friendly-message">Chat uses Supabase online when available, with this browser kept as a backup.</p>
+        <p class="friendly-message">Chat is for safe messages, stickers, and invites with friends you already added.</p>
         <div class="chat-layout">
           <div class="chat-panel">
             <h3>My Friends list</h3>
@@ -549,7 +638,7 @@
             <button id="back-to-shop" class="secondary-button" type="button">Back to Shop</button>
           </div>
         </div>
-        <p class="safety-note">This diary is saved only on this browser. Do not write private information.</p>
+        <p class="safety-note">This diary is private in this app for now. Do not write private information.</p>
         <label for="diary-note">Today’s diary note</label>
         <textarea id="diary-note" rows="7" maxlength="500" placeholder="Write a short note for today."></textarea>
         <div id="diary-mood-panel" class="diary-option-panel"></div>
@@ -565,9 +654,14 @@
       <section class="danger-zone" aria-labelledby="danger-title">
         <p class="eyebrow">Danger Zone</p>
         <h2 id="danger-title">Reset Everything</h2>
-        <p class="danger-copy">Only use this if you want to delete all saved quiz data on this browser.</p>
+        <p class="danger-copy">Only use this if you want to delete saved quiz data and app progress.</p>
         <button id="reset-everything" class="danger-button" type="button">Reset Everything</button>
       </section>
+
+      <footer class="site-footer">
+        <p>Friendzzy.com</p>
+        <p>Designed by Chloe Ma</p>
+      </footer>
     </main>
 
     <script src="config.js"></script>

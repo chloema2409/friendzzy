@@ -1516,8 +1516,11 @@ const authSignupForm = document.querySelector("#auth-signup-form");
 const authLoginForm = document.querySelector("#auth-login-form");
 const profileHomeButtons = document.querySelectorAll(".profile-home-button");
 const profileBar = document.querySelector("#profile-bar");
+const heroLoginButton = document.querySelector("#hero-login-button");
+const heroGuestButton = document.querySelector("#hero-guest-button");
 const profileAvatar = document.querySelector("#profile-avatar");
 const profileName = document.querySelector("#profile-name");
+const profileFriendCode = document.querySelector("#profile-friend-code");
 const starsTotal = document.querySelector("#stars-total");
 const openShopButton = document.querySelector("#open-shop");
 const openStarLeaderboardButton = document.querySelector("#open-star-leaderboard");
@@ -1527,6 +1530,7 @@ const editAvatarButton = document.querySelector("#edit-avatar");
 const authLogoutButton = document.querySelector("#auth-logout");
 const switchPlayerButton = document.querySelector("#switch-player");
 const createPlayerMessage = document.querySelector("#create-player-message");
+const createPlayerTitle = document.querySelector("#create-player-title");
 const loginPlayerMessage = document.querySelector("#login-player-message");
 const authMessage = document.querySelector("#auth-message");
 const newPlayerNickname = document.querySelector("#new-player-nickname");
@@ -1537,6 +1541,8 @@ const usernameLoginPin = document.querySelector("#username-login-pin");
 const usernameCreateAccountButton = document.querySelector("#username-create-account");
 const usernameLoginAccountButton = document.querySelector("#username-login-account");
 const usernameLoginMessage = document.querySelector("#username-login-message");
+const usernameAvatarPreview = document.querySelector("#username-avatar-preview");
+const usernameAvatarOptionPanels = document.querySelector("#username-avatar-option-panels");
 const authSignupEmail = document.querySelector("#auth-signup-email");
 const authSignupPassword = document.querySelector("#auth-signup-password");
 const authSignupNickname = document.querySelector("#auth-signup-nickname");
@@ -1550,6 +1556,16 @@ const playWouldYouRatherGameButton = document.querySelector("#play-would-you-rat
 const playThisOrThatGameButton = document.querySelector("#play-this-or-that-game");
 const playMysteryGameButton = document.querySelector("#play-mystery-game");
 const playFavouriteGameButton = document.querySelector("#play-favourite-game");
+const featureBestieQuizButton = document.querySelector("#feature-bestie-quiz");
+const featureGamesButton = document.querySelector("#feature-games");
+const featureMyQuizzesButton = document.querySelector("#feature-my-quizzes");
+const featureFriendLinksButton = document.querySelector("#feature-friend-links");
+const featureFriendsButton = document.querySelector("#feature-friends");
+const featureChatButton = document.querySelector("#feature-chat");
+const featureShopButton = document.querySelector("#feature-shop");
+const featureDiaryButton = document.querySelector("#feature-diary");
+const featureThemesButton = document.querySelector("#feature-themes");
+const featureStarLeaderboardButton = document.querySelector("#feature-star-leaderboard");
 const packStatusBadges = document.querySelectorAll(".pack-status");
 const startCard = document.querySelector("#start-card");
 const makeOwnQuizButton = document.querySelector("#make-own-quiz");
@@ -1598,6 +1614,7 @@ const playAgainButton = document.querySelector("#play-again");
 const restartQuizButton = document.querySelector("#restart-quiz");
 const editCurrentQuizButton = document.querySelector("#edit-current-quiz");
 const editQuizButton = document.querySelector("#edit-quiz");
+const leaderboardSection = document.querySelector("#leaderboard-section");
 const leaderboardList = document.querySelector("#leaderboard-list");
 const starLeaderboardCard = document.querySelector("#star-leaderboard-card");
 const starLeaderboardList = document.querySelector("#star-leaderboard-list");
@@ -2591,7 +2608,7 @@ function createMangaAvatarSvg(avatar) {
 
 function renderAvatar(target, avatar) {
   const safeAvatar = getUnlockedAvatar(avatar);
-  const sizeClass = target.id === "avatar-preview" ? "avatar-preview" : "mini-avatar";
+  const sizeClass = ["avatar-preview", "username-avatar-preview"].includes(target.id) ? "avatar-preview" : "mini-avatar";
   const emoji = safeAvatar.emojiAvatar || defaultEmojiAvatar;
 
   target.className = `${sizeClass} emoji-avatar-card`;
@@ -2616,7 +2633,7 @@ function renderAvatar(target, avatar) {
 
 function renderMangaAvatar(target, avatar) {
   const safeAvatar = getUnlockedAvatar(avatar);
-  const sizeClass = target.id === "avatar-preview" ? "avatar-preview" : "mini-avatar";
+  const sizeClass = ["avatar-preview", "username-avatar-preview"].includes(target.id) ? "avatar-preview" : "mini-avatar";
   target.className = `${sizeClass} illustrated-avatar manga-avatar-card ${getAvatarClass(safeAvatar)} height-${slugify(safeAvatar.height)} face-${slugify(safeAvatar.faceShape)} hair-${slugify(safeAvatar.hairstyle)} eyes-${slugify(safeAvatar.eyeShape)}`;
   target.innerHTML = "";
   target.style.setProperty("--skin", getAvatarColour("skinTone", safeAvatar.skinTone, "#f1c7ad"));
@@ -2655,8 +2672,12 @@ function updateAvatarPreview() {
   renderAvatarOptions();
 }
 
-function renderAvatarOptions() {
-  avatarOptionPanels.innerHTML = "";
+function renderEmojiAvatarOptionPanels(container, selectedEmoji, onSelect) {
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML = "";
 
   Object.entries(emojiAvatarCategories).forEach(([category, emojis]) => {
     const group = document.createElement("section");
@@ -2671,34 +2692,62 @@ function renderAvatarOptions() {
     emojis.forEach((emoji) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = (selectedAvatar.emojiAvatar || defaultEmojiAvatar) === emoji ? "emoji-avatar-option selected" : "emoji-avatar-option";
+      button.className = (selectedEmoji || defaultEmojiAvatar) === emoji ? "emoji-avatar-option selected" : "emoji-avatar-option";
       button.textContent = emoji;
       button.setAttribute("aria-label", `Choose ${emoji}`);
       button.addEventListener("click", () => {
-        selectedAvatar.emojiAvatar = emoji;
-        updateAvatarPreview();
+        onSelect(emoji);
       });
       buttons.append(button);
     });
 
     group.append(title, buttons);
-    avatarOptionPanels.append(group);
+    container.append(group);
+  });
+}
+
+function renderAvatarOptions() {
+  renderEmojiAvatarOptionPanels(avatarOptionPanels, selectedAvatar.emojiAvatar || defaultEmojiAvatar, (emoji) => {
+    selectedAvatar.emojiAvatar = emoji;
+    updateAvatarPreview();
+  });
+}
+
+function updateUsernameAvatarPreview() {
+  if (!usernameAvatarPreview) {
+    return;
+  }
+
+  renderAvatar(usernameAvatarPreview, {
+    ...createDefaultAvatar(),
+    ...selectedAvatar,
+    emojiAvatar: selectedAvatar.emojiAvatar || defaultEmojiAvatar,
+  });
+  renderEmojiAvatarOptionPanels(usernameAvatarOptionPanels, selectedAvatar.emojiAvatar || defaultEmojiAvatar, (emoji) => {
+    selectedAvatar.emojiAvatar = emoji;
+    updateUsernameAvatarPreview();
   });
 }
 
 function updateProfileBar() {
+  if (!activePlayer && !guestMode) {
+    profileBar.classList.add("hidden");
+    return;
+  }
+
   profileBar.classList.remove("hidden");
   starsTotal.textContent = `⭐ Stars: ${getStarBalance()}`;
-  editAvatarButton.textContent = activePlayer?.avatar ? "Edit Avatar" : "Create Avatar";
+  editAvatarButton.textContent = "Edit Avatar";
 
   if (guestMode) {
     renderAvatar(profileAvatar, null);
     profileName.textContent = "Guest player";
+    profileFriendCode.textContent = "";
     openShopButton.hidden = false;
     openStarLeaderboardButton.hidden = false;
     openFriendsButton.hidden = true;
     openChatButton.hidden = true;
-    editAvatarButton.hidden = false;
+    editAvatarButton.hidden = true;
     authLogoutButton.classList.toggle("hidden", !onlineAccountStorage.isLoggedIn);
     switchPlayerButton.hidden = false;
     return;
@@ -2707,6 +2756,7 @@ function updateProfileBar() {
   if (activePlayer) {
     renderAvatar(profileAvatar, activePlayer.avatar);
     profileName.textContent = activePlayer.nickname;
+    profileFriendCode.textContent = activePlayer.friendCode ? `Friend Code: ${activePlayer.friendCode}` : "";
     openShopButton.hidden = false;
     openStarLeaderboardButton.hidden = false;
     openFriendsButton.hidden = false;
@@ -2717,15 +2767,7 @@ function updateProfileBar() {
     return;
   }
 
-  renderAvatar(profileAvatar, null);
-  profileName.textContent = "No avatar yet";
-  openShopButton.hidden = true;
-  openStarLeaderboardButton.hidden = true;
-  openFriendsButton.hidden = true;
-  openChatButton.hidden = true;
-  editAvatarButton.hidden = false;
-  authLogoutButton.classList.add("hidden");
-  switchPlayerButton.hidden = true;
+  profileBar.classList.add("hidden");
 }
 
 function loadCurrentPlayer() {
@@ -2917,6 +2959,7 @@ function hideMainSections() {
   creatorCard.classList.add("hidden");
   quizCard.classList.add("hidden");
   resultCard.classList.add("hidden");
+  leaderboardSection.classList.add("hidden");
   starLeaderboardCard.classList.add("hidden");
   miniGameCard.classList.add("hidden");
   shopCard.classList.add("hidden");
@@ -2932,14 +2975,21 @@ function showPlayerGate() {
 }
 
 function showCreatePlayer() {
+  if (!activePlayer) {
+    showUsernameLogin();
+    return;
+  }
+
   hideMainSections();
   createPlayerMessage.textContent = "";
+  createPlayerTitle.textContent = "Edit your emoji avatar";
   const avatar = getUnlockedAvatar(activePlayer?.avatar || createDefaultAvatar());
   selectedAvatar = {
     ...createDefaultAvatar(),
     ...avatar,
   };
   newPlayerNickname.value = activePlayer?.nickname || "";
+  newPlayerNickname.readOnly = Boolean(usernamePinSession);
   avatarNameInput.value = avatar.avatarName || "";
   createPlayerCard.classList.remove("hidden");
   updateAvatarPreview();
@@ -2954,6 +3004,8 @@ function showLoginPlayer() {
 function showUsernameLogin() {
   hideMainSections();
   usernameLoginMessage.textContent = "";
+  selectedAvatar = createDefaultAvatar();
+  updateUsernameAvatarPreview();
   usernameLoginCard.classList.remove("hidden");
 }
 
@@ -2971,6 +3023,7 @@ function showStart() {
     return;
   }
 
+  activeQuizId = "";
   activeOnlineQuizId = "";
   onlineLeaderboardEntries = [];
   sharedQuizMode = "manual";
@@ -3004,6 +3057,11 @@ function showShop() {
   shopMessage.textContent = "";
   renderShop();
   shopCard.classList.remove("hidden");
+}
+
+function showThemes() {
+  activeShopCategory = "Themes";
+  showShop();
 }
 
 function showStarLeaderboard() {
@@ -3417,6 +3475,7 @@ function showResult() {
   editQuizButton.classList.toggle("hidden", ["shared", "online"].includes(activeQuizSource));
   quizCard.classList.add("hidden");
   resultCard.classList.remove("hidden");
+  renderLeaderboard();
 
   if (!activePlayer) {
     nicknameInput.focus();
@@ -3787,7 +3846,7 @@ async function addToLeaderboard(event) {
       leaderboardNicknameMessage.textContent = "Score saved to this online quiz leaderboard.";
     } catch {
       onlineLeaderboardEntries = sortLeaderboard([...onlineLeaderboardEntries, newEntry]);
-      leaderboardNicknameMessage.textContent = "Score saved on this browser. Online leaderboard needs the Supabase quiz_scores table to be ready.";
+      leaderboardNicknameMessage.textContent = "Score saved temporarily. Online leaderboard needs the Supabase quiz_scores table to be ready.";
     }
   }
 
@@ -3799,13 +3858,23 @@ async function addToLeaderboard(event) {
 }
 
 function renderLeaderboard() {
+  const hasQuizLeaderboard = Boolean(activeOnlineQuizId || activeQuizId);
+
+  if (!hasQuizLeaderboard) {
+    leaderboardSection.classList.add("hidden");
+    leaderboardList.innerHTML = "";
+    return;
+  }
+
+  leaderboardSection.classList.remove("hidden");
+
   const leaderboard = activeOnlineQuizId
     ? sortLeaderboard(onlineLeaderboardEntries)
-    : activeQuizId ? sortLeaderboard(getQuizLeaderboard(activeQuizId)) : sortLeaderboard(getLeaderboard());
+    : sortLeaderboard(getQuizLeaderboard(activeQuizId));
   const activeQuiz = activeQuizId ? findSavedQuizById(activeQuizId) : null;
 
   if (leaderboard.length === 0) {
-    leaderboardList.innerHTML = `<p class="empty-leaderboard">${activeOnlineQuizId ? "No online scores yet for this shared quiz." : activeQuiz ? `No scores yet for ${activeQuiz.title}.` : "No scores yet. Be the first star on the board! ♥"}</p>`;
+    leaderboardList.innerHTML = `<p class="empty-leaderboard">${activeOnlineQuizId ? "No online scores yet for this shared quiz." : `No scores yet for ${activeQuiz?.title || "this quiz"}.`}</p>`;
     return;
   }
 
@@ -3956,7 +4025,7 @@ async function syncOnlineFriendsToLocal() {
     });
   } catch (error) {
     console.error("Supabase friends sync error:", error);
-    friendsMessage.textContent = "Online friends could not load right now. Showing saved friends from this browser.";
+    friendsMessage.textContent = "Online friends could not load right now. Showing saved friends for now.";
   }
 }
 
@@ -4012,7 +4081,7 @@ async function addFriendByCode() {
       }
     } catch (error) {
       console.error("Supabase friend code lookup error:", error);
-      friendsMessage.textContent = "Online friend lookup could not run right now. Trying this browser next.";
+      friendsMessage.textContent = "Online friend lookup could not run right now. Trying your saved friend list next.";
     }
   }
 
@@ -4411,7 +4480,7 @@ async function sendPresetMessageToSelectedFriend(messageText) {
     const result = await saveSafeFriendMessage(selectedFriendActionCode, messageText, "quick");
     friendActionMessage.textContent = result.online
       ? "Preset message sent online and saved in Friend Chat."
-      : "Preset message saved on this browser because online chat could not connect.";
+      : "Preset message saved temporarily because online chat could not connect.";
   } catch (error) {
     console.error("Friend preset message error:", error);
     friendActionMessage.textContent = "Choose an added friend first.";
@@ -4427,7 +4496,7 @@ async function sendStickerToSelectedFriend(sticker) {
   try {
     const result = await saveSafeFriendMessage(selectedFriendActionCode, sticker.text, "sticker", sticker.label);
     const earnedStar = awardFriendActionStars(`sticker:${selectedFriendActionCode}:${sticker.label}`, 1);
-    const savedWhere = result.online ? "sent online" : "saved on this browser";
+    const savedWhere = result.online ? "sent online" : "saved temporarily";
     friendActionMessage.textContent = earnedStar
       ? `Sticker reaction ${savedWhere}. You earned 1 star for a safe reaction today.`
       : `Sticker reaction ${savedWhere}. You already earned today's star for this sticker.`;
@@ -4535,7 +4604,7 @@ async function loadActiveChatMessages() {
     console.error("Supabase friend chat load error:", error);
     activeOnlineChatMessages = [];
     chatLoadedFromSupabase = false;
-    chatMessage.textContent = "Online chat could not load right now. Showing saved messages on this browser.";
+    chatMessage.textContent = "Online chat could not load right now. Showing saved messages from this app.";
     renderChatHistory();
   }
 }
@@ -4708,7 +4777,7 @@ async function sendChatMessage(messageText, messageType = "typed", sticker = "")
     chatMessageInput.value = "";
     chatMessage.textContent = result.online
       ? "Message sent online."
-      : "Message saved on this browser because online chat could not connect.";
+      : "Message saved temporarily because online chat could not connect.";
     renderChatHistory();
   } catch (error) {
     console.error("Friend chat message error:", error);
@@ -4750,7 +4819,7 @@ function clearSelectedChat() {
     return;
   }
 
-  const shouldClear = confirm("Clear this chat history on this browser?");
+  const shouldClear = confirm("Clear this chat history from this app?");
 
   if (!shouldClear) {
     return;
@@ -4759,7 +4828,7 @@ function clearSelectedChat() {
   const chatId = getChatId(selectedChatFriendCode);
   const messages = getChatMessages().filter((message) => message.chatId !== chatId);
   saveChatMessages(messages);
-  chatMessage.textContent = "Chat cleared on this browser.";
+  chatMessage.textContent = "Chat cleared from this app.";
   renderChatHistory();
 }
 
@@ -5136,7 +5205,7 @@ function saveDiaryNote() {
 
   saveDiaryEntries([entry, ...getDiaryEntries()]);
   diaryNote.value = "";
-  diaryMessage.textContent = "Diary entry saved on this browser.";
+  diaryMessage.textContent = "Diary entry saved.";
   renderDiaryHistory();
 }
 
@@ -5596,6 +5665,14 @@ async function loginUsernamePlayerAccount() {
 
 function createPlayer(event) {
   event.preventDefault();
+
+  if (usernamePinSession && activePlayer) {
+    const avatar = getUnlockedAvatar(getSelectedAvatar());
+    updateActivePlayerProfile({ avatar });
+    createPlayerMessage.textContent = "Avatar saved to your player account.";
+    showStart();
+    return;
+  }
 
   const previousNickname = activePlayer?.nickname || "";
   const nicknameCheck = validateNickname(newPlayerNickname.value, { currentNickname: previousNickname });
@@ -6133,11 +6210,23 @@ function goHome() {
   showStart();
 }
 
+heroLoginButton.addEventListener("click", showUsernameLogin);
+heroGuestButton.addEventListener("click", useGuestMode);
 playBestieGameButton.addEventListener("click", showBestieQuizHome);
 playWouldYouRatherGameButton.addEventListener("click", () => startMiniGame("wouldYouRather"));
 playThisOrThatGameButton.addEventListener("click", () => startMiniGame("thisOrThat"));
 playMysteryGameButton.addEventListener("click", () => startMiniGame("mysteryPersonality"));
 playFavouriteGameButton.addEventListener("click", () => startMiniGame("guessFavourite"));
+featureBestieQuizButton.addEventListener("click", showBestieQuizHome);
+featureGamesButton.addEventListener("click", showStart);
+featureMyQuizzesButton.addEventListener("click", showMyQuizzes);
+featureFriendLinksButton.addEventListener("click", showSharedQuiz);
+featureFriendsButton.addEventListener("click", showFriends);
+featureChatButton.addEventListener("click", showChat);
+featureShopButton.addEventListener("click", showShop);
+featureDiaryButton.addEventListener("click", showDiary);
+featureThemesButton.addEventListener("click", showThemes);
+featureStarLeaderboardButton.addEventListener("click", showStarLeaderboard);
 miniGameAgainButton.addEventListener("click", () => startMiniGame(activeMiniGame));
 makeOwnQuizButton.addEventListener("click", showMyQuizzes);
 createNewQuizButton.addEventListener("click", showNewQuizCreator);
@@ -6218,15 +6307,7 @@ async function initializeApp() {
   renderSafeQuizzes();
   seedUsedNicknamesFromSavedData();
 
-  const restoredOnlineAccount = await restoreSupabaseAccount();
-
-  if (!restoredOnlineAccount) {
-    const savedPlayer = loadCurrentPlayer();
-
-    if (savedPlayer) {
-      setActivePlayer(savedPlayer);
-    }
-  }
+  await restoreSupabaseAccount();
 
   guestMode = false;
   updateAvatarPreview();
