@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bestie Quiz</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-badge" aria-hidden="true">🔎</div>
+        <div>
+          <p class="eyebrow">Bestie Quiz</p>
+          <h1 id="page-title">Choose your quiz case</h1>
+        </div>
+      </section>
+
+      <section id="profile-bar" class="profile-bar hidden" aria-live="polite">
+        <div id="profile-avatar" class="mini-avatar" aria-hidden="true"></div>
+        <div>
+          <p class="eyebrow">Player</p>
+          <p id="profile-name" class="profile-name"></p>
+        <p id="stars-total" class="stars-total">⭐ Stars: 0</p>
+        </div>
+        <button id="open-shop" class="secondary-button" type="button">Open Shop</button>
+        <button id="open-star-leaderboard" class="secondary-button" type="button">View Star Leaderboard</button>
+        <button id="open-friends" class="secondary-button" type="button">My Friends</button>
+        <button id="open-chat" class="secondary-button" type="button">Friend Chat</button>
+        <button id="open-voice-call" class="secondary-button" type="button">Friend Voice Call</button>
+        <button id="open-video-call" class="secondary-button" type="button">Friend Video Call</button>
+        <button id="edit-avatar" class="secondary-button" type="button">Edit Avatar</button>
+        <button id="switch-player" class="secondary-button" type="button">Switch Player</button>
+      </section>
+
+      <section id="player-gate" class="start-card" aria-labelledby="player-gate-title">
+        <p class="eyebrow">Player Profile</p>
+        <h2 id="player-gate-title">How do you want to play?</h2>
+        <p class="safety-note">Use a nickname, not your full real name. Nickname uniqueness works on this device for now. Online nickname checking needs backend setup later.</p>
+        <div class="choice-grid">
+          <button class="choice-card" id="create-player-choice" type="button">
+            <span class="choice-icon" aria-hidden="true">✨</span>
+            <span class="choice-title">Create New Player</span>
+            <span class="choice-description">Make a local profile with a nickname and avatar.</span>
+          </button>
+          <button class="choice-card" id="login-player-choice" type="button">
+            <span class="choice-icon" aria-hidden="true">🔐</span>
+            <span class="choice-title">Log In to My Player</span>
+            <span class="choice-description">Open a saved player on this browser.</span>
+          </button>
+          <button class="choice-card" id="guest-player-choice" type="button">
+            <span class="choice-icon" aria-hidden="true">🎲</span>
+            <span class="choice-title">Play Without Saving</span>
+            <span class="choice-description">Play as a guest with no saved rewards.</span>
+          </button>
+          <button class="choice-card" id="create-avatar-home" type="button">
+            <span class="choice-icon" aria-hidden="true">🎭</span>
+            <span class="choice-title">Create Avatar</span>
+            <span class="choice-description">Build or edit your mystery player look.</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="create-player-card" class="player-card hidden" aria-labelledby="create-player-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Emoji Avatar Picker</p>
+            <h2 id="create-player-title">Create your emoji avatar</h2>
+          </div>
+          <button class="profile-home-button secondary-button" type="button">Back</button>
+        </div>
+        <p class="safety-note">Use a nickname, not your full real name. Nickname uniqueness works on this device for now. Online nickname checking needs backend setup later. Do not use email, phone number, address, school name, or photos.</p>
+        <form id="create-player-form" class="profile-form">
+          <label for="new-player-nickname">Player nickname</label>
+          <input id="new-player-nickname" type="text" maxlength="20" autocomplete="off" placeholder="MysteryAce" required />
+          <label for="avatar-name">Avatar name <span class="optional-label">optional</span></label>
+          <input id="avatar-name" type="text" maxlength="18" autocomplete="off" placeholder="Luna Clue" />
+          <div id="avatar-preview" class="avatar-preview" aria-hidden="true"></div>
+          <div id="avatar-option-panels" class="avatar-option-panels"></div>
+          <p id="create-player-message" class="friendly-message" aria-live="polite"></p>
+          <button class="save-quiz-button" type="submit">Save Avatar</button>
+        </form>
+      </section>
+
+      <section id="login-player-card" class="player-card hidden" aria-labelledby="login-player-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Login</p>
+            <h2 id="login-player-title">Log in to your player</h2>
+          </div>
+          <button class="profile-home-button secondary-button" type="button">Back</button>
+        </div>
+        <form id="login-player-form" class="profile-form">
+          <label for="login-player-nickname">Nickname</label>
+          <input id="login-player-nickname" type="text" maxlength="20" autocomplete="off" required />
+          <label for="login-player-password">Password <span class="optional-label">if you made one before</span></label>
+          <input id="login-player-password" type="password" maxlength="30" autocomplete="current-password" />
+          <p id="login-player-message" class="friendly-message" aria-live="polite"></p>
+          <button class="save-quiz-button" type="submit">Log In</button>
+        </form>
+      </section>
+
+      <section id="game-menu-card" class="start-card hidden" aria-labelledby="game-menu-title">
+        <p class="eyebrow">Choose a Game</p>
+        <h2 id="game-menu-title">Choose a Game</h2>
+        <div class="game-grid">
+          <button class="choice-card game-card" id="play-bestie-game" type="button">
+            <span class="choice-icon" aria-hidden="true">♡</span>
+            <span class="choice-title">Bestie Quiz</span>
+            <span class="choice-description">Create or play a quiz to see who knows you best.</span>
+            <span class="game-card-action">Play Bestie Quiz</span>
+          </button>
+          <button class="choice-card game-card" id="play-would-you-rather-game" type="button">
+            <span class="choice-icon" aria-hidden="true">?</span>
+            <span class="choice-title">Would You Rather?</span>
+            <span class="choice-description">Pick between two fun choices.</span>
+            <span class="pack-status" data-pack-id="would-you-rather-pack">Extra pack locked - buy it in the shop</span>
+            <span class="game-card-action">Play Would You Rather</span>
+          </button>
+          <button class="choice-card game-card" id="play-this-or-that-game" type="button">
+            <span class="choice-icon" aria-hidden="true">↔</span>
+            <span class="choice-title">This or That</span>
+            <span class="choice-description">Choose your vibe in quick questions.</span>
+            <span class="pack-status" data-pack-id="this-or-that-pack">Extra pack locked - buy it in the shop</span>
+            <span class="game-card-action">Play This or That</span>
+          </button>
+          <button class="choice-card game-card" id="play-mystery-game" type="button">
+            <span class="choice-icon" aria-hidden="true">✦</span>
+            <span class="choice-title">Mystery Personality Quiz</span>
+            <span class="choice-description">Answer questions and reveal your mystery style.</span>
+            <span class="pack-status" data-pack-id="mystery-personality-pack">Extra pack locked - buy it in the shop</span>
+            <span class="game-card-action">Play Mystery Quiz</span>
+          </button>
+          <button class="choice-card game-card" id="play-favourite-game" type="button">
+            <span class="choice-icon" aria-hidden="true">★</span>
+            <span class="choice-title">Guess My Favourite</span>
+            <span class="choice-description">Let friends guess your favourite things.</span>
+            <span class="pack-status" data-pack-id="extra-quiz-theme-pack">Extra pack locked - buy it in the shop</span>
+            <span class="game-card-action">Play Guess My Favourite</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="start-card" class="start-card hidden" aria-labelledby="start-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Bestie Quiz</p>
+            <h2 id="start-title">What do you want to do?</h2>
+          </div>
+          <button class="games-button secondary-button" type="button">Back to Games</button>
+        </div>
+        <div class="choice-grid">
+          <button class="choice-card" id="make-own-quiz" type="button">
+            <span class="choice-icon" aria-hidden="true">🕵️</span>
+            <span class="choice-title">Make My Own Quiz</span>
+            <span class="choice-description">Make your own secret case.</span>
+          </button>
+          <button class="choice-card" id="play-shared-quiz" type="button">
+            <span class="choice-icon" aria-hidden="true">💌</span>
+            <span class="choice-title">Play Shared Quizzes</span>
+            <span class="choice-description">Play a quiz made by someone else.</span>
+          </button>
+        </div>
+      </section>
+
+      <section id="my-quizzes-card" class="my-quizzes-card hidden" aria-labelledby="my-quizzes-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Saved Cases</p>
+            <h2 id="my-quizzes-title">My Quizzes</h2>
+          </div>
+          <div class="creator-actions">
+            <button id="create-new-quiz" class="save-quiz-button" type="button">Create New Quiz</button>
+            <button class="home-button secondary-button" type="button">Back to Home</button>
+          </div>
+        </div>
+        <p id="my-quizzes-message" class="friendly-message" aria-live="polite"></p>
+        <div id="my-quizzes-list" class="my-quizzes-list"></div>
+      </section>
+
+      <section id="mini-game-card" class="quiz-card hidden" aria-live="polite">
+        <div class="section-heading">
+          <div>
+            <p id="mini-game-eyebrow" class="eyebrow">Game</p>
+            <h2 id="mini-game-title">Game title</h2>
+          </div>
+          <div class="quiz-actions">
+            <button class="games-button secondary-button" type="button">Back to Games</button>
+            <button class="home-button secondary-button" type="button">Back to Home</button>
+          </div>
+        </div>
+        <p id="mini-game-progress" class="question-count"></p>
+        <h2 id="mini-game-question"></h2>
+        <div id="mini-game-choices" class="answer-list"></div>
+        <div id="mini-game-result" class="mini-game-result hidden">
+          <p id="mini-game-result-title" class="result-score"></p>
+          <p id="mini-game-result-message" class="result-message"></p>
+          <p id="mini-game-stars" class="stars-earned"></p>
+          <div class="result-actions">
+            <button id="mini-game-again" class="secondary-button" type="button">Play New Round</button>
+            <button class="games-button secondary-button" type="button">Back to Games</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="safe-quiz-card" class="safe-quiz-card hidden" aria-labelledby="safe-quiz-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Safe Quizzes</p>
+            <h2 id="safe-quiz-title">Pick a ready-made case</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <div id="safe-quiz-list" class="safe-quiz-list"></div>
+      </section>
+
+      <section id="shared-quiz-card" class="shared-quiz-card hidden" aria-labelledby="shared-quiz-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Shared Quiz</p>
+            <h2 id="shared-quiz-title">Paste a quiz code</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <div id="shared-link-panel" class="shared-link-panel hidden">
+          <p class="eyebrow">Friend Link</p>
+          <h3>Someone sent you a quiz!</h3>
+          <p class="safety-note">Use a nickname, not your real full name.</p>
+          <button id="start-shared-link-quiz" class="save-quiz-button" type="button">Start Quiz</button>
+        </div>
+        <label for="shared-quiz-code">Quiz code</label>
+        <textarea
+          id="shared-quiz-code"
+          rows="8"
+          placeholder='Paste a code like {"questions":[{"text":"Pick one","answers":["A","B","C","D"],"correct":0}]}'
+        ></textarea>
+        <p id="shared-quiz-message" class="friendly-message" aria-live="polite"></p>
+        <button id="load-shared-quiz" class="save-quiz-button" type="button">Load Quiz</button>
+      </section>
+
+      <section id="creator-card" class="creator-card hidden" aria-labelledby="creator-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Create My Quiz</p>
+            <h2 id="creator-title">Make your bestie clues</h2>
+          </div>
+          <div class="creator-actions">
+            <button id="play-saved-quiz" class="secondary-button" type="button">Play Saved Quiz</button>
+            <button class="home-button secondary-button" type="button">Back to Home</button>
+          </div>
+        </div>
+
+        <form id="quiz-builder-form" class="quiz-builder-form" novalidate>
+          <label class="question-number-label" for="quiz-title-input">Quiz title</label>
+          <input id="quiz-title-input" name="quiz-title-input" type="text" maxlength="48" placeholder="My Bestie Quiz" required />
+          <label class="question-number-label" for="quiz-theme-input">Quiz theme/type <span class="optional-label">optional</span></label>
+          <input id="quiz-theme-input" name="quiz-theme-input" type="text" maxlength="32" placeholder="Best Friend" />
+          <label class="question-number-label" for="question-total">How many clues do you want in your quiz?</label>
+          <input id="question-total" name="question-total" type="number" min="5" max="30" value="5" />
+          <div id="creator-fields" class="creator-fields"></div>
+          <p id="creator-message" class="friendly-message" aria-live="polite"></p>
+          <button class="save-quiz-button" type="submit">Save My Quiz</button>
+        </form>
+        <div class="friend-link-panel" aria-labelledby="friend-link-title">
+          <div>
+            <p class="eyebrow">Friend Link</p>
+            <h3 id="friend-link-title">Send your quiz to a friend</h3>
+            <p class="safety-note">Short friend links need online storage setup first. Use a nickname, not your real full name.</p>
+          </div>
+          <button id="create-friend-link" class="secondary-button" type="button">Create Friend Link</button>
+          <div id="friend-link-output-wrap" class="friend-link-output-wrap hidden">
+            <label for="friend-link-output">Copyable friend link</label>
+            <textarea id="friend-link-output" rows="4" readonly></textarea>
+            <button id="copy-friend-link" class="save-quiz-button" type="button">Copy Friend Link</button>
+          </div>
+          <p id="friend-link-message" class="friendly-message" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="quiz-card" class="quiz-card hidden" aria-live="polite">
+        <div class="progress-row">
+          <p id="question-count" class="question-count"></p>
+          <p id="score-count" class="score-count"></p>
+        </div>
+        <h2 id="question-text"></h2>
+        <div id="answer-list" class="answer-list"></div>
+        <div class="quiz-actions">
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+          <button id="restart-quiz" class="secondary-button" type="button">Restart This Quiz</button>
+          <button id="edit-current-quiz" class="secondary-button" type="button">Edit My Quiz</button>
+        </div>
+      </section>
+
+      <section id="result-card" class="result-card hidden" aria-live="polite">
+        <div class="result-sparkle" aria-hidden="true">⭐</div>
+        <h2>Your result</h2>
+        <p id="result-score" class="result-score"></p>
+        <p id="stars-earned" class="stars-earned"></p>
+        <p id="result-message" class="result-message"></p>
+
+        <form id="leaderboard-form" class="leaderboard-form">
+          <label for="nickname">Enter a nickname for the leaderboard</label>
+          <div class="save-row">
+            <input
+              id="nickname"
+              name="nickname"
+              type="text"
+              maxlength="20"
+              autocomplete="off"
+              placeholder="StarPal"
+            />
+            <button type="submit">Add to Leaderboard</button>
+          </div>
+        </form>
+        <p id="leaderboard-nickname-message" class="friendly-message" aria-live="polite"></p>
+        <p class="safety-note">Use a nickname, not your real full name. Nickname uniqueness works on this device for now. Online nickname checking needs backend setup later.</p>
+
+        <div class="result-actions">
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+          <button id="play-again" class="secondary-button" type="button">Restart This Quiz</button>
+          <button id="edit-quiz" class="secondary-button" type="button">Edit My Quiz</button>
+        </div>
+      </section>
+
+      <section class="leaderboard-section" aria-labelledby="leaderboard-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Top 10</p>
+            <h2 id="leaderboard-title">🏆 Leaderboard</h2>
+          </div>
+        </div>
+        <div id="leaderboard-list" class="leaderboard-list"></div>
+      </section>
+
+      <section id="star-leaderboard-card" class="star-leaderboard-card hidden" aria-labelledby="star-leaderboard-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Top 10</p>
+            <h2 id="star-leaderboard-title">Star Leaderboard</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p class="safety-note">Use a nickname, not your real full name.</p>
+        <div id="star-leaderboard-list" class="leaderboard-list"></div>
+      </section>
+
+      <section id="shop-card" class="shop-card hidden" aria-labelledby="shop-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Rewards</p>
+            <h2 id="shop-title">Secret Rewards Shop</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p id="shop-stars" class="stars-total">⭐ Stars: 0</p>
+        <p id="shop-message" class="friendly-message" aria-live="polite"></p>
+        <div id="shop-tabs" class="shop-tabs" aria-label="Shop categories"></div>
+        <div id="shop-list" class="shop-list"></div>
+      </section>
+
+      <section id="friends-card" class="friends-card hidden" aria-labelledby="friends-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Safe Friend Codes</p>
+            <h2 id="friends-title">My Friends</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p class="safety-note">Only add people you know. Friend codes work on this device for now. Online friends need backend setup later.</p>
+        <div class="friend-code-card">
+          <div>
+            <p class="eyebrow">My Friend Code</p>
+            <p id="my-friend-code" class="friend-code-text">----</p>
+          </div>
+          <button id="copy-friend-code" class="secondary-button" type="button">Copy My Friend Code</button>
+        </div>
+        <div class="friend-add-box">
+          <label for="friend-code-input">Add Friend by Code</label>
+          <div class="save-row">
+            <input id="friend-code-input" type="text" maxlength="12" autocomplete="off" placeholder="LUNA-4821" />
+            <button id="add-friend-button" class="save-quiz-button" type="button">Add Friend</button>
+          </div>
+          <p id="friends-message" class="friendly-message" aria-live="polite"></p>
+        </div>
+        <div class="friends-list-wrap">
+          <h3>My Friends list</h3>
+          <div id="friends-list" class="friends-list"></div>
+        </div>
+      </section>
+
+      <section id="chat-card" class="chat-card hidden" aria-labelledby="chat-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Friends Only</p>
+            <h2 id="chat-title">Friend Chat</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p class="safety-note">Only chat with people you know. Do not share your real name, school, address, phone number, email, or passwords.</p>
+        <p class="friendly-message">Chat works on this device for now. Online chat needs backend setup later.</p>
+        <div class="chat-layout">
+          <div class="chat-panel">
+            <h3>My Friends list</h3>
+            <div id="chat-friend-list" class="friends-list"></div>
+          </div>
+          <div class="chat-panel">
+            <div class="chat-header-row">
+              <div>
+                <p class="eyebrow">Chat With</p>
+                <h3 id="chat-selected-friend">Choose a friend to chat with.</h3>
+              </div>
+              <div class="result-actions">
+                <button id="chat-block-friend" class="secondary-button" type="button">Block Friend</button>
+                <button id="chat-remove-friend" class="secondary-button" type="button">Remove Friend</button>
+              </div>
+            </div>
+            <div id="chat-history" class="chat-history" aria-live="polite"></div>
+            <div class="quick-chat-wrap">
+              <h3>Quick messages</h3>
+              <div id="quick-message-list" class="quick-message-list"></div>
+            </div>
+            <div class="quick-chat-wrap">
+              <h3>Sticker reactions</h3>
+              <div id="sticker-reaction-list" class="quick-message-list"></div>
+            </div>
+            <label for="chat-message-input">Type a short message</label>
+            <div class="save-row">
+              <input id="chat-message-input" type="text" maxlength="150" autocomplete="off" placeholder="Keep it safe and friendly." />
+              <button id="send-chat-message" class="save-quiz-button" type="button">Send</button>
+            </div>
+            <div class="result-actions">
+              <button id="clear-chat" class="secondary-button" type="button">Clear Chat</button>
+            </div>
+            <p id="chat-message" class="friendly-message" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="voice-call-card" class="voice-call-card hidden" aria-labelledby="voice-call-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Friends Only</p>
+            <h2 id="voice-call-title">Friend Voice Call</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p class="safety-note">Only call people you know. Do not share your real name, school, address, phone number, email, or passwords.</p>
+        <p class="friendly-message">Live voice calls need online backend setup before they can work. This screen is a safe setup preview only.</p>
+        <div class="voice-call-layout">
+          <div class="voice-panel">
+            <h3>My Friends list</h3>
+            <div id="voice-friend-list" class="friends-list"></div>
+          </div>
+          <div class="voice-panel">
+            <h3>Call Controls</h3>
+            <p id="voice-selected-friend" class="voice-status">Choose a friend to call.</p>
+            <button id="start-voice-call" class="save-quiz-button" type="button">Start Voice Call</button>
+            <div id="incoming-call-screen" class="incoming-call-screen">
+              <p class="eyebrow">Incoming Call</p>
+              <p id="incoming-call-text">No incoming call.</p>
+              <div class="result-actions">
+                <button id="accept-call" class="secondary-button" type="button">Accept Call</button>
+                <button id="decline-call" class="secondary-button" type="button">Decline Call</button>
+              </div>
+            </div>
+            <div class="result-actions">
+              <button id="add-friend-to-call" class="secondary-button" type="button">Add Friend to Call</button>
+              <button id="mute-call" class="secondary-button" type="button">Mute</button>
+              <button id="end-call" class="secondary-button" type="button">End Call</button>
+            </div>
+            <div class="people-in-call">
+              <h3>People in Call</h3>
+              <div id="people-in-call-list" class="friends-list"></div>
+            </div>
+            <p id="voice-call-status" class="friendly-message" aria-live="polite">Status: not connected.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="video-call-card" class="video-call-card hidden" aria-labelledby="video-call-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Friends Only</p>
+            <h2 id="video-call-title">Friend Video Call</h2>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p class="safety-note">Only video call people you know. Do not share your real name, school, address, phone number, email, or passwords.</p>
+        <p class="friendly-message">Live video calls need online backend setup before friends can connect.</p>
+        <div class="video-call-layout">
+          <div class="video-panel">
+            <h3>My Friends list</h3>
+            <div id="video-friend-list" class="friends-list"></div>
+          </div>
+          <div class="video-panel">
+            <h3>Video Call Controls</h3>
+            <p id="video-selected-friend" class="voice-status">Choose a friend to video call.</p>
+            <button id="start-video-call" class="save-quiz-button" type="button">Start Video Call</button>
+            <div id="incoming-video-call-screen" class="incoming-call-screen">
+              <p class="eyebrow">Incoming Video Call</p>
+              <p id="incoming-video-call-text">No incoming video call.</p>
+              <div class="result-actions">
+                <button id="accept-video-call" class="secondary-button" type="button">Accept Call</button>
+                <button id="decline-video-call" class="secondary-button" type="button">Decline Call</button>
+              </div>
+            </div>
+            <div class="video-grid">
+              <div class="video-box">
+                <p class="eyebrow">My camera preview</p>
+                <video id="local-video-preview" autoplay muted playsinline></video>
+                <p id="local-video-note">Camera is off.</p>
+              </div>
+              <div class="video-box friend-video-placeholder">
+                <p class="eyebrow">Friend’s camera video</p>
+                <div id="friend-video-placeholder">Waiting for backend setup</div>
+              </div>
+            </div>
+            <div class="result-actions">
+              <button id="mute-video-call" class="secondary-button" type="button">Mute Microphone</button>
+              <button id="toggle-camera" class="secondary-button" type="button">Turn Camera Off</button>
+              <button id="end-video-call" class="secondary-button" type="button">End Call</button>
+            </div>
+            <p id="video-call-status" class="friendly-message" aria-live="polite">Status: not connected.</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="diary-card" class="diary-card hidden" aria-labelledby="diary-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Daily Diary</p>
+            <h2 id="diary-title">Secret Diary</h2>
+          </div>
+          <div class="quiz-actions">
+            <button class="home-button secondary-button" type="button">Back to Home</button>
+            <button id="back-to-shop" class="secondary-button" type="button">Back to Shop</button>
+          </div>
+        </div>
+        <p class="safety-note">This diary is saved only on this browser. Do not write private information.</p>
+        <label for="diary-note">Today’s diary note</label>
+        <textarea id="diary-note" rows="7" maxlength="500" placeholder="Write a short note for today."></textarea>
+        <div id="diary-mood-panel" class="diary-option-panel"></div>
+        <div id="diary-sticker-panel" class="diary-option-panel"></div>
+        <p id="diary-message" class="friendly-message" aria-live="polite"></p>
+        <button id="save-diary-note" class="save-quiz-button" type="button">Save Diary Entry</button>
+        <div class="diary-history-wrap">
+          <h3>Past Entries</h3>
+          <div id="diary-history" class="diary-history"></div>
+        </div>
+      </section>
+
+      <section class="danger-zone" aria-labelledby="danger-title">
+        <p class="eyebrow">Danger Zone</p>
+        <h2 id="danger-title">Reset Everything</h2>
+        <p class="danger-copy">Only use this if you want to delete all saved quiz data on this browser.</p>
+        <button id="reset-everything" class="danger-button" type="button">Reset Everything</button>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

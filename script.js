@@ -1,0 +1,4572 @@
+const quizKey = "bestieQuizQuestions";
+const savedQuizzesKey = "bestieSavedQuizzes";
+const leaderboardKey = "bestieQuizLeaderboard";
+const quizLeaderboardsKey = "bestieQuizLeaderboardsByQuiz";
+const onlineQuizProvider = "Supabase";
+const starLeaderboardKey = "bestieStarLeaderboard";
+const guestStarNicknameKey = "bestieStarLeaderboardGuestNickname";
+const usedNicknamesKey = "bestieUsedNicknames";
+const playerProfilesKey = "bestieQuizPlayerProfiles";
+const currentPlayerKey = "bestieQuizCurrentPlayer";
+const guestStarsKey = "bestieQuizGuestStars";
+const guestRewardsKey = "bestieQuizGuestRewards";
+const guestDiaryKey = "bestieQuizGuestDiaryNotes";
+const diaryEntriesKey = "bestieDiaryEntries";
+const activeThemeKey = "bestieQuizActiveTheme";
+const friendChatKey = "bestieFriendChatMessages";
+const minQuestions = 5;
+const maxQuestions = 30;
+const maxLeaderboardEntries = 10;
+
+const shopCategories = ["Diary", "Themes", "Games", "Profile"];
+let activeShopCategory = shopCategories[0];
+
+const onlineQuizSharing = {
+  isConfigured: false,
+  async saveQuiz() {
+    throw new Error("Online quiz sharing is not configured yet.");
+  },
+  async loadQuiz() {
+    throw new Error("Online quiz sharing is not configured yet.");
+  },
+  async saveScore() {
+    throw new Error("Online quiz score saving is not configured yet.");
+  },
+  async loadScores() {
+    throw new Error("Online quiz score loading is not configured yet.");
+  },
+};
+window.bestieOnlineQuizSharing = onlineQuizSharing;
+
+const themeRewards = {
+  "secret-notebook-theme": {
+    name: "Secret Notebook Theme",
+    className: "theme-secret-notebook",
+  },
+  "moonlight-library-theme": {
+    name: "Moonlight Library Theme",
+    className: "theme-moonlight-library",
+  },
+  "blush-diary-theme": {
+    name: "Blush Diary Theme",
+    className: "theme-blush-diary",
+  },
+  "cloudy-blue-theme": {
+    name: "Cloudy Blue Theme",
+    className: "theme-cloudy-blue",
+  },
+  "secret-garden-theme": {
+    name: "Secret Garden Theme",
+    className: "theme-secret-garden",
+  },
+};
+
+const activeGamePackIds = new Set([
+  "this-or-that-pack",
+  "would-you-rather-pack",
+  "mystery-personality-pack",
+  "extra-quiz-theme-pack",
+]);
+
+const comingSoonGamePackIds = new Set(["hard-mode"]);
+const activeDiaryRewardIds = new Set(["secret-sticker-pack", "mood-tracker"]);
+const comingSoonDiaryRewardIds = new Set(["premium-diary-cover", "memory-box"]);
+const diaryStickerOptions = ["Star", "Moon", "Heart", "Key", "Diary", "Flower", "Cloud", "Sparkle"];
+const diaryMoodOptions = ["Happy", "Calm", "Excited", "Tired", "Nervous", "Sad", "Proud", "Confused"];
+const quickChatMessages = [
+  "Hi!",
+  "Want to play a quiz?",
+  "Want to play This or That?",
+  "Want to play Would You Rather?",
+  "I sent you a quiz!",
+  "Good game!",
+  "That was fun!",
+  "Want to try again?",
+  "Check my score!",
+  "I unlocked something in the shop!",
+];
+const stickerReactions = [
+  { label: "Star", text: "⭐ Star" },
+  { label: "Heart", text: "💜 Heart" },
+  { label: "Clue", text: "🔍 Clue" },
+  { label: "Moon", text: "🌙 Moon" },
+  { label: "Sparkle", text: "✨ Sparkle" },
+  { label: "Trophy", text: "🏆 Trophy" },
+  { label: "Diary", text: "📓 Diary" },
+  { label: "Game", text: "🎮 Game" },
+];
+const blockedChatWords = ["stupid", "idiot", "hate", "shut up", "dumb", "kill"];
+const defaultEmojiAvatar = "🌙";
+
+const emojiAvatarCategories = {
+  Mystery: ["🌙", "⭐", "✨", "🔮", "🗝️", "📓", "🕯️", "🕵️‍♀️", "🕵️", "🖤", "💜", "🪞", "🧩", "🕰️", "🦇", "🧿", "🕳️", "🧭", "🗺️", "🧳", "🪄", "🧪", "🧬", "🪐"],
+  "Cute Animals": ["🐈‍⬛", "🐱", "🐶", "🐰", "🦊", "🐼", "🐻", "🐨", "🐹", "🐥", "🦋", "🐝", "🦉", "🐬", "🐧", "🐢", "🦭", "🦔", "🦝", "🐿️", "🐇", "🐕", "🐩", "🐕‍🦺", "🦜"],
+  "Pretty / Aesthetic": ["🌸", "🌷", "🌹", "🌻", "🌼", "🪷", "🍀", "🌿", "🍃", "☁️", "🌈", "🫧", "🪽", "💫", "💎", "🎀", "🧸", "🐚", "🪩", "🕊️", "🪻", "🌺", "💐", "🕯️", "🪞"],
+  "Cool / Gamer": ["🎧", "🎮", "🕶️", "⚡", "🔥", "🧠", "🏆", "🎲", "🎯", "🛼", "🎨", "📷", "🎵", "🛸", "🚀", "💻", "📱", "⌨️", "🖱️", "🕹️", "🎤", "🎬", "🧩", "🧪", "🧭"],
+  "Food / Drinks": ["🍓", "🍒", "🍎", "🍏", "🍊", "🍋", "🍌", "🍉", "🍇", "🫐", "🍑", "🍍", "🥭", "🥝", "🥥", "🥑", "🥕", "🌽", "🥒", "🥦", "🥗", "🍙", "🍚", "🍜", "🍣", "🥟", "🥪", "🍳", "🥞", "🥐", "🧋", "🧃", "🥤", "🥛", "🍵", "☕", "🫖", "🍦", "🍪", "🍫", "🧁", "🍰"],
+  "School / Creative": ["📚", "✏️", "📝", "📒", "📔", "📎", "🖊️", "🖌️", "🎨", "🧶", "🪡", "✂️", "📐", "📏", "🔬", "🔭", "🧮", "🧠", "💡", "🧪"],
+  "Travel / Dream Trip": ["✈️", "🚄", "🚗", "🚌", "🚲", "🛴", "🏰", "🎡", "🎢", "🗼", "🗽", "🏝️", "🏔️", "🌋", "🏕️", "🏖️", "🗺️", "🧳", "🛫", "🌃"],
+  "Vibes / Feelings": ["😊", "😎", "🤩", "🥰", "😴", "😌", "😇", "🤔", "😜", "🥳", "🫶", "💅", "💃", "🧘", "🫧", "💭", "💌", "💕", "💜", "🤍"],
+};
+
+const shopItems = [
+  { id: "daily-diary", name: "Daily Diary", cost: 50, icon: "📔", category: "Diary", description: "Unlock a private daily diary page where you can write one note each day.", effect: "This unlocks the Daily Diary page." },
+  { id: "premium-diary-cover", name: "Premium Diary Cover", cost: 80, icon: "✨", category: "Diary", description: "A special cover style for the diary.", effect: "This unlocks a prettier diary cover style. Coming soon." },
+  { id: "secret-sticker-pack", name: "Secret Sticker Pack", cost: 30, icon: "🏷️", category: "Diary", description: "Decorate diary entries with small stickers.", effect: "This unlocks sticker choices inside the diary." },
+  { id: "mood-tracker", name: "Mood Tracker", cost: 40, icon: "🌤️", category: "Diary", description: "Add a simple mood check-in to your diary.", effect: "This unlocks diary moods like happy, tired, excited, calm, or proud." },
+  { id: "memory-box", name: "Memory Box", cost: 70, icon: "📦", category: "Diary", description: "Save special notes and favourite quiz results.", effect: "This unlocks a future page where players can save favourite quiz results or special notes. Coming soon." },
+  { id: "secret-notebook-theme", name: "Secret Notebook Theme", cost: 25, icon: "📓", category: "Themes", description: "A soft mystery-style theme for your quiz.", effect: "This unlocks a cream paper look with notebook-style borders and lavender accents." },
+  { id: "moonlight-library-theme", name: "Moonlight Library Theme", cost: 70, icon: "🕯️", category: "Themes", description: "A calm manga mystery theme for the app.", effect: "This unlocks pale moonlight blue, soft silver, and lavender shadows." },
+  { id: "blush-diary-theme", name: "Blush Diary Theme", cost: 45, icon: "💗", category: "Themes", description: "A soft pink diary-style theme.", effect: "This unlocks blush pink, pearl white, and soft rose diary cards." },
+  { id: "cloudy-blue-theme", name: "Cloudy Blue Theme", cost: 45, icon: "☁️", category: "Themes", description: "A pale blue soft mystery theme.", effect: "This unlocks pale blue, cloud white, soft grey, and gentle blue buttons." },
+  { id: "secret-garden-theme", name: "Secret Garden Theme", cost: 65, icon: "🌿", category: "Themes", description: "A light garden mystery theme.", effect: "This unlocks cream, soft green, pale lavender, and garden mystery styling." },
+  { id: "extra-quiz-theme-pack", name: "Extra Quiz Theme Pack", cost: 35, icon: "🎲", category: "Games", description: "Unlock extra built-in quiz themes.", effect: "This unlocks more quiz theme options later, such as family, sibling, classmate, mystery, or diary-style quiz themes. Coming soon." },
+  { id: "mystery-personality-pack", name: "Mystery Personality Quiz Pack", cost: 50, icon: "🔍", category: "Games", description: "Unlock extra mystery personality quiz results.", effect: "This unlocks more result types for the Mystery Personality Quiz. Coming soon." },
+  { id: "would-you-rather-pack", name: "Would You Rather Pack", cost: 35, icon: "💭", category: "Games", description: "Unlock more Would You Rather questions.", effect: "This unlocks extra Would You Rather questions. Coming soon." },
+  { id: "this-or-that-pack", name: "This or That Pack", cost: 35, icon: "⚖️", category: "Games", description: "Unlock more This or That questions.", effect: "This unlocks extra This or That questions. Coming soon." },
+  { id: "hard-mode", name: "Hard Mode", cost: 60, icon: "🧠", category: "Games", description: "Unlock harder questions and challenge mode.", effect: "This unlocks harder versions of games or quizzes later. Coming soon." },
+  { id: "profile-frame", name: "Profile Frame", cost: 15, icon: "🖼️", category: "Profile", description: "A stylish frame for your result card.", effect: "This adds a stylish frame to your result card." },
+  { id: "secret-badge", name: "Secret Badge", cost: 25, icon: "🏅", category: "Profile", description: "A badge that can show on your result card.", effect: "This unlocks a badge that can appear next to the player’s name or quiz result. Coming soon." },
+  { id: "top-investigator-badge", name: "Top Investigator Badge", cost: 75, icon: "🏆", category: "Profile", description: "A special badge for top leaderboard players.", effect: "This unlocks a premium badge for leaderboard or profile display. Coming soon." },
+  { id: "custom-result-card", name: "Custom Result Card", cost: 50, icon: "💌", category: "Profile", description: "Unlock a prettier result card style.", effect: "This unlocks a more stylish result card after finishing a quiz. Coming soon." },
+];
+
+const avatarOptions = {
+  style: ["Girl", "Boy", "Non-binary", "Prefer not to say"],
+  faceShape: ["Round", "Oval", "Heart", "Soft square"],
+  skinTone: ["Light", "Fair", "Medium", "Tan", "Deep", "Rich"],
+  eyeShape: ["Soft eyes", "Big eyes", "Sleepy eyes", "Wink", "Smiley eyes", "Sharp eyes", "Mysterious eyes", "Round eyes", "Soft almond eyes", "Upturned almond eyes", "Soft monolid eyes"],
+  eyeColour: ["Brown", "Dark brown", "Black", "Blue", "Green", "Hazel", "Grey", "Violet", "Amber"],
+  height: ["Short", "Medium", "Tall", "Extra tall"],
+  hairstyle: ["Long waves", "Short bob", "Ponytail", "Braids", "Curly hair", "Straight hair", "Messy bun", "Layered hair"],
+  hairColour: ["Black", "Dark brown", "Light brown", "Blonde", "Auburn", "Pink", "Purple", "Blue", "Silver"],
+  outfit: ["Cozy hoodie", "Mystery jacket", "School cardigan", "Soft sweater", "Diary club outfit", "Moonlight coat", "Casual dress", "Sporty outfit"],
+  outfitColour: ["Blush pink", "Lavender", "Cream", "Pearl white", "Pale blue", "Soft grey", "Black", "Dusty purple", "Mint", "Cherry red"],
+  accessory: ["None", "Silver key", "Notebook", "Headphones", "Ribbon", "Star clip", "Moon necklace", "Glasses", "Tiny bag"],
+  accessoryColour: ["Silver", "Gold", "Rose gold", "Black", "White", "Pink", "Purple", "Blue", "Red"],
+  diaryColour: ["Lavender", "Cream", "Dusty pink", "Pale blue", "Black", "Silver", "Soft brown"],
+  background: ["Lavender room", "Secret diary desk", "Moonlight window", "Soft library", "Cloudy sky", "Cafe corner", "Study desk"],
+  backgroundColour: ["Cream", "Lavender", "Pale blue", "Blush pink", "Soft grey", "Moonlight white"],
+};
+
+const shopBackgroundRewards = [];
+
+const avatarLabels = {
+  style: "Avatar style / gender",
+  faceShape: "Face shape",
+  skinTone: "Skin tone",
+  eyeShape: "Eye shape",
+  eyeColour: "Eye colour",
+  height: "Height style",
+  hairstyle: "Hair style",
+  hairColour: "Hair colour",
+  outfit: "Outfit",
+  outfitColour: "Outfit colour",
+  accessory: "Accessory",
+  accessoryColour: "Accessory colour",
+  diaryColour: "Diary / notebook colour",
+  background: "Background",
+  backgroundColour: "Background colour",
+};
+
+const colourSwatches = {
+  "Blush pink": "#ffd6e8",
+  Lavender: "#e7dcff",
+  Cream: "#fff8df",
+  "Pearl white": "#ffffff",
+  "Pale blue": "#d9ecff",
+  "Soft grey": "#dfe3ec",
+  Black: "#2f2b36",
+  "Dusty purple": "#a98ac5",
+  Mint: "#cdf7e7",
+  "Cherry red": "#d84f69",
+  Silver: "#cfd5df",
+  Gold: "#f3cf75",
+  "Rose gold": "#e7a7a1",
+  White: "#ffffff",
+  Pink: "#ffb8d7",
+  Purple: "#b79cff",
+  Blue: "#8fc7ff",
+  Red: "#df5b6c",
+  "Dusty pink": "#e9b6c6",
+  "Soft brown": "#b79273",
+  "Moonlight white": "#f8fbff",
+  Brown: "#7a5236",
+  "Dark brown": "#432a1f",
+  Green: "#70a878",
+  Hazel: "#9b7b45",
+  Grey: "#9aa0a8",
+  Violet: "#8d6bd1",
+  Amber: "#d3913c",
+  "Light brown": "#9b6b43",
+  Blonde: "#e7c66b",
+  Auburn: "#9a4e33",
+};
+
+const colourOptionKeys = new Set(["eyeColour", "hairColour", "outfitColour", "accessoryColour", "diaryColour", "backgroundColour"]);
+
+const avatarColourValues = {
+  skinTone: {
+    Light: "#f8dccb",
+    Fair: "#f1c7ad",
+    Medium: "#d8a178",
+    Tan: "#b97855",
+    Deep: "#7b4d39",
+    Rich: "#523126",
+  },
+  eyeColour: colourSwatches,
+  hairColour: colourSwatches,
+  outfitColour: colourSwatches,
+  accessoryColour: colourSwatches,
+  diaryColour: colourSwatches,
+  backgroundColour: colourSwatches,
+};
+
+const avatarBackgroundThemes = {
+  "Lavender room": { base: "#e7dcff", tint: "#fff7fb", accent: "#ffffff", line: "#9f83c9" },
+  "Secret diary desk": { base: "#fff8df", tint: "#ffe4ef", accent: "#e9b6c6", line: "#a98a76" },
+  "Moonlight window": { base: "#d9ecff", tint: "#f8fbff", accent: "#ffffff", line: "#8aa6d1" },
+  "Soft library": { base: "#ffe7f0", tint: "#ffffff", accent: "#e7dcff", line: "#b088a5" },
+  "Cloudy sky": { base: "#d9ecff", tint: "#ffffff", accent: "#f8fbff", line: "#8fc7ff" },
+  "Cafe corner": { base: "#ffe6ef", tint: "#fff8df", accent: "#ffffff", line: "#c98fa4" },
+  "Study desk": { base: "#fff8df", tint: "#f6f8ff", accent: "#d9ecff", line: "#b79273" },
+  "Premium Study Desk Background": { base: "#f8fbff", tint: "#e7dcff", accent: "#fff8df", line: "#8b5ea8" },
+  "Clue Board Background": { base: "#d9ecff", tint: "#fff8df", accent: "#ffd6e8", line: "#7c86b8" },
+  "Mystery Room Theme": { base: "#e7dcff", tint: "#f8fbff", accent: "#d9ecff", line: "#7f6aa5" },
+};
+
+const safeQuizzes = [
+  {
+    title: "Would You Rather?",
+    description: "Silly choices for brave case solvers.",
+    mode: "opinion",
+    questions: [
+      { text: "Would you rather find a secret note or a hidden map?", answers: ["Secret note", "Hidden map", "Both please", "A shiny sticker"] },
+      { text: "Would you rather solve a puzzle in a library or a garden?", answers: ["Library", "Garden", "Treehouse", "Kitchen"] },
+      { text: "Would you rather have a magnifying glass or a lucky notebook?", answers: ["Magnifying glass", "Lucky notebook", "Detective hat", "Snack bag"] },
+      { text: "Would you rather follow sparkles or tiny footprints?", answers: ["Sparkles", "Footprints", "Both clues", "Neither clue"] },
+      { text: "Would you rather crack a code or spot a pattern?", answers: ["Crack a code", "Spot a pattern", "Ask a friend", "Draw the clue"] },
+    ],
+  },
+  {
+    title: "This or That?",
+    description: "Quick choices with light mystery vibes.",
+    mode: "opinion",
+    questions: [
+      { text: "Best mystery snack?", answers: ["Popcorn", "Grapes", "Pretzels", "All of them"] },
+      { text: "Best clue color?", answers: ["Mint", "Lavender", "Sunshine", "Rainbow"] },
+      { text: "Best mystery helper?", answers: ["Notebook", "Sticker", "Flashlight", "Kind friend"] },
+      { text: "Best case name?", answers: ["The Missing Button", "The Sleepy Pencil", "The Secret Star", "The Cozy Clue"] },
+      { text: "Best victory move?", answers: ["High five", "Tiny dance", "Big grin", "All three"] },
+    ],
+  },
+  {
+    title: "Mystery Vibe Quiz",
+    description: "Find your playful detective style.",
+    questions: [
+      { text: "A clue appears. What do you do first?", answers: ["Look closely", "Make a list", "Ask a teammate", "Guess fast"], correct: 0 },
+      { text: "Your case room needs music. Pick one.", answers: ["Bouncy beats", "Calm tunes", "Movie music", "No music"], correct: 1 },
+      { text: "Which clue feels most important?", answers: ["A pattern", "A kind note", "A calendar", "A doodle"], correct: 0 },
+      { text: "A friend is stuck. What helps?", answers: ["Kind hint", "Loud countdown", "Walking away", "Changing rules"], correct: 0 },
+      { text: "Case solved. What now?", answers: ["Celebrate", "Thank helpers", "Save notes", "All of these"], correct: 3 },
+    ],
+  },
+  {
+    title: "Friendship Style Quiz",
+    description: "A gentle quiz about being a good friend.",
+    questions: [
+      { text: "A friend feels left out. What is kind?", answers: ["Invite them in", "Ignore them", "Tease them", "Hide"], correct: 0 },
+      { text: "A friend wins a game. What can you say?", answers: ["No fair", "Good job", "I quit", "Whatever"], correct: 1 },
+      { text: "A friend makes a mistake. What helps?", answers: ["Laugh loudly", "Give a kind reminder", "Tell everyone", "Take over"], correct: 1 },
+      { text: "What makes teamwork better?", answers: ["Listening", "Bossing", "Grabbing", "Shouting"], correct: 0 },
+      { text: "What is a good friend clue?", answers: ["Kind words", "Sharing", "Being honest", "All of these"], correct: 3 },
+    ],
+  },
+  {
+    title: "School Vibes Quiz",
+    description: "Safe school-day choices, no private details.",
+    questions: [
+      { text: "Best way to start a group project?", answers: ["Make a plan", "Argue first", "Hide supplies", "Skip it"], correct: 0 },
+      { text: "A classmate drops papers. What do you do?", answers: ["Help pick them up", "Walk past", "Point", "Laugh"], correct: 0 },
+      { text: "Best desk item for a mystery case?", answers: ["Pencil", "Notebook", "Eraser", "All of them"], correct: 3 },
+      { text: "What helps during tricky work?", answers: ["Taking a breath", "Trying again", "Asking kindly", "All of these"], correct: 3 },
+      { text: "Best recess case?", answers: ["Find the sunny spot", "Plan a fair game", "Share turns", "All of these"], correct: 3 },
+    ],
+  },
+  {
+    title: "My Secret Case",
+    description: "A ready-made quiz about favourite things.",
+    questions: [
+      { text: "What is my third favourite colour?", answers: ["Purple", "Pink", "Blue", "Green"], correct: 2 },
+      { text: "What is my dream trip?", answers: ["Disneyland", "First class trip to Japan", "First class trip to China", "Skip school for a week"], correct: 1 },
+      { text: "About how many people are in my family?", answers: ["4", "8", "9", "21"], correct: 1 },
+      { text: "What is one of my favourite treats?", answers: ["Meat", "Ice cream", "Sushi", "Oreos"], correct: 2 },
+      { text: "What is my hobby?", answers: ["Eating", "Reading", "Talking", "Sleeping for as long as I like"], correct: 1 },
+      { text: "What do I like to do when I play with a friend?", answers: ["Watch a movie", "Eat", "Go to a park", "Have a picnic"], correct: 0 },
+      { text: "What is Diva's last name?", answers: ["Chen", "Ma", "Diva", "Da Burritoooooo"], correct: 3 },
+      { text: "What do I do in my free time?", answers: ["Read", "Draw", "Play with Diva", "Day-dream"], correct: 1 },
+      { text: "Who is my second best friend?", answers: ["Katie", "Georgina", "Tiana", "Freya (from art)"], correct: 3 },
+      { text: "What is my favourite crafting game?", answers: ["Minecraft", "DIY making craft", "Origami", "Other"], correct: 0 },
+    ],
+  },
+];
+
+const builtInGames = {
+  wouldYouRather: {
+    title: "Would You Rather?",
+    eyebrow: "Choice Game",
+    type: "completion",
+    roundSize: 10,
+    packId: "would-you-rather-pack",
+    stars: 3,
+    resultTitle: "Round saved!",
+    resultMessage: "Your choices have been saved for this round!",
+    freeQuestions: [
+      { text: "Would you rather find a secret note or a hidden key?", answers: ["Secret note", "Hidden key"] },
+      { text: "Would you rather have a cozy movie night or a sunny picnic?", answers: ["Movie night", "Sunny picnic"] },
+      { text: "Would you rather solve a library mystery or a cafe mystery?", answers: ["Library mystery", "Cafe mystery"] },
+      { text: "Would you rather follow a map or crack a code?", answers: ["Follow a map", "Crack a code"] },
+      { text: "Would you rather decorate a diary or design a clue board?", answers: ["Decorate a diary", "Design a clue board"] },
+      { text: "Would you rather wear a moon necklace or a star hair clip?", answers: ["Moon necklace", "Star hair clip"] },
+      { text: "Would you rather have a sleepover mystery or a weekend case?", answers: ["Sleepover mystery", "Weekend case"] },
+      { text: "Would you rather search a garden path or a bookshelf?", answers: ["Garden path", "Bookshelf"] },
+      { text: "Would you rather keep a lucky pencil or a lucky notebook?", answers: ["Lucky pencil", "Lucky notebook"] },
+      { text: "Would you rather find a clue in a cupcake box or a pencil case?", answers: ["Cupcake box", "Pencil case"] },
+      { text: "Would you rather solve a case with music or quiet?", answers: ["Music", "Quiet"] },
+      { text: "Would you rather make a friendship bracelet or a mystery badge?", answers: ["Friendship bracelet", "Mystery badge"] },
+      { text: "Would you rather visit a cloud cafe or a moon library?", answers: ["Cloud cafe", "Moon library"] },
+      { text: "Would you rather get one big clue or three tiny clues?", answers: ["One big clue", "Three tiny clues"] },
+      { text: "Would you rather write with glitter ink or invisible ink?", answers: ["Glitter ink", "Invisible ink"] },
+      { text: "Would you rather solve a case before lunch or after school?", answers: ["Before lunch", "After school"] },
+      { text: "Would you rather have a lavender room or a pale blue room?", answers: ["Lavender room", "Pale blue room"] },
+      { text: "Would you rather pick the team name or the case name?", answers: ["Team name", "Case name"] },
+      { text: "Would you rather find a clue in a movie ticket or a bookmark?", answers: ["Movie ticket", "Bookmark"] },
+      { text: "Would you rather have a secret handshake or a secret symbol?", answers: ["Secret handshake", "Secret symbol"] },
+      { text: "Would you rather solve a mystery at a picnic or a party?", answers: ["Picnic", "Party"] },
+      { text: "Would you rather keep clues in a tiny bag or a diary pocket?", answers: ["Tiny bag", "Diary pocket"] },
+      { text: "Would you rather choose the snacks or choose the playlist?", answers: ["Snacks", "Playlist"] },
+      { text: "Would you rather draw the suspect board or write the timeline?", answers: ["Suspect board", "Timeline"] },
+      { text: "Would you rather find a clue under a cushion or behind a poster?", answers: ["Under a cushion", "Behind a poster"] },
+      { text: "Would you rather be the clue spotter or the note keeper?", answers: ["Clue spotter", "Note keeper"] },
+      { text: "Would you rather have a mystery jacket or a cozy hoodie?", answers: ["Mystery jacket", "Cozy hoodie"] },
+      { text: "Would you rather solve a morning case or a moonlight case?", answers: ["Morning case", "Moonlight case"] },
+      { text: "Would you rather share your theory first or hear your friend’s theory first?", answers: ["Share first", "Hear theirs first"] },
+      { text: "Would you rather find the final clue in a library or a cafe?", answers: ["Library", "Cafe"] },
+    ],
+    packQuestions: [
+      { text: "Would you rather unlock a secret door or open a secret box?", answers: ["Secret door", "Secret box"] },
+      { text: "Would you rather solve a rainy day case or a sunny day case?", answers: ["Rainy day", "Sunny day"] },
+      { text: "Would you rather have a pearl-white notebook or a silver keychain?", answers: ["Pearl-white notebook", "Silver keychain"] },
+      { text: "Would you rather find clues with a friend or make a solo theory first?", answers: ["With a friend", "Solo theory first"] },
+      { text: "Would you rather visit a clue museum or a diary shop?", answers: ["Clue museum", "Diary shop"] },
+      { text: "Would you rather create a secret code or design a secret logo?", answers: ["Secret code", "Secret logo"] },
+      { text: "Would you rather have a clue hidden in a song or a drawing?", answers: ["Song", "Drawing"] },
+      { text: "Would you rather solve a case at a birthday party or a book fair?", answers: ["Birthday party", "Book fair"] },
+      { text: "Would you rather keep your clues in a silver tin or a velvet pouch?", answers: ["Silver tin", "Velvet pouch"] },
+      { text: "Would you rather find a mystery sticker or a tiny charm?", answers: ["Mystery sticker", "Tiny charm"] },
+      { text: "Would you rather plan the first clue or reveal the final clue?", answers: ["First clue", "Final clue"] },
+      { text: "Would you rather have a secret library card or a secret cafe pass?", answers: ["Library card", "Cafe pass"] },
+      { text: "Would you rather solve a case with riddles or picture clues?", answers: ["Riddles", "Picture clues"] },
+      { text: "Would you rather choose the team colour or the team badge?", answers: ["Team colour", "Team badge"] },
+      { text: "Would you rather find a clue in a lunchbox note or a library receipt?", answers: ["Lunchbox note", "Library receipt"] },
+      { text: "Would you rather have a soft garden case or a moon room case?", answers: ["Garden case", "Moon room case"] },
+      { text: "Would you rather carry a mini torch or a mini notebook?", answers: ["Mini torch", "Mini notebook"] },
+      { text: "Would you rather make a case scrapbook or a case playlist?", answers: ["Scrapbook", "Playlist"] },
+      { text: "Would you rather discover a hidden drawer or a folded map?", answers: ["Hidden drawer", "Folded map"] },
+      { text: "Would you rather solve clues with snacks or stickers?", answers: ["Snacks", "Stickers"] },
+      { text: "Would you rather have a mystery desk lamp or a secret bookmark?", answers: ["Desk lamp", "Secret bookmark"] },
+      { text: "Would you rather pick the mystery theme or the mystery prize?", answers: ["Mystery theme", "Mystery prize"] },
+      { text: "Would you rather find clues in neat handwriting or tiny doodles?", answers: ["Handwriting", "Doodles"] },
+      { text: "Would you rather solve a clue before breakfast or before bedtime?", answers: ["Before breakfast", "Before bedtime"] },
+      { text: "Would you rather unlock a bonus round or a bonus badge?", answers: ["Bonus round", "Bonus badge"] },
+    ],
+  },
+  thisOrThat: {
+    title: "This or That",
+    eyebrow: "Vibe Game",
+    type: "vibe",
+    roundSize: 10,
+    packId: "this-or-that-pack",
+    stars: 3,
+    freeQuestions: [
+      { text: "Sushi or ice cream?", answers: ["Sushi", "Ice cream"] },
+      { text: "Reading or drawing?", answers: ["Reading", "Drawing"] },
+      { text: "Movie night or picnic?", answers: ["Movie night", "Picnic"] },
+      { text: "Lavender or pale blue?", answers: ["Lavender", "Pale blue"] },
+      { text: "Mystery movie or comedy?", answers: ["Mystery movie", "Comedy"] },
+      { text: "Notebook or clue board?", answers: ["Notebook", "Clue board"] },
+      { text: "Moonlight or sunshine?", answers: ["Moonlight", "Sunshine"] },
+      { text: "Cafe corner or soft library?", answers: ["Cafe corner", "Soft library"] },
+      { text: "Cozy hoodie or mystery jacket?", answers: ["Cozy hoodie", "Mystery jacket"] },
+      { text: "Star clip or ribbon?", answers: ["Star clip", "Ribbon"] },
+      { text: "Sketching or journaling?", answers: ["Sketching", "Journaling"] },
+      { text: "Popcorn or cupcakes?", answers: ["Popcorn", "Cupcakes"] },
+      { text: "Board game or card game?", answers: ["Board game", "Card game"] },
+      { text: "Secret code or hidden map?", answers: ["Secret code", "Hidden map"] },
+      { text: "Blush pink or mint?", answers: ["Blush pink", "Mint"] },
+      { text: "Friendship bracelet or secret badge?", answers: ["Friendship bracelet", "Secret badge"] },
+      { text: "Soft sweater or school cardigan?", answers: ["Soft sweater", "School cardigan"] },
+      { text: "Cloudy sky or secret garden?", answers: ["Cloudy sky", "Secret garden"] },
+      { text: "Tiny bag or notebook?", answers: ["Tiny bag", "Notebook"] },
+      { text: "Morning mystery or evening mystery?", answers: ["Morning mystery", "Evening mystery"] },
+      { text: "Puzzle box or treasure jar?", answers: ["Puzzle box", "Treasure jar"] },
+      { text: "Diary sticker or bookmark?", answers: ["Diary sticker", "Bookmark"] },
+      { text: "Comedy night or mystery night?", answers: ["Comedy night", "Mystery night"] },
+      { text: "Pale blue desk or lavender room?", answers: ["Pale blue desk", "Lavender room"] },
+      { text: "Silver key or moon necklace?", answers: ["Silver key", "Moon necklace"] },
+      { text: "Drawing clues or writing clues?", answers: ["Drawing clues", "Writing clues"] },
+      { text: "Picnic blanket or beanbag chair?", answers: ["Picnic blanket", "Beanbag chair"] },
+      { text: "Library pass or cafe coupon?", answers: ["Library pass", "Cafe coupon"] },
+      { text: "Soft grey or pearl white?", answers: ["Soft grey", "Pearl white"] },
+      { text: "Quiet playlist or upbeat playlist?", answers: ["Quiet playlist", "Upbeat playlist"] },
+      { text: "Case file or memory box?", answers: ["Case file", "Memory box"] },
+      { text: "Friend quiz or personality quiz?", answers: ["Friend quiz", "Personality quiz"] },
+      { text: "Warm cocoa or fruit tea?", answers: ["Warm cocoa", "Fruit tea"] },
+      { text: "Clue board background or study desk background?", answers: ["Clue board", "Study desk"] },
+      { text: "Sparkly pen or smooth pencil?", answers: ["Sparkly pen", "Smooth pencil"] },
+      { text: "Moon boots or comfy sneakers?", answers: ["Moon boots", "Comfy sneakers"] },
+      { text: "Secret diary desk or moonlight window?", answers: ["Secret diary desk", "Moonlight window"] },
+      { text: "Case captain or clue keeper?", answers: ["Case captain", "Clue keeper"] },
+      { text: "Garden clue or library clue?", answers: ["Garden clue", "Library clue"] },
+      { text: "Ribbon bow or hair clip?", answers: ["Ribbon bow", "Hair clip"] },
+      { text: "Result card or leaderboard badge?", answers: ["Result card", "Leaderboard badge"] },
+    ],
+    packQuestions: [
+      { text: "Moonlight library or blush diary?", answers: ["Moonlight library", "Blush diary"] },
+      { text: "Hard mode or cozy mode?", answers: ["Hard mode", "Cozy mode"] },
+      { text: "Secret case bag or silver key necklace?", answers: ["Secret case bag", "Silver key necklace"] },
+      { text: "Sticker pack or diary cover?", answers: ["Sticker pack", "Diary cover"] },
+      { text: "Top investigator badge or secret badge?", answers: ["Top investigator badge", "Secret badge"] },
+      { text: "Secret garden or moonlight window?", answers: ["Secret garden", "Moonlight window"] },
+      { text: "Case notes or clue sketches?", answers: ["Case notes", "Clue sketches"] },
+      { text: "Friend match or quiz challenge?", answers: ["Friend match", "Quiz challenge"] },
+      { text: "Tiny charm or shiny badge?", answers: ["Tiny charm", "Shiny badge"] },
+      { text: "Study desk or cafe table?", answers: ["Study desk", "Cafe table"] },
+      { text: "Mystery jacket or lavender hoodie?", answers: ["Mystery jacket", "Lavender hoodie"] },
+      { text: "Secret sticker or moon clip?", answers: ["Secret sticker", "Moon clip"] },
+      { text: "Clue folder or memory box?", answers: ["Clue folder", "Memory box"] },
+      { text: "Pale moonlight or soft sunrise?", answers: ["Pale moonlight", "Soft sunrise"] },
+      { text: "Notebook border or diary cover?", answers: ["Notebook border", "Diary cover"] },
+      { text: "Hidden drawer or locked diary?", answers: ["Hidden drawer", "Locked diary"] },
+      { text: "Puzzle mood or art mood?", answers: ["Puzzle mood", "Art mood"] },
+      { text: "Soft green or dusty purple?", answers: ["Soft green", "Dusty purple"] },
+      { text: "Case clue or friendship clue?", answers: ["Case clue", "Friendship clue"] },
+      { text: "Quiet cafe or cloud room?", answers: ["Quiet cafe", "Cloud room"] },
+      { text: "New outfit or new background?", answers: ["New outfit", "New background"] },
+      { text: "Diary page or result card?", answers: ["Diary page", "Result card"] },
+      { text: "Silver necklace or rose-gold ribbon?", answers: ["Silver necklace", "Rose-gold ribbon"] },
+      { text: "Mystery board or soft library?", answers: ["Mystery board", "Soft library"] },
+      { text: "Bonus question or bonus theme?", answers: ["Bonus question", "Bonus theme"] },
+    ],
+  },
+  mysteryPersonality: {
+    title: "Mystery Personality Quiz",
+    eyebrow: "Mystery Style",
+    type: "personality",
+    roundSize: 8,
+    packId: "mystery-personality-pack",
+    stars: 5,
+    resultTypes: {
+      detective: {
+        title: "Soft Detective",
+        description: "You notice small details and like solving little mysteries calmly.",
+        traits: ["Observant", "Calm", "Clever"],
+        badge: "Detail Finder",
+      },
+      library: {
+        title: "Cozy Library Friend",
+        description: "You like quiet spaces, stories, comfort, and thoughtful moments.",
+        traits: ["Thoughtful", "Gentle", "Story-loving"],
+        badge: "Library Light",
+      },
+      diary: {
+        title: "Secret Diary Keeper",
+        description: "You are thoughtful, private, creative, and good at keeping memories.",
+        traits: ["Private", "Creative", "Reflective"],
+        badge: "Secret Notes",
+      },
+      artist: {
+        title: "Moonlight Artist",
+        description: "You are creative, dreamy, and full of quiet imagination.",
+        traits: ["Dreamy", "Artistic", "Imaginative"],
+        badge: "Moon Sketcher",
+      },
+      movie: {
+        title: "Mystery Movie Girl",
+        description: "You like suspense, clues, and spooky stories that are not too scary.",
+        traits: ["Curious", "Stylish", "Brave"],
+        badge: "Soft Horror Sleuth",
+      },
+      collector: {
+        title: "Clue Collector",
+        description: "You remember details, spot patterns, and like putting pieces together.",
+        traits: ["Sharp", "Focused", "Detail-loving"],
+        badge: "Clue Master",
+      },
+      strategist: {
+        title: "Quiet Strategist",
+        description: "You think before you act and like making smart choices.",
+        traits: ["Smart", "Patient", "Careful"],
+        badge: "Silent Planner",
+      },
+      tripPlanner: {
+        title: "Dream Trip Planner",
+        description: "You love imagining places, adventures, holidays, and future plans.",
+        traits: ["Adventurous", "Hopeful", "Organised"],
+        badge: "Future Explorer",
+      },
+      stylish: {
+        title: "Stylish Investigator",
+        description: "You like mystery, but you also care about style, mood, and aesthetic.",
+        traits: ["Aesthetic", "Curious", "Confident"],
+        badge: "Case Stylist",
+      },
+      bestie: {
+        title: "Secret Bestie Expert",
+        description: "You understand your friends well and notice what makes them special.",
+        traits: ["Loyal", "Thoughtful", "Friendly"],
+        badge: "Bestie Reader",
+      },
+      puzzle: {
+        title: "Puzzle Solver",
+        description: "You enjoy challenges, questions, riddles, and figuring things out.",
+        traits: ["Logical", "Curious", "Determined"],
+        badge: "Puzzle Pro",
+      },
+      calm: {
+        title: "Calm Star",
+        description: "You have a gentle energy and make things feel peaceful.",
+        traits: ["Peaceful", "Kind", "Soft"],
+        badge: "Gentle Glow",
+      },
+      maker: {
+        title: "Creative Maker",
+        description: "You like making things, drawing, designing, crafting, or building ideas.",
+        traits: ["Inventive", "Hands-on", "Original"],
+        badge: "Idea Builder",
+      },
+      midnight: {
+        title: "Midnight Thinker",
+        description: "You think deeply, imagine stories, and like mysterious ideas.",
+        traits: ["Deep", "Imaginative", "Mysterious"],
+        badge: "Night Mind",
+      },
+      vibe: {
+        title: "Vibe Reader",
+        description: "You can sense the mood of a room and understand people's energy.",
+        traits: ["Intuitive", "Social", "Observant"],
+        badge: "Mood Matcher",
+      },
+    },
+    freeQuestions: [
+      { text: "Pick a clue tool.", answers: [{ text: "Magnifying glass", type: "detective" }, { text: "Tiny notebook", type: "diary" }, { text: "Library card", type: "library" }, { text: "Silver pencil", type: "artist" }] },
+      { text: "Pick a quiet place.", answers: [{ text: "Clue board corner", type: "detective" }, { text: "Secret desk", type: "diary" }, { text: "Soft library", type: "library" }, { text: "Moonlit window", type: "artist" }] },
+      { text: "Pick a case mood.", answers: [{ text: "Notice every detail", type: "detective" }, { text: "Write it all down", type: "diary" }, { text: "Read the room", type: "library" }, { text: "Imagine the answer", type: "artist" }] },
+      { text: "Pick a reward.", answers: [{ text: "A solved case stamp", type: "detective" }, { text: "A diary sticker", type: "diary" }, { text: "A new book", type: "library" }, { text: "A shiny art pen", type: "artist" }] },
+      { text: "Pick your mystery colour.", answers: [{ text: "Soft silver", type: "detective" }, { text: "Blush pink", type: "diary" }, { text: "Cream", type: "library" }, { text: "Lavender", type: "artist" }] },
+      { text: "A clue goes missing. What do you do?", answers: [{ text: "Check every corner", type: "detective" }, { text: "Write what happened", type: "diary" }, { text: "Look for a helpful book", type: "library" }, { text: "Draw the scene", type: "artist" }] },
+      { text: "Pick a mystery snack.", answers: [{ text: "Trail mix", type: "detective" }, { text: "Heart cookies", type: "diary" }, { text: "Tea and biscuits", type: "library" }, { text: "Rainbow fruit", type: "artist" }] },
+      { text: "Pick a team job.", answers: [{ text: "Lead the search", type: "detective" }, { text: "Keep the notes", type: "diary" }, { text: "Find facts", type: "library" }, { text: "Make the clue map", type: "artist" }] },
+      { text: "Pick a case title.", answers: [{ text: "The Missing Key", type: "detective" }, { text: "The Diary Secret", type: "diary" }, { text: "The Library Light", type: "library" }, { text: "The Moon Sketch", type: "artist" }] },
+      { text: "What would you notice first?", answers: [{ text: "A tiny footprint", type: "detective" }, { text: "A folded note", type: "diary" }, { text: "A misplaced book", type: "library" }, { text: "A strange pattern", type: "artist" }] },
+      { text: "Pick a desk item.", answers: [{ text: "Sticky labels", type: "detective" }, { text: "Diary lock", type: "diary" }, { text: "Reading lamp", type: "library" }, { text: "Paint marker", type: "artist" }] },
+      { text: "Pick a friend compliment.", answers: [{ text: "You notice everything", type: "detective" }, { text: "You remember the sweet details", type: "diary" }, { text: "You give calm advice", type: "library" }, { text: "You make everything creative", type: "artist" }] },
+      { text: "Pick a weekend plan.", answers: [{ text: "Mini investigation", type: "detective" }, { text: "Diary decorating", type: "diary" }, { text: "Library visit", type: "library" }, { text: "Art afternoon", type: "artist" }] },
+      { text: "Pick a clue container.", answers: [{ text: "Case folder", type: "detective" }, { text: "Secret envelope", type: "diary" }, { text: "Book sleeve", type: "library" }, { text: "Sketch pouch", type: "artist" }] },
+      { text: "Pick a mystery sound.", answers: [{ text: "Tiny click", type: "detective" }, { text: "Page turn", type: "diary" }, { text: "Soft footsteps", type: "library" }, { text: "Pencil scratch", type: "artist" }] },
+      { text: "Pick a room detail.", answers: [{ text: "Clue pins", type: "detective" }, { text: "Diary stickers", type: "diary" }, { text: "Book stacks", type: "library" }, { text: "Moon poster", type: "artist" }] },
+      { text: "Pick a final move.", answers: [{ text: "Solve the timeline", type: "detective" }, { text: "Save the memory", type: "diary" }, { text: "Explain the clue", type: "library" }, { text: "Draw the answer", type: "artist" }] },
+      { text: "Pick a badge.", answers: [{ text: "Investigator badge", type: "detective" }, { text: "Diary keeper badge", type: "diary" }, { text: "Library friend badge", type: "library" }, { text: "Moon artist badge", type: "artist" }] },
+      { text: "Pick a bag charm.", answers: [{ text: "Silver key", type: "detective" }, { text: "Tiny heart", type: "diary" }, { text: "Mini book", type: "library" }, { text: "Star charm", type: "artist" }] },
+      { text: "Pick how you solve problems.", answers: [{ text: "Look closely", type: "detective" }, { text: "Think about feelings", type: "diary" }, { text: "Research calmly", type: "library" }, { text: "Try a new idea", type: "artist" }] },
+      { text: "Pick a secret club name.", answers: [{ text: "The Case Crew", type: "detective" }, { text: "The Diary Circle", type: "diary" }, { text: "The Book Nook", type: "library" }, { text: "The Moon Makers", type: "artist" }] },
+      { text: "What kind of place would you explore first?", answers: [{ text: "Old cinema lobby", type: "movie" }, { text: "Puzzle room", type: "puzzle" }, { text: "Pretty boutique corner", type: "stylish" }, { text: "Quiet garden path", type: "calm" }] },
+      { text: "What would you bring to a mystery sleepover?", answers: [{ text: "A clue checklist", type: "collector" }, { text: "A craft kit", type: "maker" }, { text: "A soft blanket", type: "calm" }, { text: "A suspense movie list", type: "movie" }] },
+      { text: "What kind of story do you like most?", answers: [{ text: "A clever puzzle story", type: "puzzle" }, { text: "A dreamy midnight story", type: "midnight" }, { text: "A bestie secret story", type: "bestie" }, { text: "A travel adventure story", type: "tripPlanner" }] },
+      { text: "What do your friends come to you for?", answers: [{ text: "Kind advice", type: "bestie" }, { text: "A smart plan", type: "strategist" }, { text: "Creative ideas", type: "maker" }, { text: "Reading the mood", type: "vibe" }] },
+      { text: "What would your secret notebook be filled with?", answers: [{ text: "Patterns and clues", type: "collector" }, { text: "Outfit ideas", type: "stylish" }, { text: "Trip plans", type: "tripPlanner" }, { text: "Deep story ideas", type: "midnight" }] },
+      { text: "What kind of clue would you notice first?", answers: [{ text: "A tiny pattern", type: "collector" }, { text: "A strange sound", type: "movie" }, { text: "A mood shift", type: "vibe" }, { text: "A hard riddle", type: "puzzle" }] },
+      { text: "What is your weekend vibe?", answers: [{ text: "Designing something", type: "maker" }, { text: "Planning a dream trip", type: "tripPlanner" }, { text: "A calm cozy day", type: "calm" }, { text: "A stylish case board", type: "stylish" }] },
+      { text: "What kind of room feels most like you?", answers: [{ text: "A moonlit thinking room", type: "midnight" }, { text: "A puzzle table room", type: "puzzle" }, { text: "A bestie hangout room", type: "bestie" }, { text: "A soft aesthetic room", type: "stylish" }] },
+      { text: "What would you do if you found a locked box?", answers: [{ text: "Plan a careful way to open it", type: "strategist" }, { text: "Collect every clue around it", type: "collector" }, { text: "Imagine the story behind it", type: "midnight" }, { text: "Make a tiny sketch of it", type: "maker" }] },
+      { text: "What kind of badge would you want?", answers: [{ text: "Mood Matcher", type: "vibe" }, { text: "Future Explorer", type: "tripPlanner" }, { text: "Case Stylist", type: "stylish" }, { text: "Puzzle Pro", type: "puzzle" }] },
+    ],
+    packQuestions: [
+      { text: "Pick a premium clue style.", answers: [{ text: "Laser focus", type: "detective" }, { text: "Memory keeper", type: "diary" }, { text: "Quiet wisdom", type: "library" }, { text: "Dreamy maker", type: "artist" }] },
+      { text: "Pick a mystery room.", answers: [{ text: "Case wall", type: "detective" }, { text: "Diary desk", type: "diary" }, { text: "Moon library", type: "library" }, { text: "Art window", type: "artist" }] },
+      { text: "Pick a special power.", answers: [{ text: "Spot hidden clues", type: "detective" }, { text: "Remember kind moments", type: "diary" }, { text: "Know where to look", type: "library" }, { text: "Imagine new paths", type: "artist" }] },
+      { text: "Pick a bonus case board.", answers: [{ text: "Colour-coded plan", type: "strategist" }, { text: "Pressed flower clue", type: "calm" }, { text: "Library map", type: "library" }, { text: "Sketch trail", type: "artist" }] },
+      { text: "Pick a premium badge phrase.", answers: [{ text: "Plan first", type: "strategist" }, { text: "Notice the vibe", type: "vibe" }, { text: "Keep the story", type: "diary" }, { text: "Find the detail", type: "detective" }] },
+      { text: "Pick a new clue place.", answers: [{ text: "Garden bench", type: "calm" }, { text: "Strategy desk", type: "strategist" }, { text: "Reading nook", type: "library" }, { text: "Moon art wall", type: "artist" }] },
+      { text: "Pick how you help the team.", answers: [{ text: "Make a careful plan", type: "strategist" }, { text: "Keep everyone calm", type: "calm" }, { text: "Save the memories", type: "diary" }, { text: "Search the scene", type: "detective" }] },
+      { text: "Pick a premium colour mix.", answers: [{ text: "Soft green and cream", type: "calm" }, { text: "Silver and blue", type: "strategist" }, { text: "Pink and pearl", type: "diary" }, { text: "Lavender and ink", type: "artist" }] },
+      { text: "Pick a clue challenge.", answers: [{ text: "Arrange the clues", type: "strategist" }, { text: "Match the mood", type: "vibe" }, { text: "Read between lines", type: "library" }, { text: "Spot the sparkle", type: "detective" }] },
+      { text: "Pick a secret meeting spot.", answers: [{ text: "Garden arch", type: "calm" }, { text: "Planning table", type: "strategist" }, { text: "Diary desk", type: "diary" }, { text: "Library window", type: "library" }] },
+      { text: "Pick a mystery habit.", answers: [{ text: "Sort clues neatly", type: "strategist" }, { text: "Notice soft details", type: "vibe" }, { text: "Write kind notes", type: "diary" }, { text: "Draw fresh ideas", type: "artist" }] },
+      { text: "Pick a premium result card.", answers: [{ text: "The Planner", type: "strategist" }, { text: "The Gentle Glow", type: "calm" }, { text: "The Quiet Reader", type: "library" }, { text: "The Detail Hunter", type: "detective" }] },
+      { text: "Pick a final case reward.", answers: [{ text: "Silver plan pin", type: "strategist" }, { text: "Soft star charm", type: "calm" }, { text: "Diary ribbon", type: "diary" }, { text: "Moon pencil", type: "artist" }] },
+      { text: "Pick a movie-night clue.", answers: [{ text: "A suspenseful soundtrack", type: "movie" }, { text: "A hidden pattern", type: "collector" }, { text: "A stylish poster", type: "stylish" }, { text: "A friend reaction", type: "bestie" }] },
+      { text: "Pick a future plan.", answers: [{ text: "Dream holiday map", type: "tripPlanner" }, { text: "Step-by-step list", type: "strategist" }, { text: "Craft supplies", type: "maker" }, { text: "Quiet thinking time", type: "midnight" }] },
+      { text: "Pick a harder clue.", answers: [{ text: "A riddle with layers", type: "puzzle" }, { text: "A tiny repeated symbol", type: "collector" }, { text: "A secret friendship hint", type: "bestie" }, { text: "A room mood change", type: "vibe" }] },
+      { text: "Pick a secret notebook page.", answers: [{ text: "Puzzle grid", type: "puzzle" }, { text: "Travel wishlist", type: "tripPlanner" }, { text: "Fashion case board", type: "stylish" }, { text: "Midnight thoughts", type: "midnight" }] },
+      { text: "Pick your mystery role.", answers: [{ text: "Clue archivist", type: "collector" }, { text: "Scene stylist", type: "stylish" }, { text: "Bestie reader", type: "bestie" }, { text: "Idea builder", type: "maker" }] },
+      { text: "Pick a quiet power.", answers: [{ text: "Staying peaceful", type: "calm" }, { text: "Thinking deeply", type: "midnight" }, { text: "Solving riddles", type: "puzzle" }, { text: "Understanding people", type: "vibe" }] },
+      { text: "Pick a bonus sleepover item.", answers: [{ text: "Mini projector", type: "movie" }, { text: "Friend quiz cards", type: "bestie" }, { text: "Craft box", type: "maker" }, { text: "Future trip journal", type: "tripPlanner" }] },
+      { text: "Pick a mystery challenge prize.", answers: [{ text: "Clue Master badge", type: "collector" }, { text: "Puzzle Pro badge", type: "puzzle" }, { text: "Case Stylist badge", type: "stylish" }, { text: "Night Mind badge", type: "midnight" }] },
+      { text: "Pick a creative clue style.", answers: [{ text: "Build a model", type: "maker" }, { text: "Draw a scene", type: "artist" }, { text: "Write a memory", type: "diary" }, { text: "Plan the order", type: "strategist" }] },
+      { text: "Pick your friend-group superpower.", answers: [{ text: "Knowing what friends need", type: "bestie" }, { text: "Keeping the mood kind", type: "vibe" }, { text: "Making everyone calm", type: "calm" }, { text: "Finding the missing detail", type: "detective" }] },
+    ],
+  },
+  guessFavourite: {
+    title: "Guess My Favourite",
+    eyebrow: "Favourite Game",
+    type: "scored",
+    roundSize: 10,
+    packId: "extra-quiz-theme-pack",
+    freeQuestions: [
+      { text: "Which treat is the favourite?", answers: ["Sushi", "Ice cream", "Oreos", "Cupcakes"], correct: 0 },
+      { text: "Which colour has the mystery vibe?", answers: ["Lavender", "Neon green", "Brown", "Black"], correct: 0 },
+      { text: "Which activity sounds coziest?", answers: ["Reading", "Running laps", "Washing dishes", "Loud alarms"], correct: 0 },
+      { text: "Which hangout sounds best?", answers: ["Movie night", "Math test", "Cleaning day", "Waiting room"], correct: 0 },
+      { text: "Which trip sounds dreamy?", answers: ["Japan", "The mailbox", "A car park", "The dentist"], correct: 0 },
+      { text: "Which room background feels softest?", answers: ["Lavender room", "Dark cave", "Busy road", "Loud gym"], correct: 0 },
+      { text: "Which accessory feels most mysterious?", answers: ["Silver key", "Traffic cone", "Lunch tray", "Plain sock"], correct: 0 },
+      { text: "Which diary colour is prettiest?", answers: ["Dusty pink", "Mud brown", "Neon orange", "Plain grey"], correct: 0 },
+      { text: "Which outfit feels comfiest?", answers: ["Cozy hoodie", "Scratchy costume", "Rain poncho indoors", "Heavy armor"], correct: 0 },
+      { text: "Which game sounds most fun?", answers: ["This or That", "Staring contest forever", "Waiting quietly", "Doing chores"], correct: 0 },
+      { text: "Which theme sounds calm?", answers: ["Moonlight library", "Alarm room", "Thunder dungeon", "Messy garage"], correct: 0 },
+      { text: "Which badge would be exciting?", answers: ["Secret Badge", "Blank sticker", "Lost button", "Old receipt"], correct: 0 },
+      { text: "Which place is best for a clue?", answers: ["Soft library", "Trash bin", "Traffic jam", "Noisy hallway"], correct: 0 },
+      { text: "Which friend plan is sweetest?", answers: ["Picnic", "Ignoring everyone", "Losing the map", "Skipping kindness"], correct: 0 },
+      { text: "Which colour sounds dreamy?", answers: ["Pale blue", "Rust", "Sludge", "Warning orange"], correct: 0 },
+      { text: "Which emoji avatar sounds cute?", answers: ["Sparkle Moon", "Paper bag", "Broken shoelace", "Dusty box"], correct: 0 },
+      { text: "Which clue tool is useful?", answers: ["Notebook", "Banana peel", "Empty cup", "Wrong map"], correct: 0 },
+      { text: "Which result style sounds best?", answers: ["Custom Result Card", "Blank page", "Tiny receipt", "No result"], correct: 0 },
+      { text: "Which sky sounds peaceful?", answers: ["Cloudy sky", "Smoke cloud", "Storm warning", "Blackout"], correct: 0 },
+      { text: "Which snack is a fun guess?", answers: ["Cupcakes", "Plain broccoli water", "Empty plate", "Burnt toast"], correct: 0 },
+    ],
+    packQuestions: [
+      { text: "Which extra theme sounds fun?", answers: ["Secret Garden Theme", "Plain wall", "Empty box", "Broken clock"], correct: 0 },
+      { text: "Which premium item sounds best?", answers: ["Premium Diary Cover", "Old wrapper", "Dull rock", "Scratch paper"], correct: 0 },
+      { text: "Which game mode sounds exciting?", answers: ["Hard Mode", "No choices mode", "Blank quiz", "Quiet screen"], correct: 0 },
+      { text: "Family theme: Which family game night sounds fun?", answers: ["Board games", "Arguing", "No turns", "Silent room"], correct: 0 },
+      { text: "Sibling theme: Which shared plan is kindest?", answers: ["Take turns", "Grab first", "Hide pieces", "Ignore rules"], correct: 0 },
+      { text: "Classmate theme: What helps a classmate feel included?", answers: ["Invite them kindly", "Whisper about them", "Take their seat", "Make faces"], correct: 0 },
+      { text: "Mystery theme: Which clue would help most?", answers: ["Clear note", "Random smudge", "Empty box", "Torn wrapper"], correct: 0 },
+      { text: "Diary style: Which page would be sweetest?", answers: ["Memory page", "Blank warning", "Lost list", "Messy scribble"], correct: 0 },
+      { text: "Family theme: Which snack table feels friendly?", answers: ["Shared treats", "Hidden snacks", "No plates", "Locked cupboard"], correct: 0 },
+      { text: "Sibling theme: Which clue team works best?", answers: ["Teamwork", "Blaming", "Shouting", "Quitting"], correct: 0 },
+      { text: "Classmate theme: Which project choice is best?", answers: ["Plan together", "Do nothing", "Hide the glue", "Rush badly"], correct: 0 },
+      { text: "Mystery theme: Which case title sounds coolest?", answers: ["The Silver Key", "The Boring Wall", "The Empty Bin", "The Missing Sock Pile"], correct: 0 },
+      { text: "Diary style: Which sticker would match a happy day?", answers: ["Tiny star", "Spilled ink", "Cracked tile", "Plain tape"], correct: 0 },
+      { text: "Family theme: Which kindness clue matters most?", answers: ["Helping out", "Ignoring chores", "Taking credit", "Leaving mess"], correct: 0 },
+      { text: "Sibling theme: Which answer is most fair?", answers: ["Share turns", "Always first", "Never listen", "Hide the game"], correct: 0 },
+      { text: "Classmate theme: Which clue shows teamwork?", answers: ["Everyone gets a role", "One person does all", "No one listens", "Lost plan"], correct: 0 },
+      { text: "Mystery theme: Which room should the case start in?", answers: ["Soft library", "Loud hallway", "Dark basement", "Broken shed"], correct: 0 },
+      { text: "Diary style: Which diary cover sounds calm?", answers: ["Pearl lavender", "Muddy brown", "Warning stripe", "Plain cardboard"], correct: 0 },
+      { text: "Family theme: Which trip clue sounds safe and fun?", answers: ["Museum day", "Running away", "Secret address", "No plan"], correct: 0 },
+      { text: "Sibling theme: Which surprise is thoughtful?", answers: ["A kind note", "A prank that hurts", "A hidden toy", "A fake clue"], correct: 0 },
+      { text: "Classmate theme: Which recess idea is best?", answers: ["Fair game", "Leaving people out", "Changing rules unfairly", "Taking the ball"], correct: 0 },
+      { text: "Mystery theme: Which clue tool is most useful?", answers: ["Checklist", "Crumbled paper", "Broken pen", "No clue"], correct: 0 },
+      { text: "Diary style: Which result page sounds pretty?", answers: ["Soft ribbon card", "Grey square", "Blank page", "Tiny error"], correct: 0 },
+    ],
+  },
+};
+
+const starterCustomQuiz = [
+  {
+    text: "What is my third favourite colour?",
+    answers: ["Purple", "Pink", "Blue", "Green"],
+    correct: 2,
+  },
+  {
+    text: "What is my dream trip?",
+    answers: ["Disneyland", "First class trip to Japan", "First class trip to China", "Skip school for a week"],
+    correct: 1,
+  },
+  {
+    text: "About how many people are in my family?",
+    answers: ["4", "8", "9", "21"],
+    correct: 1,
+  },
+  {
+    text: "What is one of my favourite treats?",
+    answers: ["Meat", "Ice cream", "Sushi", "Oreos"],
+    correct: 2,
+  },
+  {
+    text: "What is my hobby?",
+    answers: ["Eating", "Reading", "Talking", "Sleeping for as long as I like"],
+    correct: 1,
+  },
+  {
+    text: "What do I like to do when I play with a friend?",
+    answers: ["Watch a movie", "Eat", "Go to a park", "Have a picnic"],
+    correct: 0,
+  },
+  {
+    text: "What is Diva's last name?",
+    answers: ["Chen", "Ma", "Diva", "Da Burritoooooo"],
+    correct: 3,
+  },
+  {
+    text: "What do I do in my free time?",
+    answers: ["Read", "Draw", "Play with Diva", "Day-dream"],
+    correct: 1,
+  },
+  {
+    text: "Who is my second best friend?",
+    answers: ["Katie", "Georgina", "Tiana", "Freya (from art)"],
+    correct: 3,
+  },
+  {
+    text: "What is my favourite crafting game?",
+    answers: ["Minecraft", "DIY making craft", "Origami", "Other"],
+    correct: 0,
+  },
+];
+
+let questions = [];
+let currentQuestion = 0;
+let correctAnswers = 0;
+let latestResult = null;
+let activeQuizSource = "custom";
+let activeQuizMode = "scored";
+let activeQuizId = "";
+let activeOnlineQuizId = "";
+let editingQuizId = "";
+let activePlayer = null;
+let guestMode = false;
+let selectedAvatar = {};
+let activeMiniGame = null;
+let miniGameQuestionIndex = 0;
+let miniGameCorrectAnswers = 0;
+let miniGameResultScores = {};
+let miniGameAwarded = false;
+let miniGameRoundQuestions = [];
+let sharedLinkQuestions = [];
+let selectedChatFriendCode = "";
+let selectedVideoFriendCode = "";
+let localVideoStream = null;
+let videoMicMuted = false;
+let videoCameraOff = false;
+let selectedVoiceFriendCode = "";
+let voiceCallMuted = false;
+let voiceCallPeople = [];
+
+const playerGate = document.querySelector("#player-gate");
+const createPlayerChoice = document.querySelector("#create-player-choice");
+const loginPlayerChoice = document.querySelector("#login-player-choice");
+const guestPlayerChoice = document.querySelector("#guest-player-choice");
+const createPlayerCard = document.querySelector("#create-player-card");
+const loginPlayerCard = document.querySelector("#login-player-card");
+const createPlayerForm = document.querySelector("#create-player-form");
+const loginPlayerForm = document.querySelector("#login-player-form");
+const profileHomeButtons = document.querySelectorAll(".profile-home-button");
+const profileBar = document.querySelector("#profile-bar");
+const profileAvatar = document.querySelector("#profile-avatar");
+const profileName = document.querySelector("#profile-name");
+const starsTotal = document.querySelector("#stars-total");
+const openShopButton = document.querySelector("#open-shop");
+const openStarLeaderboardButton = document.querySelector("#open-star-leaderboard");
+const openFriendsButton = document.querySelector("#open-friends");
+const openChatButton = document.querySelector("#open-chat");
+const openVoiceCallButton = document.querySelector("#open-voice-call");
+const openVideoCallButton = document.querySelector("#open-video-call");
+const editAvatarButton = document.querySelector("#edit-avatar");
+const switchPlayerButton = document.querySelector("#switch-player");
+const createPlayerMessage = document.querySelector("#create-player-message");
+const loginPlayerMessage = document.querySelector("#login-player-message");
+const newPlayerNickname = document.querySelector("#new-player-nickname");
+const avatarNameInput = document.querySelector("#avatar-name");
+const loginPlayerNickname = document.querySelector("#login-player-nickname");
+const loginPlayerPassword = document.querySelector("#login-player-password");
+const avatarPreview = document.querySelector("#avatar-preview");
+const avatarOptionPanels = document.querySelector("#avatar-option-panels");
+const gameMenuCard = document.querySelector("#game-menu-card");
+const playBestieGameButton = document.querySelector("#play-bestie-game");
+const playWouldYouRatherGameButton = document.querySelector("#play-would-you-rather-game");
+const playThisOrThatGameButton = document.querySelector("#play-this-or-that-game");
+const playMysteryGameButton = document.querySelector("#play-mystery-game");
+const playFavouriteGameButton = document.querySelector("#play-favourite-game");
+const packStatusBadges = document.querySelectorAll(".pack-status");
+const startCard = document.querySelector("#start-card");
+const makeOwnQuizButton = document.querySelector("#make-own-quiz");
+const createAvatarHomeButton = document.querySelector("#create-avatar-home");
+const playSafeQuizzesButton = document.querySelector("#play-safe-quizzes");
+const playSharedQuizButton = document.querySelector("#play-shared-quiz");
+const safeQuizCard = document.querySelector("#safe-quiz-card");
+const safeQuizList = document.querySelector("#safe-quiz-list");
+const myQuizzesCard = document.querySelector("#my-quizzes-card");
+const createNewQuizButton = document.querySelector("#create-new-quiz");
+const myQuizzesMessage = document.querySelector("#my-quizzes-message");
+const myQuizzesList = document.querySelector("#my-quizzes-list");
+const sharedQuizCard = document.querySelector("#shared-quiz-card");
+const sharedQuizCode = document.querySelector("#shared-quiz-code");
+const sharedQuizMessage = document.querySelector("#shared-quiz-message");
+const loadSharedQuizButton = document.querySelector("#load-shared-quiz");
+const sharedLinkPanel = document.querySelector("#shared-link-panel");
+const startSharedLinkQuizButton = document.querySelector("#start-shared-link-quiz");
+const creatorCard = document.querySelector("#creator-card");
+const quizBuilderForm = document.querySelector("#quiz-builder-form");
+const quizTitleInput = document.querySelector("#quiz-title-input");
+const quizThemeInput = document.querySelector("#quiz-theme-input");
+const questionTotalInput = document.querySelector("#question-total");
+const creatorFields = document.querySelector("#creator-fields");
+const creatorMessage = document.querySelector("#creator-message");
+const playSavedQuizButton = document.querySelector("#play-saved-quiz");
+const createFriendLinkButton = document.querySelector("#create-friend-link");
+const friendLinkOutputWrap = document.querySelector("#friend-link-output-wrap");
+const friendLinkOutput = document.querySelector("#friend-link-output");
+const copyFriendLinkButton = document.querySelector("#copy-friend-link");
+const friendLinkMessage = document.querySelector("#friend-link-message");
+const homeButtons = document.querySelectorAll(".home-button");
+const quizCard = document.querySelector("#quiz-card");
+const resultCard = document.querySelector("#result-card");
+const questionCount = document.querySelector("#question-count");
+const scoreCount = document.querySelector("#score-count");
+const questionText = document.querySelector("#question-text");
+const answerList = document.querySelector("#answer-list");
+const resultScore = document.querySelector("#result-score");
+const resultMessage = document.querySelector("#result-message");
+const leaderboardForm = document.querySelector("#leaderboard-form");
+const nicknameInput = document.querySelector("#nickname");
+const leaderboardNicknameMessage = document.querySelector("#leaderboard-nickname-message");
+const playAgainButton = document.querySelector("#play-again");
+const restartQuizButton = document.querySelector("#restart-quiz");
+const editCurrentQuizButton = document.querySelector("#edit-current-quiz");
+const editQuizButton = document.querySelector("#edit-quiz");
+const leaderboardList = document.querySelector("#leaderboard-list");
+const starLeaderboardCard = document.querySelector("#star-leaderboard-card");
+const starLeaderboardList = document.querySelector("#star-leaderboard-list");
+const resetEverythingButton = document.querySelector("#reset-everything");
+const shopCard = document.querySelector("#shop-card");
+const shopStars = document.querySelector("#shop-stars");
+const shopMessage = document.querySelector("#shop-message");
+const shopTabs = document.querySelector("#shop-tabs");
+const shopList = document.querySelector("#shop-list");
+const friendsCard = document.querySelector("#friends-card");
+const myFriendCode = document.querySelector("#my-friend-code");
+const copyFriendCodeButton = document.querySelector("#copy-friend-code");
+const friendCodeInput = document.querySelector("#friend-code-input");
+const addFriendButton = document.querySelector("#add-friend-button");
+const friendsMessage = document.querySelector("#friends-message");
+const friendsList = document.querySelector("#friends-list");
+const chatCard = document.querySelector("#chat-card");
+const chatFriendList = document.querySelector("#chat-friend-list");
+const chatSelectedFriend = document.querySelector("#chat-selected-friend");
+const chatBlockFriendButton = document.querySelector("#chat-block-friend");
+const chatRemoveFriendButton = document.querySelector("#chat-remove-friend");
+const chatHistory = document.querySelector("#chat-history");
+const quickMessageList = document.querySelector("#quick-message-list");
+const stickerReactionList = document.querySelector("#sticker-reaction-list");
+const chatMessageInput = document.querySelector("#chat-message-input");
+const sendChatMessageButton = document.querySelector("#send-chat-message");
+const clearChatButton = document.querySelector("#clear-chat");
+const chatMessage = document.querySelector("#chat-message");
+const voiceCallCard = document.querySelector("#voice-call-card");
+const voiceFriendList = document.querySelector("#voice-friend-list");
+const voiceSelectedFriend = document.querySelector("#voice-selected-friend");
+const startVoiceCallButton = document.querySelector("#start-voice-call");
+const incomingCallScreen = document.querySelector("#incoming-call-screen");
+const incomingCallText = document.querySelector("#incoming-call-text");
+const acceptCallButton = document.querySelector("#accept-call");
+const declineCallButton = document.querySelector("#decline-call");
+const addFriendToCallButton = document.querySelector("#add-friend-to-call");
+const muteCallButton = document.querySelector("#mute-call");
+const endCallButton = document.querySelector("#end-call");
+const peopleInCallList = document.querySelector("#people-in-call-list");
+const voiceCallStatus = document.querySelector("#voice-call-status");
+const videoCallCard = document.querySelector("#video-call-card");
+const videoFriendList = document.querySelector("#video-friend-list");
+const videoSelectedFriend = document.querySelector("#video-selected-friend");
+const startVideoCallButton = document.querySelector("#start-video-call");
+const incomingVideoCallText = document.querySelector("#incoming-video-call-text");
+const acceptVideoCallButton = document.querySelector("#accept-video-call");
+const declineVideoCallButton = document.querySelector("#decline-video-call");
+const localVideoPreview = document.querySelector("#local-video-preview");
+const localVideoNote = document.querySelector("#local-video-note");
+const friendVideoPlaceholder = document.querySelector("#friend-video-placeholder");
+const muteVideoCallButton = document.querySelector("#mute-video-call");
+const toggleCameraButton = document.querySelector("#toggle-camera");
+const endVideoCallButton = document.querySelector("#end-video-call");
+const videoCallStatus = document.querySelector("#video-call-status");
+const diaryCard = document.querySelector("#diary-card");
+const diaryNote = document.querySelector("#diary-note");
+const diaryMoodPanel = document.querySelector("#diary-mood-panel");
+const diaryStickerPanel = document.querySelector("#diary-sticker-panel");
+const diaryMessage = document.querySelector("#diary-message");
+const diaryHistory = document.querySelector("#diary-history");
+const saveDiaryNoteButton = document.querySelector("#save-diary-note");
+const backToShopButton = document.querySelector("#back-to-shop");
+const gamesButtons = document.querySelectorAll(".games-button");
+const miniGameCard = document.querySelector("#mini-game-card");
+const miniGameEyebrow = document.querySelector("#mini-game-eyebrow");
+const miniGameTitle = document.querySelector("#mini-game-title");
+const miniGameProgress = document.querySelector("#mini-game-progress");
+const miniGameQuestion = document.querySelector("#mini-game-question");
+const miniGameChoices = document.querySelector("#mini-game-choices");
+const miniGameResult = document.querySelector("#mini-game-result");
+const miniGameResultTitle = document.querySelector("#mini-game-result-title");
+const miniGameResultMessage = document.querySelector("#mini-game-result-message");
+const miniGameStars = document.querySelector("#mini-game-stars");
+const miniGameAgainButton = document.querySelector("#mini-game-again");
+
+function clampQuestionCount(value) {
+  const questionCountValue = Number.parseInt(value, 10);
+
+  if (Number.isNaN(questionCountValue)) {
+    return minQuestions;
+  }
+
+  return Math.min(Math.max(questionCountValue, minQuestions), maxQuestions);
+}
+
+function getSavedQuiz() {
+  const savedQuiz = localStorage.getItem(quizKey);
+
+  if (!savedQuiz) {
+    return [];
+  }
+
+  try {
+    const parsedQuiz = JSON.parse(savedQuiz);
+    return normalizeQuizQuestions(parsedQuiz);
+  } catch {
+    return [];
+  }
+}
+
+function saveQuiz(quizQuestions) {
+  localStorage.setItem(quizKey, JSON.stringify(quizQuestions));
+}
+
+function normalizeSavedQuizRecord(quiz, fallbackTitle = "Untitled Quiz") {
+  const questions = normalizeQuizQuestions(quiz?.questions || quiz);
+  const now = new Date().toISOString();
+
+  return {
+    id: quiz?.id || `quiz-${crypto.randomUUID()}`,
+    title: String(quiz?.title || fallbackTitle).trim() || fallbackTitle,
+    theme: String(quiz?.theme || "Best Friend").trim(),
+    createdAt: quiz?.createdAt || now,
+    updatedAt: quiz?.updatedAt || quiz?.createdAt || now,
+    questions,
+  };
+}
+
+function getSavedQuizzesRaw() {
+  const savedQuizzes = localStorage.getItem(savedQuizzesKey);
+
+  if (!savedQuizzes) {
+    return [];
+  }
+
+  try {
+    const parsedQuizzes = JSON.parse(savedQuizzes);
+    return Array.isArray(parsedQuizzes) ? parsedQuizzes : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSavedQuizzes(quizzes) {
+  localStorage.setItem(savedQuizzesKey, JSON.stringify(quizzes));
+}
+
+function migrateOldQuizToSavedQuizzes() {
+  const savedQuizzes = getSavedQuizzesRaw()
+    .map((quiz, index) => normalizeSavedQuizRecord(quiz, index === 0 ? "My First Quiz" : `Quiz ${index + 1}`))
+    .filter((quiz) => quiz.questions.length > 0);
+
+  if (savedQuizzes.length > 0) {
+    saveSavedQuizzes(savedQuizzes);
+    return savedQuizzes;
+  }
+
+  const oldQuiz = getSavedQuiz();
+
+  if (oldQuiz.length > 0) {
+    const migratedQuiz = normalizeSavedQuizRecord({
+      title: "My First Quiz",
+      theme: "Best Friend",
+      questions: oldQuiz,
+    });
+    saveSavedQuizzes([migratedQuiz]);
+    return [migratedQuiz];
+  }
+
+  return [];
+}
+
+function getSavedQuizzes() {
+  return migrateOldQuizToSavedQuizzes();
+}
+
+function findSavedQuizById(quizId) {
+  return getSavedQuizzes().find((quiz) => quiz.id === quizId) || null;
+}
+
+function getPlayerProfiles() {
+  const savedProfiles = localStorage.getItem(playerProfilesKey);
+
+  if (!savedProfiles) {
+    return [];
+  }
+
+  try {
+    const profiles = JSON.parse(savedProfiles);
+    return Array.isArray(profiles) ? profiles : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePlayerProfiles(profiles) {
+  localStorage.setItem(playerProfilesKey, JSON.stringify(profiles));
+}
+
+function normalizeNickname(nickname) {
+  return String(nickname || "").trim().toLowerCase();
+}
+
+function cleanPlayerNickname(nickname) {
+  return String(nickname || "").trim().slice(0, 20);
+}
+
+function looksLikeFullName(nickname) {
+  return /^[a-z]+(?:\s+[a-z]+)+$/i.test(String(nickname || "").trim());
+}
+
+function getUsedNicknames() {
+  const savedNicknames = localStorage.getItem(usedNicknamesKey);
+
+  if (!savedNicknames) {
+    return [];
+  }
+
+  try {
+    const nicknames = JSON.parse(savedNicknames);
+    return Array.isArray(nicknames) ? nicknames.filter((entry) => entry?.normalizedName) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveUsedNicknames(nicknames) {
+  const uniqueNicknames = [];
+  const seenNames = new Set();
+
+  nicknames.forEach((entry) => {
+    const normalizedName = normalizeNickname(entry.normalizedName || entry.displayName);
+
+    if (!normalizedName || seenNames.has(normalizedName)) {
+      return;
+    }
+
+    seenNames.add(normalizedName);
+    uniqueNicknames.push({
+      displayName: String(entry.displayName || normalizedName).trim(),
+      normalizedName,
+      createdAt: entry.createdAt || new Date().toISOString(),
+    });
+  });
+
+  localStorage.setItem(usedNicknamesKey, JSON.stringify(uniqueNicknames));
+}
+
+function registerUsedNickname(nickname) {
+  const displayName = cleanPlayerNickname(nickname);
+  const normalizedName = normalizeNickname(displayName);
+
+  if (!normalizedName) {
+    return;
+  }
+
+  const usedNicknames = getUsedNicknames();
+  const existingNickname = usedNicknames.find((entry) => entry.normalizedName === normalizedName);
+
+  if (existingNickname) {
+    return;
+  }
+
+  saveUsedNicknames([
+    ...usedNicknames,
+    {
+      displayName,
+      normalizedName,
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+}
+
+function replaceUsedNickname(oldNickname, newNickname) {
+  const oldName = normalizeNickname(oldNickname);
+  const newDisplayName = cleanPlayerNickname(newNickname);
+  const newName = normalizeNickname(newDisplayName);
+  const nicknames = getUsedNicknames().filter((entry) => entry.normalizedName !== oldName && entry.normalizedName !== newName);
+
+  if (newName) {
+    nicknames.push({
+      displayName: newDisplayName,
+      normalizedName: newName,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  saveUsedNicknames(nicknames);
+}
+
+function seedUsedNicknamesFromSavedData() {
+  const nicknames = getUsedNicknames();
+  const addNickname = (nickname) => {
+    const displayName = cleanPlayerNickname(nickname);
+    const normalizedName = normalizeNickname(displayName);
+
+    if (!normalizedName || nicknames.some((entry) => entry.normalizedName === normalizedName)) {
+      return;
+    }
+
+    nicknames.push({
+      displayName,
+      normalizedName,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  getPlayerProfiles().forEach((profile) => addNickname(profile.nickname));
+  getLeaderboard().forEach((entry) => addNickname(entry.nickname));
+  getStarLeaderboard().forEach((entry) => addNickname(entry.nickname));
+  Object.values(getQuizLeaderboards()).forEach((leaderboard) => {
+    if (Array.isArray(leaderboard)) {
+      leaderboard.forEach((entry) => addNickname(entry.nickname));
+    }
+  });
+
+  addNickname(localStorage.getItem(guestStarNicknameKey));
+  saveUsedNicknames(nicknames);
+}
+
+function getNicknameValidationError(nickname, { currentNickname = "" } = {}) {
+  const originalNickname = String(nickname || "");
+  const displayName = cleanPlayerNickname(originalNickname);
+  const normalizedName = normalizeNickname(displayName);
+  const currentName = normalizeNickname(currentNickname);
+
+  if (!normalizedName) {
+    return "Please enter a nickname.";
+  }
+
+  if (originalNickname.trim().length > 20) {
+    return "Please choose a nickname under 20 characters.";
+  }
+
+  if (looksLikeFullName(displayName)) {
+    return "Use a nickname, not your real full name.";
+  }
+
+  if (normalizedName !== currentName) {
+    const nicknameTaken = getUsedNicknames().some((entry) => entry.normalizedName === normalizedName)
+      || getPlayerProfiles().some((profile) => normalizeNickname(profile.nickname) === normalizedName);
+
+    if (nicknameTaken) {
+      return "I’m sorry, but someone else has this name. Please choose something else.";
+    }
+  }
+
+  return "";
+}
+
+function validateNickname(nickname, options = {}) {
+  const displayName = cleanPlayerNickname(nickname);
+  return {
+    displayName,
+    normalizedName: normalizeNickname(displayName),
+    message: getNicknameValidationError(nickname, options),
+  };
+}
+
+function findProfileByNickname(nickname) {
+  const cleanName = normalizeNickname(nickname);
+  return getPlayerProfiles().find((profile) => normalizeNickname(profile.nickname) === cleanName) || null;
+}
+
+function getLatestAvatarForNickname(nickname, fallbackAvatar = null) {
+  const profile = findProfileByNickname(nickname);
+  return getUnlockedAvatar(profile?.avatar || fallbackAvatar || createDefaultAvatar());
+}
+
+function syncLeaderboardAvatarsForProfile(profile) {
+  if (!profile?.nickname) {
+    return;
+  }
+
+  const profileName = normalizeNickname(profile.nickname);
+  const latestAvatar = getUnlockedAvatar(profile.avatar || createDefaultAvatar());
+  const syncedQuizLeaderboard = getLeaderboard().map((entry) => (
+    normalizeNickname(entry.nickname) === profileName
+      ? { ...entry, avatar: latestAvatar }
+      : entry
+  ));
+  const syncedStarLeaderboard = getStarLeaderboard().map((entry) => (
+    normalizeNickname(entry.nickname) === profileName
+      ? { ...entry, avatar: latestAvatar }
+      : entry
+  ));
+  const syncedQuizLeaderboards = Object.fromEntries(Object.entries(getQuizLeaderboards()).map(([quizId, leaderboard]) => [
+    quizId,
+    Array.isArray(leaderboard)
+      ? leaderboard.map((entry) => (
+        normalizeNickname(entry.nickname) === profileName
+          ? { ...entry, avatar: latestAvatar }
+          : entry
+      ))
+      : leaderboard,
+  ]));
+
+  saveLeaderboard(syncedQuizLeaderboard);
+  saveStarLeaderboard(syncedStarLeaderboard);
+  saveQuizLeaderboards(syncedQuizLeaderboards);
+}
+
+function syncNicknameAcrossSavedData(oldNickname, newNickname, avatar = null) {
+  const oldName = normalizeNickname(oldNickname);
+  const newDisplayName = cleanPlayerNickname(newNickname);
+
+  if (!oldName || normalizeNickname(newDisplayName) === oldName) {
+    return;
+  }
+
+  const updateEntry = (entry) => (
+    normalizeNickname(entry.nickname) === oldName
+      ? { ...entry, nickname: newDisplayName, avatar: avatar || entry.avatar }
+      : entry
+  );
+
+  saveLeaderboard(getLeaderboard().map(updateEntry));
+  saveStarLeaderboard(getStarLeaderboard().map(updateEntry));
+  saveQuizLeaderboards(Object.fromEntries(Object.entries(getQuizLeaderboards()).map(([quizId, leaderboard]) => [
+    quizId,
+    Array.isArray(leaderboard) ? leaderboard.map(updateEntry) : leaderboard,
+  ])));
+
+  const chatMessages = getChatMessages().map((message) => ({
+    ...message,
+    senderNickname: normalizeNickname(message.senderNickname) === oldName ? newDisplayName : message.senderNickname,
+    receiverNickname: normalizeNickname(message.receiverNickname) === oldName ? newDisplayName : message.receiverNickname,
+  }));
+  saveChatMessages(chatMessages);
+
+  if (normalizeNickname(localStorage.getItem(guestStarNicknameKey)) === oldName) {
+    localStorage.setItem(guestStarNicknameKey, newDisplayName);
+  }
+
+  if (normalizeNickname(localStorage.getItem(currentPlayerKey)) === oldName) {
+    localStorage.setItem(currentPlayerKey, newDisplayName);
+  }
+}
+
+function generateFriendCode(nickname, profiles = getPlayerProfiles()) {
+  const words = ["LUNA", "CASE", "MISTY", "MOON", "STAR", "CLUE"];
+  const nicknamePrefix = nickname.replace(/[^a-z]/gi, "").slice(0, 4).toUpperCase();
+  const codePrefix = nicknamePrefix.length >= 3 ? nicknamePrefix : words[Math.floor(Math.random() * words.length)];
+  let code = "";
+
+  do {
+    code = `${codePrefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+  } while (profiles.some((profile) => profile.friendCode === code));
+
+  return code;
+}
+
+function ensureFriendProfile(profile, profiles = getPlayerProfiles()) {
+  return {
+    ...profile,
+    friendCode: profile.friendCode || generateFriendCode(profile.nickname || "CASE", profiles),
+    friends: Array.isArray(profile.friends) ? profile.friends : [],
+    blockedFriends: Array.isArray(profile.blockedFriends) ? profile.blockedFriends : [],
+  };
+}
+
+function saveActivePlayerProfile() {
+  if (!activePlayer) {
+    return;
+  }
+
+  const profiles = getPlayerProfiles();
+  const profileExists = profiles.some((profile) => normalizeNickname(profile.nickname) === normalizeNickname(activePlayer.nickname));
+  const updatedProfiles = profileExists
+    ? profiles.map((profile) => (normalizeNickname(profile.nickname) === normalizeNickname(activePlayer.nickname) ? activePlayer : profile))
+    : [...profiles, activePlayer];
+
+  savePlayerProfiles(updatedProfiles);
+  registerUsedNickname(activePlayer.nickname);
+  syncLeaderboardAvatarsForProfile(activePlayer);
+}
+
+function getGuestRewards() {
+  const savedRewards = localStorage.getItem(guestRewardsKey);
+
+  if (!savedRewards) {
+    return [];
+  }
+
+  try {
+    const rewards = JSON.parse(savedRewards);
+    return Array.isArray(rewards) ? rewards : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGuestRewards(rewards) {
+  localStorage.setItem(guestRewardsKey, JSON.stringify(rewards));
+}
+
+function updateActivePlayerProfile(updates) {
+  if (!activePlayer) {
+    return;
+  }
+
+  activePlayer = ensureFriendProfile({
+    ...activePlayer,
+    ...updates,
+  });
+
+  saveActivePlayerProfile();
+  updateProfileBar();
+  renderLeaderboard();
+  renderStarLeaderboard();
+}
+
+function getStarBalance() {
+  if (activePlayer) {
+    return activePlayer.stars || 0;
+  }
+
+  return Number.parseInt(localStorage.getItem(guestStarsKey) || "0", 10);
+}
+
+function setStarBalance(stars) {
+  const safeStars = Math.max(0, stars);
+
+  if (activePlayer) {
+    updateActivePlayerProfile({ stars: safeStars });
+    updateStarLeaderboard();
+    return;
+  }
+
+  localStorage.setItem(guestStarsKey, String(safeStars));
+  updateProfileBar();
+  updateStarLeaderboard();
+}
+
+function addStars(amount) {
+  setStarBalance(getStarBalance() + amount);
+}
+
+function getPurchasedRewards() {
+  if (activePlayer) {
+    return Array.isArray(activePlayer.purchasedRewards) ? activePlayer.purchasedRewards : [];
+  }
+
+  return getGuestRewards();
+}
+
+function savePurchasedRewards(rewards) {
+  if (activePlayer) {
+    updateActivePlayerProfile({
+      purchasedRewards: rewards,
+      diaryAccess: rewards.includes("daily-diary"),
+    });
+    return;
+  }
+
+  saveGuestRewards(rewards);
+}
+
+function hasPurchased(itemId) {
+  return getPurchasedRewards().includes(itemId);
+}
+
+function isThemeReward(item) {
+  return Boolean(themeRewards[item.id]);
+}
+
+function isGamePack(item) {
+  return item.category === "Games";
+}
+
+function isDiaryReward(item) {
+  return item.category === "Diary";
+}
+
+function getPurchasedDiaryRewardLabel(item) {
+  if (activeDiaryRewardIds.has(item.id)) {
+    return "Purchased - Active in Diary";
+  }
+
+  if (comingSoonDiaryRewardIds.has(item.id)) {
+    return "Purchased - Coming soon";
+  }
+
+  return "Purchased";
+}
+
+function getPurchasedGamePackLabel(item) {
+  if (activeGamePackIds.has(item.id)) {
+    return "Purchased - Active in Games";
+  }
+
+  if (comingSoonGamePackIds.has(item.id)) {
+    return "Purchased - Coming soon";
+  }
+
+  return "Purchased";
+}
+
+function getGamePackMenuText(packId) {
+  if (hasPurchased(packId) && activeGamePackIds.has(packId)) {
+    if (packId === "extra-quiz-theme-pack") {
+      return "Extra Quiz Theme Pack: Active";
+    }
+
+    const packName = shopItems.find((item) => item.id === packId)?.name || "Extra Pack";
+    return `${packName}: Active`;
+  }
+
+  return "Extra pack locked - buy it in the shop";
+}
+
+function updateGamePackStatuses() {
+  packStatusBadges.forEach((badge) => {
+    const packId = badge.dataset.packId;
+    const isActive = hasPurchased(packId) && activeGamePackIds.has(packId);
+    badge.textContent = getGamePackMenuText(packId);
+    badge.classList.toggle("active", isActive);
+  });
+}
+
+function getActiveTheme() {
+  return localStorage.getItem(activeThemeKey) || "default";
+}
+
+function saveActiveTheme(themeId) {
+  localStorage.setItem(activeThemeKey, themeId);
+}
+
+function getActiveThemeName() {
+  const activeTheme = getActiveTheme();
+  return activeTheme === "default" ? "Default Theme" : themeRewards[activeTheme]?.name || "Default Theme";
+}
+
+function setActiveTheme(themeId) {
+  if (themeId !== "default" && !hasPurchased(themeId)) {
+    shopMessage.textContent = "Buy this theme before applying it.";
+    return;
+  }
+
+  saveActiveTheme(themeId);
+  applyPurchasedEffects();
+  renderShop();
+  shopMessage.textContent = `${getActiveThemeName()} is active.`;
+}
+
+function getDiaryNotes() {
+  if (activePlayer) {
+    return activePlayer.diaryNotes || {};
+  }
+
+  const savedNotes = localStorage.getItem(guestDiaryKey);
+
+  if (!savedNotes) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(savedNotes) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDiaryNotes(notes) {
+  if (activePlayer) {
+    updateActivePlayerProfile({ diaryNotes: notes });
+    return;
+  }
+
+  localStorage.setItem(guestDiaryKey, JSON.stringify(notes));
+}
+
+function normalizeDiaryEntries(entries) {
+  return Array.isArray(entries)
+    ? entries
+        .filter((entry) => entry && typeof entry === "object" && String(entry.text || "").trim())
+        .map((entry) => ({
+          id: entry.id || crypto.randomUUID(),
+          date: entry.date || new Date().toISOString().slice(0, 10),
+          time: entry.time || "",
+          text: String(entry.text || "").trim(),
+          mood: entry.mood || "",
+          sticker: entry.sticker || "",
+          createdAt: entry.createdAt || Date.now(),
+        }))
+    : [];
+}
+
+function getDiaryEntries() {
+  const savedEntries = localStorage.getItem(diaryEntriesKey);
+  let entries = [];
+
+  if (savedEntries) {
+    try {
+      entries = normalizeDiaryEntries(JSON.parse(savedEntries));
+    } catch {
+      entries = [];
+    }
+  }
+
+  const oldNotes = getDiaryNotes();
+  const migratedEntries = Object.entries(oldNotes)
+    .filter(([, text]) => typeof text === "string" && text.trim())
+    .filter(([date]) => !entries.some((entry) => entry.date === date && entry.text === oldNotes[date].trim()))
+    .map(([date, text]) => ({
+      id: crypto.randomUUID(),
+      date,
+      time: "",
+      text: text.trim(),
+      mood: "",
+      sticker: "",
+      createdAt: new Date(`${date}T00:00:00`).getTime() || Date.now(),
+    }));
+
+  const diaryEntries = [...entries, ...migratedEntries].sort((firstEntry, secondEntry) => secondEntry.createdAt - firstEntry.createdAt);
+
+  if (migratedEntries.length > 0) {
+    saveDiaryEntries(diaryEntries);
+  }
+
+  return diaryEntries;
+}
+
+function saveDiaryEntries(entries) {
+  localStorage.setItem(diaryEntriesKey, JSON.stringify(normalizeDiaryEntries(entries)));
+}
+
+function applyPurchasedEffects() {
+  const activeTheme = getActiveTheme();
+  const canUseActiveTheme = activeTheme === "default" || hasPurchased(activeTheme);
+
+  Object.values(themeRewards).forEach((theme) => {
+    document.body.classList.remove(theme.className);
+  });
+
+  document.body.classList.toggle("secret-notebook-theme", false);
+
+  if (!canUseActiveTheme) {
+    saveActiveTheme("default");
+  }
+
+  if (canUseActiveTheme && themeRewards[activeTheme]) {
+    document.body.classList.add(themeRewards[activeTheme].className);
+  }
+
+  resultCard.classList.toggle("profile-frame-reward", hasPurchased("profile-frame"));
+}
+
+function createDefaultAvatar() {
+  return {
+    ...Object.fromEntries(Object.entries(avatarOptions).map(([key, values]) => [key, values[0]])),
+    emojiAvatar: defaultEmojiAvatar,
+  };
+}
+
+function getSelectedAvatar() {
+  return {
+    ...createDefaultAvatar(),
+    ...selectedAvatar,
+    emojiAvatar: selectedAvatar.emojiAvatar || defaultEmojiAvatar,
+    avatarName: avatarNameInput.value.trim(),
+  };
+}
+
+function isShopBackground(background) {
+  return shopBackgroundRewards.some((reward) => reward.option === background);
+}
+
+function canUseBackground(background) {
+  const reward = shopBackgroundRewards.find((item) => item.option === background);
+  return !reward || hasPurchased(reward.itemId);
+}
+
+function getAvatarOptionValues(key) {
+  if (key !== "background") {
+    return avatarOptions[key];
+  }
+
+  return [...avatarOptions.background, ...shopBackgroundRewards.map((reward) => reward.option)];
+}
+
+function getUnlockedAvatar(avatar) {
+  const safeAvatar = {
+    ...createDefaultAvatar(),
+    ...(avatar || {}),
+  };
+
+  if (!canUseBackground(safeAvatar.background)) {
+    safeAvatar.background = avatarOptions.background[0];
+  }
+
+  return safeAvatar;
+}
+
+function getAvatarClass(avatar) {
+  const background = avatar?.background || "Lavender room";
+  const backgroundColour = avatar?.backgroundColour || "Cream";
+  return `avatar-bg-${slugify(background)} avatar-tint-${slugify(backgroundColour)}`;
+}
+
+function slugify(value) {
+  return String(value || "").toLowerCase().replaceAll(" ", "-").replaceAll("/", "-");
+}
+
+function getAvatarColour(group, value, fallback) {
+  return avatarColourValues[group]?.[value] || fallback;
+}
+
+function getAvatarBackgroundTheme(background) {
+  return avatarBackgroundThemes[background] || avatarBackgroundThemes["Lavender room"];
+}
+
+function getMangaBackgroundDecor(background) {
+  const decorations = {
+    "Lavender room": '<path class="manga-bg-line" d="M42 70 H178 M54 98 H166" /><circle class="manga-bg-dot" cx="62" cy="54" r="4" /><circle class="manga-bg-dot" cx="158" cy="91" r="3" />',
+    "Secret diary desk": '<rect class="manga-bg-shape" x="42" y="196" width="136" height="18" rx="8" /><path class="manga-bg-line" d="M64 190 h38 M118 190 h30" /><rect class="manga-bg-shape" x="145" y="176" width="18" height="20" rx="3" />',
+    "Moonlight window": '<rect class="manga-bg-shape" x="142" y="45" width="34" height="46" rx="8" /><path class="manga-bg-line" d="M159 45 V91 M142 68 H176" /><path class="manga-bg-line" d="M70 54 C60 65 63 80 77 86" />',
+    "Soft library": '<rect class="manga-bg-shape" x="39" y="50" width="32" height="82" rx="7" /><path class="manga-bg-line" d="M48 62 v58 M58 62 v58 M39 88 h32" /><rect class="manga-bg-shape" x="151" y="54" width="25" height="70" rx="6" />',
+    "Cloudy sky": '<path class="manga-bg-shape" d="M42 82 C50 68 68 72 70 84 C82 80 92 88 88 100 H42 Z" /><path class="manga-bg-shape" d="M139 63 C147 51 164 55 166 67 C178 64 187 72 184 83 H139 Z" />',
+    "Cafe corner": '<path class="manga-bg-line" d="M42 72 C70 54 98 54 126 72" /><rect class="manga-bg-shape" x="149" y="178" width="20" height="26" rx="6" /><path class="manga-bg-line" d="M151 178 C151 168 167 168 167 178" />',
+    "Study desk": '<rect class="manga-bg-shape" x="38" y="198" width="144" height="16" rx="8" /><path class="manga-bg-line" d="M57 188 h42 M116 188 h48" /><path class="manga-bg-line" d="M62 214 v17 M158 214 v17" />',
+    "Premium Study Desk Background": '<rect class="manga-bg-shape" x="35" y="195" width="150" height="20" rx="9" /><path class="manga-bg-line" d="M58 184 h45 M115 184 h44 M72 174 h30" /><circle class="manga-bg-dot" cx="167" cy="184" r="5" />',
+    "Clue Board Background": '<rect class="manga-bg-shape" x="38" y="49" width="48" height="43" rx="7" /><path class="manga-bg-line" d="M48 61 h18 M48 73 h28 M64 49 l22 43" /><circle class="manga-bg-dot" cx="171" cy="72" r="5" />',
+    "Mystery Room Theme": '<path class="manga-bg-line" d="M46 67 H174 M58 95 H162 M70 123 H150" /><circle class="manga-bg-dot" cx="54" cy="67" r="4" /><circle class="manga-bg-dot" cx="166" cy="95" r="3" />',
+  };
+
+  return decorations[background] || decorations["Lavender room"];
+}
+
+function makeAvatarPart(className) {
+  const part = document.createElement("span");
+  part.className = className;
+  return part;
+}
+
+function getMangaFacePath(faceShape) {
+  const facePaths = {
+    Round: "M74 76 C75 52 91 37 110 37 C129 37 145 52 146 76 C148 104 133 132 110 137 C87 132 72 104 74 76 Z",
+    Oval: "M76 72 C78 49 92 35 110 35 C128 35 142 49 144 72 C147 102 133 134 110 140 C87 134 73 102 76 72 Z",
+    Heart: "M74 75 C75 51 91 38 110 38 C129 38 145 51 146 75 C148 103 131 130 110 141 C89 130 72 103 74 75 Z",
+    "Soft square": "M76 71 C79 51 93 39 110 39 C127 39 141 51 144 71 C146 101 135 131 110 138 C85 131 74 101 76 71 Z",
+  };
+
+  return facePaths[faceShape] || facePaths.Oval;
+}
+
+function getMangaHairBack(hairstyle) {
+  const hairBacks = {
+    "Long waves": '<path class="manga-hair-fill manga-hair-outline" d="M58 93 C55 49 76 22 110 21 C144 22 165 49 162 93 C159 129 149 171 132 196 C136 166 137 135 132 108 C124 116 96 116 88 108 C83 135 84 166 88 196 C71 171 61 129 58 93 Z" />',
+    "Short bob": '<path class="manga-hair-fill manga-hair-outline" d="M61 91 C59 50 79 25 110 25 C141 25 161 50 159 91 C157 125 142 147 110 151 C78 147 63 125 61 91 Z" />',
+    Ponytail: '<path class="manga-hair-fill manga-hair-outline" d="M63 91 C60 50 79 24 110 24 C141 24 160 50 157 91 C153 121 139 140 110 144 C81 140 67 121 63 91 Z" /><path class="manga-hair-fill manga-hair-outline" d="M151 80 C184 90 188 132 160 154 C165 131 160 105 145 92 Z" />',
+    Braids: '<path class="manga-hair-fill manga-hair-outline" d="M64 89 C61 50 80 25 110 25 C140 25 159 50 156 89 C153 116 139 138 110 143 C81 138 67 116 64 89 Z" /><path class="manga-hair-fill manga-hair-outline" d="M62 100 C45 118 44 155 58 181 C73 159 76 125 68 101 Z" /><path class="manga-hair-fill manga-hair-outline" d="M158 100 C175 118 176 155 162 181 C147 159 144 125 152 101 Z" />',
+    "Curly hair": '<path class="manga-hair-fill manga-hair-outline" d="M58 91 C53 51 78 23 110 23 C142 23 167 51 162 91 C160 124 141 149 110 150 C79 149 60 124 58 91 Z" /><circle class="manga-hair-fill manga-hair-outline" cx="68" cy="72" r="15" /><circle class="manga-hair-fill manga-hair-outline" cx="87" cy="43" r="14" /><circle class="manga-hair-fill manga-hair-outline" cx="133" cy="43" r="14" /><circle class="manga-hair-fill manga-hair-outline" cx="152" cy="72" r="15" />',
+    "Straight hair": '<path class="manga-hair-fill manga-hair-outline" d="M60 94 C58 50 78 22 110 22 C142 22 162 50 160 94 C158 133 148 176 130 198 C132 165 131 132 126 103 C119 110 101 110 94 103 C89 132 88 165 90 198 C72 176 62 133 60 94 Z" />',
+    "Messy bun": '<path class="manga-hair-fill manga-hair-outline" d="M64 92 C61 51 80 26 110 26 C140 26 159 51 156 92 C153 120 139 139 110 144 C81 139 67 120 64 92 Z" /><circle class="manga-hair-fill manga-hair-outline" cx="148" cy="38" r="17" />',
+    "Layered hair": '<path class="manga-hair-fill manga-hair-outline" d="M59 93 C57 51 78 24 110 24 C142 24 163 51 161 93 C158 130 145 165 126 185 C129 158 130 132 126 106 C119 114 101 114 94 106 C90 132 91 158 94 185 C75 165 62 130 59 93 Z" />',
+  };
+
+  return hairBacks[hairstyle] || hairBacks["Layered hair"];
+}
+
+function getMangaHairFront(hairstyle) {
+  const longSideLength = ["Long waves", "Straight hair", "Layered hair"].includes(hairstyle) ? 46 : 26;
+  const bobLift = hairstyle === "Short bob" ? 10 : 0;
+  const curlExtra = hairstyle === "Curly hair"
+    ? '<path class="manga-hair-fill manga-hair-line" d="M83 57 C75 61 77 74 88 72" /><path class="manga-hair-fill manga-hair-line" d="M137 57 C145 61 143 74 132 72" />'
+    : "";
+
+  return `
+    <path class="manga-hair-fill manga-hair-line" d="M67 ${88 - bobLift} C73 55 91 36 110 34 C129 36 147 55 153 ${88 - bobLift}" />
+    <path class="manga-hair-fill manga-hair-line" d="M76 78 C84 52 99 39 111 37 C108 58 98 75 82 92 Z" />
+    <path class="manga-hair-fill manga-hair-line" d="M99 42 C109 51 112 67 106 89 C121 75 128 55 124 38 Z" />
+    <path class="manga-hair-fill manga-hair-line" d="M126 40 C139 50 146 65 146 88 C132 78 124 62 126 40 Z" />
+    <path class="manga-hair-fill manga-hair-line" d="M72 86 C61 111 64 ${118 + longSideLength} 83 ${132 + longSideLength} C78 113 81 96 91 82 Z" />
+    <path class="manga-hair-fill manga-hair-line" d="M148 86 C159 111 156 ${118 + longSideLength} 137 ${132 + longSideLength} C142 113 139 96 129 82 Z" />
+    ${curlExtra}
+  `;
+}
+
+function getMangaEyes(eyeShape) {
+  const irisLeft = '<ellipse cx="94" cy="84" rx="4.2" ry="5.5" fill="var(--eye)" /><circle cx="95.5" cy="82" r="1.4" fill="#fff" />';
+  const irisRight = '<ellipse cx="126" cy="84" rx="4.2" ry="5.5" fill="var(--eye)" /><circle cx="127.5" cy="82" r="1.4" fill="#fff" />';
+  const eyePaths = {
+    "Soft eyes": [`M83 83 C89 78 99 78 104 83 C99 88 89 88 83 83 Z`, `M117 83 C123 78 133 78 137 83 C132 88 123 88 117 83 Z`, irisLeft, irisRight],
+    "Big eyes": [`M82 83 C88 76 101 76 106 83 C101 91 88 91 82 83 Z`, `M114 83 C120 76 134 76 139 83 C134 91 120 91 114 83 Z`, irisLeft, irisRight],
+    "Sleepy eyes": [`M83 84 C91 81 98 81 105 84`, `M115 84 C123 81 132 81 139 84`, "", ""],
+    Wink: [`M83 83 C89 78 99 78 104 83 C99 88 89 88 83 83 Z`, `M116 84 C124 82 132 82 139 84`, irisLeft, ""],
+    "Smiley eyes": [`M83 85 C91 79 99 79 105 85`, `M115 85 C123 79 132 79 139 85`, "", ""],
+    "Sharp eyes": [`M82 84 C92 77 101 79 107 83 C98 86 90 87 82 84 Z`, `M113 83 C121 79 131 77 140 84 C132 87 122 86 113 83 Z`, irisLeft, irisRight],
+    "Mysterious eyes": [`M82 84 C91 79 100 79 107 83 C98 86 90 87 82 84 Z`, `M113 83 C121 79 131 79 140 84 C132 87 122 86 113 83 Z`, irisLeft, irisRight],
+    "Round eyes": [`M84 83 C90 77 100 77 105 83 C100 90 90 90 84 83 Z`, `M115 83 C121 77 133 77 138 83 C133 90 121 90 115 83 Z`, irisLeft, irisRight],
+    "Soft almond eyes": [`M82 83 C90 78 99 78 106 83 C98 87 90 87 82 83 Z`, `M114 83 C122 78 132 78 140 83 C132 87 122 87 114 83 Z`, irisLeft, irisRight],
+    "Upturned almond eyes": [`M82 84 C91 78 100 78 107 82 C98 87 90 87 82 84 Z`, `M113 82 C122 78 132 78 141 84 C132 87 122 87 113 82 Z`, irisLeft, irisRight],
+    "Soft monolid eyes": [`M83 84 C91 80 99 80 106 84`, `M114 84 C122 80 132 80 140 84`, "", ""],
+  };
+  const [left, right, leftIris, rightIris] = eyePaths[eyeShape] || eyePaths["Soft eyes"];
+  const fill = ["Sleepy eyes", "Smiley eyes", "Soft monolid eyes"].includes(eyeShape) ? "none" : "#fff";
+
+  return `
+    <path class="manga-eye" d="${left}" fill="${fill}" />
+    <path class="manga-eye" d="${right}" fill="${fill}" />
+    ${leftIris}
+    ${rightIris}
+  `;
+}
+
+function getMangaAccessory(accessory) {
+  const accessories = {
+    None: "",
+    "Silver key": '<path class="manga-accessory" d="M119 149 l8 13 M126 162 l5 -2 M126 162 l2 5" /><circle class="manga-accessory" cx="117" cy="146" r="4" fill="none" />',
+    Notebook: '<rect class="manga-accessory-fill manga-accessory" x="136" y="159" width="18" height="24" rx="3" /><path class="manga-accessory" d="M141 164 h9 M141 170 h8" />',
+    Headphones: '<path class="manga-accessory" d="M72 87 C75 52 145 52 148 87" /><rect class="manga-accessory-fill manga-accessory" x="66" y="86" width="9" height="22" rx="4" /><rect class="manga-accessory-fill manga-accessory" x="145" y="86" width="9" height="22" rx="4" />',
+    Ribbon: '<path class="manga-accessory-fill manga-accessory" d="M143 55 l15 -7 l-3 16 Z" /><path class="manga-accessory-fill manga-accessory" d="M143 55 l15 8 l-3 -16 Z" />',
+    "Star clip": '<path class="manga-accessory-fill manga-accessory" d="M149 57 l3 6 l7 1 l-5 5 l1 7 l-6 -3 l-6 3 l1 -7 l-5 -5 l7 -1 Z" />',
+    "Moon necklace": '<path class="manga-accessory" d="M101 146 C107 154 115 154 121 146" /><path class="manga-accessory-fill manga-accessory" d="M113 156 C108 153 108 145 114 142 C112 147 115 151 120 152 C118 156 116 157 113 156 Z" />',
+    Glasses: '<circle class="manga-accessory" cx="94" cy="84" r="10" fill="none" /><circle class="manga-accessory" cx="126" cy="84" r="10" fill="none" /><path class="manga-accessory" d="M104 84 H116" />',
+    "Tiny bag": '<rect class="manga-accessory-fill manga-accessory" x="140" y="166" width="18" height="18" rx="4" /><path class="manga-accessory" d="M143 166 C144 158 154 158 155 166" />',
+  };
+
+  return accessories[accessory] || "";
+}
+
+function createMangaAvatarSvg(avatar) {
+  return `
+    <svg class="manga-avatar-svg" viewBox="0 0 220 260" role="img" aria-label="Manga style avatar portrait" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="avatar-card-glow" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="rgba(255,255,255,0.9)" />
+          <stop offset="0.55" stop-color="var(--avatar-bg)" />
+          <stop offset="1" stop-color="rgba(217,236,255,0.9)" />
+        </linearGradient>
+      </defs>
+      <rect class="manga-card-bg" x="10" y="10" width="200" height="240" rx="30" />
+      <g class="manga-background-decor">${getMangaBackgroundDecor(avatar.background)}</g>
+      <path class="manga-card-line" d="M42 53 H178 M55 205 H165" />
+      <circle class="manga-card-spark" cx="56" cy="78" r="3" />
+      <circle class="manga-card-spark" cx="169" cy="68" r="2.5" />
+      <path class="manga-shoulders" d="M50 225 C61 181 82 147 110 147 C138 147 159 181 170 225 Z" />
+      <rect class="manga-neck" x="100" y="130" width="20" height="26" rx="9" />
+      <path class="manga-collar" d="M76 150 C89 143 100 146 110 156 C120 146 131 143 144 150 C138 166 125 175 110 176 C95 175 82 166 76 150 Z" />
+      <path class="manga-outfit-line" d="M87 160 L110 192 L133 160" />
+      <path class="manga-bow" d="M107 162 C98 154 89 154 83 165 C92 169 101 169 107 162 Z M113 162 C122 154 131 154 137 165 C128 169 119 169 113 162 Z M106 162 H114 V173 H106 Z" />
+      <g class="manga-hair-back-layer">${getMangaHairBack(avatar.hairstyle)}</g>
+      <path class="manga-face" d="${getMangaFacePath(avatar.faceShape)}" />
+      <path class="manga-blush" d="M84 101 C91 97 98 98 103 102" />
+      <path class="manga-blush" d="M117 102 C123 98 131 97 137 101" />
+      ${getMangaEyes(avatar.eyeShape)}
+      <path class="manga-nose" d="M111 91 C108 101 108 106 112 109" />
+      <path class="manga-mouth" d="M101 120 C107 124 114 124 120 120" />
+      <g class="manga-hair-front-layer">${getMangaHairFront(avatar.hairstyle)}</g>
+      <g class="manga-accessory-layer">${getMangaAccessory(avatar.accessory)}</g>
+    </svg>
+  `;
+}
+
+function renderAvatar(target, avatar) {
+  const safeAvatar = getUnlockedAvatar(avatar);
+  const sizeClass = target.id === "avatar-preview" ? "avatar-preview" : "mini-avatar";
+  const emoji = safeAvatar.emojiAvatar || defaultEmojiAvatar;
+
+  target.className = `${sizeClass} emoji-avatar-card`;
+  target.removeAttribute("style");
+  target.innerHTML = "";
+
+  const emojiFace = document.createElement("div");
+  emojiFace.className = "emoji-avatar-face";
+  emojiFace.textContent = emoji;
+  target.append(emojiFace);
+
+  if (sizeClass === "avatar-preview") {
+    const name = document.createElement("p");
+    name.className = "avatar-preview-name";
+    name.textContent = safeAvatar.avatarName || "Emoji avatar";
+    const detail = document.createElement("p");
+    detail.className = "avatar-preview-detail";
+    detail.textContent = "Pick one emoji that feels like you.";
+    target.append(name, detail);
+  }
+}
+
+function renderMangaAvatar(target, avatar) {
+  const safeAvatar = getUnlockedAvatar(avatar);
+  const sizeClass = target.id === "avatar-preview" ? "avatar-preview" : "mini-avatar";
+  target.className = `${sizeClass} illustrated-avatar manga-avatar-card ${getAvatarClass(safeAvatar)} height-${slugify(safeAvatar.height)} face-${slugify(safeAvatar.faceShape)} hair-${slugify(safeAvatar.hairstyle)} eyes-${slugify(safeAvatar.eyeShape)}`;
+  target.innerHTML = "";
+  target.style.setProperty("--skin", getAvatarColour("skinTone", safeAvatar.skinTone, "#f1c7ad"));
+  target.style.setProperty("--eye", getAvatarColour("eyeColour", safeAvatar.eyeColour, "#7a5236"));
+  target.style.setProperty("--hair", getAvatarColour("hairColour", safeAvatar.hairColour, "#432a1f"));
+  target.style.setProperty("--outfit", getAvatarColour("outfitColour", safeAvatar.outfitColour, "#e7dcff"));
+  target.style.setProperty("--accessory", getAvatarColour("accessoryColour", safeAvatar.accessoryColour, "#cfd5df"));
+  target.style.setProperty("--diary", getAvatarColour("diaryColour", safeAvatar.diaryColour, "#e7dcff"));
+  const backgroundTheme = getAvatarBackgroundTheme(safeAvatar.background);
+  target.style.setProperty("--avatar-bg", backgroundTheme.base);
+  target.style.setProperty("--avatar-bg-tint", getAvatarColour("backgroundColour", safeAvatar.backgroundColour, backgroundTheme.tint));
+  target.style.setProperty("--avatar-bg-accent", backgroundTheme.accent);
+  target.style.setProperty("--avatar-bg-line", backgroundTheme.line);
+
+  const portrait = document.createElement("span");
+  portrait.className = "manga-portrait";
+  portrait.innerHTML = createMangaAvatarSvg(safeAvatar);
+  const detail = document.createElement("span");
+  detail.className = "avatar-preview-detail";
+  detail.textContent = `${safeAvatar.faceShape}, ${safeAvatar.eyeShape}, ${safeAvatar.hairColour} ${safeAvatar.hairstyle}, ${safeAvatar.outfitColour} ${safeAvatar.outfit}`;
+
+  target.append(portrait);
+
+  if (sizeClass === "avatar-preview") {
+    const name = document.createElement("span");
+    name.className = "avatar-preview-name";
+    name.textContent = safeAvatar.avatarName || safeAvatar.style || "Mystery avatar";
+    target.append(name, detail);
+  }
+
+  target.title = `${safeAvatar.style}, ${safeAvatar.skinTone} skin tone, ${safeAvatar.eyeShape}, ${safeAvatar.eyeColour} eyes, ${safeAvatar.height}, ${safeAvatar.hairColour} ${safeAvatar.hairstyle}, ${safeAvatar.outfitColour} ${safeAvatar.outfit}, ${safeAvatar.accessoryColour} ${safeAvatar.accessory}`;
+}
+
+function updateAvatarPreview() {
+  renderAvatar(avatarPreview, getSelectedAvatar());
+  renderAvatarOptions();
+}
+
+function renderAvatarOptions() {
+  avatarOptionPanels.innerHTML = "";
+
+  Object.entries(emojiAvatarCategories).forEach(([category, emojis]) => {
+    const group = document.createElement("section");
+    group.className = "avatar-option-group emoji-picker-group";
+
+    const title = document.createElement("h3");
+    title.textContent = category;
+
+    const buttons = document.createElement("div");
+    buttons.className = "emoji-avatar-grid";
+
+    emojis.forEach((emoji) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = (selectedAvatar.emojiAvatar || defaultEmojiAvatar) === emoji ? "emoji-avatar-option selected" : "emoji-avatar-option";
+      button.textContent = emoji;
+      button.setAttribute("aria-label", `Choose ${emoji}`);
+      button.addEventListener("click", () => {
+        selectedAvatar.emojiAvatar = emoji;
+        updateAvatarPreview();
+      });
+      buttons.append(button);
+    });
+
+    group.append(title, buttons);
+    avatarOptionPanels.append(group);
+  });
+}
+
+function updateProfileBar() {
+  profileBar.classList.remove("hidden");
+  starsTotal.textContent = `⭐ Stars: ${getStarBalance()}`;
+  editAvatarButton.textContent = activePlayer?.avatar ? "Edit Avatar" : "Create Avatar";
+
+  if (guestMode) {
+    renderAvatar(profileAvatar, null);
+    profileName.textContent = "Guest player";
+    openShopButton.hidden = false;
+    openStarLeaderboardButton.hidden = false;
+    openFriendsButton.hidden = true;
+    openChatButton.hidden = true;
+    openVoiceCallButton.hidden = true;
+    openVideoCallButton.hidden = true;
+    editAvatarButton.hidden = false;
+    switchPlayerButton.hidden = false;
+    return;
+  }
+
+  if (activePlayer) {
+    renderAvatar(profileAvatar, activePlayer.avatar);
+    profileName.textContent = activePlayer.nickname;
+    openShopButton.hidden = false;
+    openStarLeaderboardButton.hidden = false;
+    openFriendsButton.hidden = false;
+    openChatButton.hidden = false;
+    openVoiceCallButton.hidden = false;
+    openVideoCallButton.hidden = false;
+    editAvatarButton.hidden = false;
+    switchPlayerButton.hidden = false;
+    return;
+  }
+
+  renderAvatar(profileAvatar, null);
+  profileName.textContent = "No avatar yet";
+  openShopButton.hidden = true;
+  openStarLeaderboardButton.hidden = true;
+  openFriendsButton.hidden = true;
+  openChatButton.hidden = true;
+  openVoiceCallButton.hidden = true;
+  openVideoCallButton.hidden = true;
+  editAvatarButton.hidden = false;
+  switchPlayerButton.hidden = true;
+}
+
+function loadCurrentPlayer() {
+  const currentNickname = localStorage.getItem(currentPlayerKey);
+
+  if (!currentNickname) {
+    return null;
+  }
+
+  return getPlayerProfiles().find((profile) => profile.nickname === currentNickname) || null;
+}
+
+function setActivePlayer(profile) {
+  activePlayer = ensureFriendProfile({
+    stars: 0,
+    purchasedRewards: [],
+    diaryAccess: false,
+    diaryNotes: {},
+    settings: {},
+    ...profile,
+  });
+  guestMode = false;
+  localStorage.setItem(currentPlayerKey, profile.nickname);
+  saveActivePlayerProfile();
+  updateProfileBar();
+  applyPurchasedEffects();
+}
+
+function useGuestMode() {
+  activePlayer = null;
+  guestMode = true;
+  localStorage.removeItem(currentPlayerKey);
+  updateProfileBar();
+  applyPurchasedEffects();
+  showStart();
+}
+
+function createBlankQuestion() {
+  return {
+    text: "",
+    answers: ["", "", "", ""],
+    correct: 0,
+  };
+}
+
+function makeQuestionCard(question, index) {
+  const questionCard = document.createElement("fieldset");
+  questionCard.className = "creator-question-card";
+
+  const legend = document.createElement("legend");
+  legend.textContent = `Clue ${index + 1}`;
+
+  const questionLabel = document.createElement("label");
+  questionLabel.setAttribute("for", `question-${index}`);
+  questionLabel.textContent = "Question text";
+
+  const questionInput = document.createElement("input");
+  questionInput.id = `question-${index}`;
+  questionInput.name = `question-${index}`;
+  questionInput.type = "text";
+  questionInput.value = question.text;
+  questionInput.placeholder = "What is my favourite treat?";
+
+  const answerGrid = document.createElement("div");
+  answerGrid.className = "creator-answer-grid";
+
+  question.answers.forEach((answer, answerIndex) => {
+    const answerWrap = document.createElement("div");
+    answerWrap.className = "creator-answer";
+
+    const answerLabel = document.createElement("label");
+    answerLabel.setAttribute("for", `question-${index}-answer-${answerIndex}`);
+    answerLabel.textContent = `Answer ${answerIndex + 1}`;
+
+    const answerInput = document.createElement("input");
+    answerInput.id = `question-${index}-answer-${answerIndex}`;
+    answerInput.name = `question-${index}-answer-${answerIndex}`;
+    answerInput.type = "text";
+    answerInput.value = answer;
+    answerInput.placeholder = `Choice ${answerIndex + 1}`;
+
+    answerWrap.append(answerLabel, answerInput);
+    answerGrid.append(answerWrap);
+  });
+
+  const correctLabel = document.createElement("label");
+  correctLabel.setAttribute("for", `question-${index}-correct`);
+  correctLabel.textContent = "Correct answer";
+
+  const correctSelect = document.createElement("select");
+  correctSelect.id = `question-${index}-correct`;
+  correctSelect.name = `question-${index}-correct`;
+
+  question.answers.forEach((_, answerIndex) => {
+    const option = document.createElement("option");
+    option.value = answerIndex;
+    option.textContent = `Answer ${answerIndex + 1}`;
+    option.selected = question.correct === answerIndex;
+    correctSelect.append(option);
+  });
+
+  questionCard.append(legend, questionLabel, questionInput, answerGrid, correctLabel, correctSelect);
+  return questionCard;
+}
+
+function readCreatorQuestions() {
+  const cards = creatorFields.querySelectorAll(".creator-question-card");
+
+  return Array.from(cards).map((card, index) => {
+    const answerInputs = card.querySelectorAll(".creator-answer input");
+
+    return {
+      text: card.querySelector(`#question-${index}`).value.trim(),
+      answers: Array.from(answerInputs).map((input) => input.value.trim()),
+      correct: Number.parseInt(card.querySelector(`#question-${index}-correct`).value, 10),
+    };
+  });
+}
+
+function renderCreatorFields(count, quizQuestions = readCreatorQuestions()) {
+  const safeCount = clampQuestionCount(count);
+  questionTotalInput.value = safeCount;
+  creatorFields.innerHTML = "";
+
+  for (let index = 0; index < safeCount; index += 1) {
+    const question = quizQuestions[index] || createBlankQuestion();
+    creatorFields.append(makeQuestionCard(question, index));
+  }
+}
+
+function normalizeQuizQuestions(quizQuestions, mode = "scored") {
+  if (!Array.isArray(quizQuestions)) {
+    return [];
+  }
+
+  return quizQuestions
+    .map((question) => {
+      const questionText = question.text ?? question.question ?? "";
+      const answers = Array.isArray(question.answers) ? question.answers.map((answer) => String(answer).trim()) : [];
+      const correctAnswerIndex = answers.findIndex((answer) => answer === question.correctAnswer);
+      const correct = Number.parseInt(question.correct ?? question.correctIndex ?? correctAnswerIndex, 10);
+
+      return {
+        text: String(questionText).trim(),
+        answers: answers.slice(0, 4),
+        correct: Number.isInteger(correct) ? correct : 0,
+      };
+    })
+    .filter((question) => {
+      const hasQuestionAndAnswers = question.text && question.answers.length === 4 && question.answers.every(Boolean);
+
+      if (mode === "opinion") {
+        return hasQuestionAndAnswers;
+      }
+
+      return hasQuestionAndAnswers && question.correct >= 0 && question.correct <= 3;
+    });
+}
+
+function getMissingCreatorFields(quizQuestions) {
+  const missingFields = [];
+
+  quizQuestions.forEach((question, index) => {
+    if (!question.text) {
+      missingFields.push(`Clue ${index + 1} needs question text.`);
+    }
+
+    question.answers.forEach((answer, answerIndex) => {
+      if (!answer) {
+        missingFields.push(`Clue ${index + 1}, answer ${answerIndex + 1} needs words.`);
+      }
+    });
+  });
+
+  return missingFields;
+}
+
+function hideMainSections() {
+  playerGate.classList.add("hidden");
+  createPlayerCard.classList.add("hidden");
+  loginPlayerCard.classList.add("hidden");
+  gameMenuCard.classList.add("hidden");
+  startCard.classList.add("hidden");
+  safeQuizCard.classList.add("hidden");
+  myQuizzesCard.classList.add("hidden");
+  sharedQuizCard.classList.add("hidden");
+  creatorCard.classList.add("hidden");
+  quizCard.classList.add("hidden");
+  resultCard.classList.add("hidden");
+  starLeaderboardCard.classList.add("hidden");
+  miniGameCard.classList.add("hidden");
+  shopCard.classList.add("hidden");
+  friendsCard.classList.add("hidden");
+  chatCard.classList.add("hidden");
+  voiceCallCard.classList.add("hidden");
+  videoCallCard.classList.add("hidden");
+  diaryCard.classList.add("hidden");
+}
+
+function showPlayerGate() {
+  hideMainSections();
+  updateProfileBar();
+  playerGate.classList.remove("hidden");
+}
+
+function showCreatePlayer() {
+  hideMainSections();
+  createPlayerMessage.textContent = "";
+  const avatar = getUnlockedAvatar(activePlayer?.avatar || createDefaultAvatar());
+  selectedAvatar = {
+    ...createDefaultAvatar(),
+    ...avatar,
+  };
+  newPlayerNickname.value = activePlayer?.nickname || "";
+  avatarNameInput.value = avatar.avatarName || "";
+  createPlayerCard.classList.remove("hidden");
+  updateAvatarPreview();
+}
+
+function showLoginPlayer() {
+  hideMainSections();
+  loginPlayerMessage.textContent = "";
+  loginPlayerCard.classList.remove("hidden");
+}
+
+function showStart() {
+  if (!activePlayer && !guestMode) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  applyPurchasedEffects();
+  updateGamePackStatuses();
+  gameMenuCard.classList.remove("hidden");
+}
+
+function showBestieQuizHome() {
+  if (!activePlayer && !guestMode) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  applyPurchasedEffects();
+  startCard.classList.remove("hidden");
+}
+
+function showShop() {
+  if (!activePlayer && !guestMode) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  shopMessage.textContent = "";
+  renderShop();
+  shopCard.classList.remove("hidden");
+}
+
+function showStarLeaderboard() {
+  if (!activePlayer && !guestMode) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateStarLeaderboard({ askGuestNickname: false });
+  renderStarLeaderboard();
+  starLeaderboardCard.classList.remove("hidden");
+}
+
+function showFriends() {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  friendsMessage.textContent = "";
+  friendCodeInput.value = "";
+  renderFriends();
+  friendsCard.classList.remove("hidden");
+}
+
+function showChat() {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  stopVideoPreview();
+  hideMainSections();
+  updateProfileBar();
+  selectedChatFriendCode = "";
+  chatMessage.textContent = "";
+  chatMessageInput.value = "";
+  renderQuickChatControls();
+  renderChatFriends();
+  updateChatControls();
+  chatCard.classList.remove("hidden");
+}
+
+function showVoiceCall() {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  stopVideoPreview();
+  hideMainSections();
+  updateProfileBar();
+  selectedVoiceFriendCode = "";
+  voiceCallMuted = false;
+  voiceCallPeople = [activePlayer.friendCode];
+  renderVoiceCallFriends();
+  updateVoiceCallControls();
+  voiceCallCard.classList.remove("hidden");
+}
+
+function showVideoCall() {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  selectedVideoFriendCode = "";
+  videoMicMuted = false;
+  videoCameraOff = false;
+  renderVideoCallFriends();
+  updateVideoCallControls();
+  videoCallCard.classList.remove("hidden");
+}
+
+function showDiary() {
+  if (!hasPurchased("daily-diary")) {
+    showShop();
+    shopMessage.textContent = "Unlock Daily Diary in the shop first.";
+    return;
+  }
+
+  hideMainSections();
+  renderDiaryUnlockPanels();
+  renderDiaryHistory();
+  diaryNote.value = "";
+  diaryMessage.textContent = "";
+  diaryCard.classList.remove("hidden");
+}
+
+function showCreator() {
+  hideMainSections();
+  creatorMessage.textContent = "";
+  friendLinkMessage.textContent = "";
+  creatorCard.classList.remove("hidden");
+}
+
+function showNewQuizCreator() {
+  editingQuizId = "";
+  activeQuizId = "";
+  quizTitleInput.value = "";
+  quizThemeInput.value = "Best Friend";
+  renderCreatorFields(minQuestions, []);
+  showCreator();
+}
+
+function showQuizEditor(quizId) {
+  const quiz = findSavedQuizById(quizId);
+
+  if (!quiz) {
+    showMyQuizzes();
+    myQuizzesMessage.textContent = "That quiz could not be found.";
+    return;
+  }
+
+  editingQuizId = quiz.id;
+  activeQuizId = quiz.id;
+  quizTitleInput.value = quiz.title;
+  quizThemeInput.value = quiz.theme || "";
+  renderCreatorFields(quiz.questions.length || minQuestions, quiz.questions);
+  showCreator();
+}
+
+function showSavedQuizEditor() {
+  if (activeQuizId) {
+    showQuizEditor(activeQuizId);
+    return;
+  }
+
+  showMyQuizzes();
+}
+
+function showSafeQuizzes() {
+  hideMainSections();
+  safeQuizCard.classList.remove("hidden");
+}
+
+function showMyQuizzes() {
+  if (!activePlayer && !guestMode) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  renderMyQuizzes();
+  myQuizzesCard.classList.remove("hidden");
+}
+
+function showSharedQuiz() {
+  hideMainSections();
+  sharedQuizMessage.textContent = "";
+  activeOnlineQuizId = "";
+  sharedLinkPanel.classList.add("hidden");
+  startSharedLinkQuizButton.classList.add("hidden");
+  sharedQuizCard.classList.remove("hidden");
+}
+
+function showQuiz() {
+  hideMainSections();
+  editCurrentQuizButton.classList.toggle("hidden", activeQuizSource === "shared");
+  quizCard.classList.remove("hidden");
+}
+
+function shuffleArray(items) {
+  const shuffledItems = items.slice();
+
+  for (let index = shuffledItems.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffledItems[index], shuffledItems[randomIndex]] = [shuffledItems[randomIndex], shuffledItems[index]];
+  }
+
+  return shuffledItems;
+}
+
+function getMiniGameQuestionPool(game) {
+  const freeQuestions = Array.isArray(game.freeQuestions) ? game.freeQuestions : [];
+  const packQuestions = game.packId && hasPurchased(game.packId) && Array.isArray(game.packQuestions) ? game.packQuestions : [];
+  return [...freeQuestions, ...packQuestions];
+}
+
+function createMiniGameRound(game) {
+  const questionPool = getMiniGameQuestionPool(game);
+  const roundSize = Math.min(game.roundSize || questionPool.length, questionPool.length);
+  return shuffleArray(questionPool).slice(0, roundSize);
+}
+
+function startMiniGame(gameId) {
+  const game = builtInGames[gameId];
+
+  if (!game) {
+    showStart();
+    return;
+  }
+
+  activeMiniGame = gameId;
+  miniGameQuestionIndex = 0;
+  miniGameCorrectAnswers = 0;
+  miniGameResultScores = {};
+  miniGameAwarded = false;
+  miniGameRoundQuestions = createMiniGameRound(game);
+  hideMainSections();
+  miniGameCard.classList.remove("hidden");
+  renderMiniGameQuestion();
+}
+
+function renderMiniGameQuestion() {
+  const game = builtInGames[activeMiniGame];
+  const question = miniGameRoundQuestions[miniGameQuestionIndex];
+
+  if (!game || !question) {
+    finishMiniGame();
+    return;
+  }
+
+  miniGameEyebrow.textContent = game.eyebrow;
+  miniGameTitle.textContent = game.title;
+  miniGameProgress.textContent = `Question ${miniGameQuestionIndex + 1} of ${miniGameRoundQuestions.length}`;
+  miniGameQuestion.textContent = question.text;
+  miniGameChoices.innerHTML = "";
+  miniGameResult.classList.add("hidden");
+  miniGameQuestion.classList.remove("hidden");
+  miniGameProgress.classList.remove("hidden");
+
+  question.answers.forEach((answer, answerIndex) => {
+    const button = document.createElement("button");
+    button.className = "answer-button";
+    button.type = "button";
+    button.textContent = typeof answer === "string" ? answer : answer.text;
+    button.addEventListener("click", () => chooseMiniGameAnswer(answer, answerIndex));
+    miniGameChoices.append(button);
+  });
+}
+
+function chooseMiniGameAnswer(answer, answerIndex) {
+  const game = builtInGames[activeMiniGame];
+  const question = miniGameRoundQuestions[miniGameQuestionIndex];
+
+  if (game.type === "scored" && answerIndex === question.correct) {
+    miniGameCorrectAnswers += 1;
+  }
+
+  if (game.type === "personality") {
+    const answerTypes = Array.isArray(answer.types) ? answer.types : [answer.type];
+    answerTypes.filter(Boolean).forEach((type) => {
+      miniGameResultScores[type] = (miniGameResultScores[type] || 0) + 1;
+    });
+  }
+
+  miniGameQuestionIndex += 1;
+
+  if (miniGameQuestionIndex >= miniGameRoundQuestions.length) {
+    finishMiniGame();
+    return;
+  }
+
+  renderMiniGameQuestion();
+}
+
+function getTopPersonalityType(game) {
+  const resultKeys = Object.keys(game.resultTypes);
+  const highestScore = Math.max(...resultKeys.map((type) => miniGameResultScores[type] || 0));
+  const tiedTypes = resultKeys.filter((type) => (miniGameResultScores[type] || 0) === highestScore);
+  const chosenType = tiedTypes[Math.floor(Math.random() * tiedTypes.length)];
+
+  return game.resultTypes[chosenType];
+}
+
+function finishMiniGame() {
+  const game = builtInGames[activeMiniGame];
+
+  if (!game) {
+    showStart();
+    return;
+  }
+
+  let earnedStars = game.stars || 0;
+  let resultTitle = game.resultTitle || "Game complete!";
+  let resultMessage = game.resultMessage || "You finished the round.";
+
+  if (game.type === "vibe") {
+    const vibes = ["Cozy Mystery Vibe", "Soft Star Vibe", "Creative Bestie Vibe"];
+    resultTitle = vibes[miniGameQuestionIndex % vibes.length];
+    resultMessage = "Your quick choices made a sweet little vibe result.";
+  }
+
+  if (game.type === "personality") {
+    const personalityResult = getTopPersonalityType(game);
+    resultTitle = personalityResult.title;
+    resultMessage = `${personalityResult.description} Traits: ${personalityResult.traits.join(", ")}. Badge: ${personalityResult.badge}.`;
+  }
+
+  if (game.type === "scored") {
+    earnedStars = miniGameCorrectAnswers;
+    resultTitle = `${miniGameCorrectAnswers}/${miniGameRoundQuestions.length} correct`;
+    resultMessage = miniGameCorrectAnswers >= 4 ? "Great favourite guessing!" : "Nice try! Every guess is part of the case.";
+  }
+
+  if (!miniGameAwarded && earnedStars > 0) {
+    addStars(earnedStars);
+    miniGameAwarded = true;
+  }
+
+  miniGameProgress.classList.add("hidden");
+  miniGameQuestion.classList.add("hidden");
+  miniGameChoices.innerHTML = "";
+  miniGameResultTitle.textContent = resultTitle;
+  miniGameResultMessage.textContent = resultMessage;
+  miniGameStars.textContent = `You earned ${earnedStars} stars!`;
+  miniGameResult.classList.remove("hidden");
+  updateProfileBar();
+}
+
+function startQuiz(quizQuestions = getSavedQuizzes()[0]?.questions || getSavedQuiz(), source = "custom", mode = "scored", quizId = "") {
+  const normalizedQuestions = normalizeQuizQuestions(quizQuestions, mode);
+
+  if (normalizedQuestions.length === 0) {
+    showCreator();
+    creatorMessage.textContent = "Save a quiz first, then you can play it.";
+    return;
+  }
+
+  questions = normalizedQuestions;
+  activeQuizSource = source;
+  activeQuizMode = mode;
+  activeQuizId = source === "custom" ? quizId : "";
+  activeOnlineQuizId = source === "online" ? quizId : "";
+  currentQuestion = 0;
+  correctAnswers = 0;
+  latestResult = null;
+  nicknameInput.value = "";
+  showQuiz();
+  showQuestion();
+}
+
+function showQuestion() {
+  const question = questions[currentQuestion];
+
+  questionCount.textContent = activeQuizMode === "opinion" ? `Choice ${currentQuestion + 1} of ${questions.length}` : `Question ${currentQuestion + 1} of ${questions.length}`;
+  scoreCount.textContent = activeQuizMode === "opinion" ? `Picked ${currentQuestion}/${questions.length}` : `Score ${correctAnswers}/${questions.length}`;
+  questionText.textContent = question.text;
+  answerList.innerHTML = "";
+
+  question.answers.forEach((answer, index) => {
+    const button = document.createElement("button");
+    button.className = "answer-button";
+    button.type = "button";
+    button.textContent = answer;
+    button.addEventListener("click", () => chooseAnswer(index));
+    answerList.append(button);
+  });
+}
+
+function chooseAnswer(answerIndex) {
+  if (activeQuizMode !== "opinion" && answerIndex === questions[currentQuestion].correct) {
+    correctAnswers += 1;
+  }
+
+  currentQuestion += 1;
+
+  if (currentQuestion >= questions.length) {
+    showResult();
+    return;
+  }
+
+  showQuestion();
+}
+
+function getResultMessage(scorePercentage) {
+  if (scorePercentage === 100) {
+    return "Perfect score!";
+  }
+
+  if (scorePercentage >= 80) {
+    return "Great job!";
+  }
+
+  if (scorePercentage >= 60) {
+    return "Good!";
+  }
+
+  if (scorePercentage >= 40) {
+    return "Not bad!";
+  }
+
+  return "Nice try!";
+}
+
+function showResult() {
+  const totalQuestions = questions.length;
+  const scorePercentage = activeQuizMode === "opinion" ? 100 : Math.round((correctAnswers / totalQuestions) * 100);
+  const message = activeQuizMode === "opinion" ? "Done!" : getResultMessage(scorePercentage);
+  const earnedStars = activeQuizMode === "opinion" ? 0 : correctAnswers;
+
+  if (earnedStars > 0) {
+    addStars(earnedStars);
+  }
+
+  latestResult = {
+    scorePercentage,
+    correctAnswers: activeQuizMode === "opinion" ? totalQuestions : correctAnswers,
+    totalQuestions,
+    message,
+    earnedStars,
+  };
+
+  resultScore.textContent = activeQuizMode === "opinion" ? `${totalQuestions}/${totalQuestions} choices made` : `${scorePercentage}% • ${correctAnswers}/${totalQuestions}`;
+  document.querySelector("#stars-earned").textContent = `You earned ${earnedStars} stars!`;
+  resultMessage.textContent = message;
+  nicknameInput.value = activePlayer ? activePlayer.nickname : "";
+  nicknameInput.disabled = Boolean(activePlayer);
+  editQuizButton.classList.toggle("hidden", activeQuizSource === "shared");
+  quizCard.classList.add("hidden");
+  resultCard.classList.remove("hidden");
+
+  if (!activePlayer) {
+    nicknameInput.focus();
+  }
+}
+
+function getLeaderboard() {
+  const savedLeaderboard = localStorage.getItem(leaderboardKey);
+
+  if (!savedLeaderboard) {
+    return [];
+  }
+
+  try {
+    const leaderboard = JSON.parse(savedLeaderboard);
+    return Array.isArray(leaderboard) ? leaderboard : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLeaderboard(leaderboard) {
+  localStorage.setItem(leaderboardKey, JSON.stringify(leaderboard));
+}
+
+function getQuizLeaderboards() {
+  const savedLeaderboards = localStorage.getItem(quizLeaderboardsKey);
+
+  if (!savedLeaderboards) {
+    return {};
+  }
+
+  try {
+    const leaderboards = JSON.parse(savedLeaderboards);
+    return leaderboards && typeof leaderboards === "object" && !Array.isArray(leaderboards) ? leaderboards : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveQuizLeaderboards(leaderboards) {
+  localStorage.setItem(quizLeaderboardsKey, JSON.stringify(leaderboards));
+}
+
+function getQuizLeaderboard(quizId) {
+  const leaderboards = getQuizLeaderboards();
+  return Array.isArray(leaderboards[quizId]) ? leaderboards[quizId] : [];
+}
+
+function saveQuizLeaderboard(quizId, leaderboard) {
+  const leaderboards = getQuizLeaderboards();
+  leaderboards[quizId] = leaderboard;
+  saveQuizLeaderboards(leaderboards);
+}
+
+function getStarTitle(stars) {
+  if (stars >= 200) {
+    return "Ultimate Star Collector";
+  }
+
+  if (stars >= 100) {
+    return "Star Legend";
+  }
+
+  if (stars >= 50) {
+    return "Mystery Pro";
+  }
+
+  if (stars >= 20) {
+    return "Rising Star";
+  }
+
+  return "New Player";
+}
+
+function getStarLeaderboard() {
+  const savedLeaderboard = localStorage.getItem(starLeaderboardKey);
+
+  if (!savedLeaderboard) {
+    return [];
+  }
+
+  try {
+    const leaderboard = JSON.parse(savedLeaderboard);
+    return Array.isArray(leaderboard) ? leaderboard : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStarLeaderboard(leaderboard) {
+  localStorage.setItem(starLeaderboardKey, JSON.stringify(leaderboard));
+}
+
+function sortStarLeaderboard(leaderboard) {
+  return leaderboard
+    .slice()
+    .sort((firstPlayer, secondPlayer) => {
+      if (secondPlayer.stars !== firstPlayer.stars) {
+        return secondPlayer.stars - firstPlayer.stars;
+      }
+
+      return new Date(secondPlayer.updatedAt).getTime() - new Date(firstPlayer.updatedAt).getTime();
+    })
+    .slice(0, maxLeaderboardEntries);
+}
+
+function getGuestStarNickname(askGuestNickname = true) {
+  const savedNickname = localStorage.getItem(guestStarNicknameKey);
+
+  if (savedNickname) {
+    return savedNickname;
+  }
+
+  if (!askGuestNickname) {
+    return "";
+  }
+
+  const nickname = prompt("Use a nickname, not your real full name.");
+  const nicknameCheck = validateNickname(nickname || "");
+
+  if (nicknameCheck.message) {
+    alert(nicknameCheck.message);
+    return "";
+  }
+
+  registerUsedNickname(nicknameCheck.displayName);
+  localStorage.setItem(guestStarNicknameKey, nicknameCheck.displayName);
+  return nicknameCheck.displayName;
+}
+
+function updateStarLeaderboard({ askGuestNickname = true } = {}) {
+  const stars = getStarBalance();
+  const nickname = activePlayer ? activePlayer.nickname : getGuestStarNickname(askGuestNickname);
+
+  if (!nickname) {
+    return;
+  }
+
+  const avatar = activePlayer ? activePlayer.avatar : null;
+  const existingLeaderboard = getStarLeaderboard();
+  const existingEntry = existingLeaderboard.find((entry) => normalizeNickname(entry.nickname) === normalizeNickname(nickname));
+  const updatedEntry = {
+    ...existingEntry,
+    nickname,
+    avatar,
+    stars,
+    title: getStarTitle(stars),
+    updatedAt: new Date().toISOString(),
+  };
+  const updatedLeaderboard = existingEntry
+    ? existingLeaderboard.map((entry) => (normalizeNickname(entry.nickname) === normalizeNickname(nickname) ? updatedEntry : entry))
+    : [...existingLeaderboard, updatedEntry];
+
+  registerUsedNickname(nickname);
+  saveStarLeaderboard(sortStarLeaderboard(updatedLeaderboard));
+}
+
+function renderStarLeaderboard() {
+  const leaderboard = sortStarLeaderboard(getStarLeaderboard());
+
+  if (leaderboard.length === 0) {
+    starLeaderboardList.innerHTML = '<p class="empty-leaderboard">No star rankings yet. Earn stars from games and quizzes to join the board.</p>';
+    return;
+  }
+
+  starLeaderboardList.innerHTML = "";
+
+  leaderboard.forEach((entry, index) => {
+    const row = document.createElement("article");
+    row.className = "leaderboard-entry star-entry";
+
+    const rankBadge = document.createElement("div");
+    rankBadge.className = "rank-badge";
+    rankBadge.textContent = index + 1;
+
+    const playerDetails = document.createElement("div");
+    const playerLine = document.createElement("div");
+    playerLine.className = "player-line";
+    const playerAvatar = document.createElement("div");
+    renderAvatar(playerAvatar, getLatestAvatarForNickname(entry.nickname, entry.avatar));
+    const playerName = document.createElement("p");
+    playerName.className = "player-name";
+    playerName.textContent = entry.nickname;
+    playerLine.append(playerAvatar, playerName);
+
+    const playerMessage = document.createElement("p");
+    playerMessage.className = "player-message";
+    const updatedTime = entry.updatedAt ? new Date(entry.updatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "";
+    playerMessage.textContent = updatedTime ? `${entry.title} • Updated ${updatedTime}` : entry.title;
+    playerDetails.append(playerLine, playerMessage);
+
+    const playerScore = document.createElement("div");
+    playerScore.className = "player-score";
+    const score = document.createElement("span");
+    score.textContent = entry.stars;
+    playerScore.append(score, "stars");
+
+    row.append(rankBadge, playerDetails, playerScore);
+    starLeaderboardList.append(row);
+  });
+}
+
+function sortLeaderboard(leaderboard) {
+  return leaderboard
+    .slice()
+    .sort((firstPlayer, secondPlayer) => {
+      if (secondPlayer.scorePercentage !== firstPlayer.scorePercentage) {
+        return secondPlayer.scorePercentage - firstPlayer.scorePercentage;
+      }
+
+      return firstPlayer.createdAt - secondPlayer.createdAt;
+    })
+    .slice(0, maxLeaderboardEntries);
+}
+
+function cleanNickname(nickname) {
+  return cleanPlayerNickname(nickname);
+}
+
+function addToLeaderboard(event) {
+  event.preventDefault();
+
+  if (!latestResult) {
+    return;
+  }
+
+  const nickname = activePlayer ? activePlayer.nickname : cleanNickname(nicknameInput.value);
+  const nicknameCheck = activePlayer
+    ? { displayName: activePlayer.nickname, message: "" }
+    : validateNickname(nickname);
+
+  if (nicknameCheck.message) {
+    leaderboardNicknameMessage.textContent = nicknameCheck.message;
+    return;
+  }
+
+  const newEntry = {
+    id: crypto.randomUUID(),
+    nickname: nicknameCheck.displayName,
+    avatar: activePlayer ? activePlayer.avatar : null,
+    scorePercentage: latestResult.scorePercentage,
+    correctAnswers: latestResult.correctAnswers,
+    totalQuestions: latestResult.totalQuestions,
+    message: latestResult.message,
+    quizId: activeQuizId,
+    createdAt: Date.now(),
+  };
+
+  const leaderboard = sortLeaderboard([...getLeaderboard(), newEntry]);
+  saveLeaderboard(leaderboard);
+  registerUsedNickname(newEntry.nickname);
+  leaderboardNicknameMessage.textContent = "Score saved to the leaderboard.";
+
+  if (activeQuizId) {
+    const quizLeaderboard = sortLeaderboard([...getQuizLeaderboard(activeQuizId), newEntry]);
+    saveQuizLeaderboard(activeQuizId, quizLeaderboard);
+  }
+
+  if (activeOnlineQuizId && onlineQuizSharing.isConfigured) {
+    onlineQuizSharing.saveScore({
+      quizId: activeOnlineQuizId,
+      nickname: newEntry.nickname,
+      scorePercent: newEntry.scorePercentage,
+      correctAnswers: newEntry.correctAnswers,
+      totalQuestions: newEntry.totalQuestions,
+      resultMessage: newEntry.message,
+    }).catch(() => {
+      // The local leaderboard already saved the score; online retry can be added with the backend.
+    });
+  }
+
+  renderLeaderboard();
+
+  if (!activePlayer) {
+    nicknameInput.value = "";
+  }
+}
+
+function renderLeaderboard() {
+  const leaderboard = activeQuizId ? sortLeaderboard(getQuizLeaderboard(activeQuizId)) : sortLeaderboard(getLeaderboard());
+  const activeQuiz = activeQuizId ? findSavedQuizById(activeQuizId) : null;
+
+  if (leaderboard.length === 0) {
+    leaderboardList.innerHTML = `<p class="empty-leaderboard">${activeQuiz ? `No scores yet for ${activeQuiz.title}.` : "No scores yet. Be the first star on the board! ♥"}</p>`;
+    return;
+  }
+
+  leaderboardList.innerHTML = "";
+
+  leaderboard.forEach((entry, index) => {
+    const row = document.createElement("article");
+    row.className = "leaderboard-entry";
+
+    const rankBadge = document.createElement("div");
+    rankBadge.className = "rank-badge";
+    rankBadge.textContent = index + 1;
+
+    const playerDetails = document.createElement("div");
+    const playerLine = document.createElement("div");
+    playerLine.className = "player-line";
+    const playerAvatar = document.createElement("div");
+    renderAvatar(playerAvatar, getLatestAvatarForNickname(entry.nickname, entry.avatar));
+    const playerName = document.createElement("p");
+    playerName.className = "player-name";
+    playerName.textContent = entry.nickname;
+    playerLine.append(playerAvatar, playerName);
+    const playerMessage = document.createElement("p");
+    playerMessage.className = "player-message";
+    playerMessage.textContent = entry.message;
+    playerDetails.append(playerLine, playerMessage);
+
+    const playerScore = document.createElement("div");
+    playerScore.className = "player-score";
+    const scorePercentage = document.createElement("span");
+    scorePercentage.textContent = `${entry.scorePercentage}%`;
+    playerScore.append(scorePercentage, `${entry.correctAnswers}/${entry.totalQuestions}`);
+
+    row.append(rankBadge, playerDetails, playerScore);
+    leaderboardList.append(row);
+  });
+}
+
+function normalizeFriendCode(code) {
+  return code.trim().toUpperCase();
+}
+
+function findProfileByFriendCode(code) {
+  const friendCode = normalizeFriendCode(code);
+  return getPlayerProfiles().find((profile) => normalizeFriendCode(profile.friendCode || "") === friendCode) || null;
+}
+
+async function copyFriendCode() {
+  if (!activePlayer?.friendCode) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(activePlayer.friendCode);
+    friendsMessage.textContent = "Friend code copied.";
+  } catch {
+    friendsMessage.textContent = `Your friend code is ${activePlayer.friendCode}.`;
+  }
+}
+
+function addFriendByCode() {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  const friendCode = normalizeFriendCode(friendCodeInput.value);
+  const friendProfile = findProfileByFriendCode(friendCode);
+
+  if (!friendProfile) {
+    friendsMessage.textContent = "Friend code not found. Please check and try again.";
+    return;
+  }
+
+  if (friendProfile.friendCode === activePlayer.friendCode) {
+    friendsMessage.textContent = "That is your own friend code.";
+    return;
+  }
+
+  const friends = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+
+  if (friends.includes(friendProfile.friendCode)) {
+    friendsMessage.textContent = "That friend is already in your list.";
+    return;
+  }
+
+  updateActivePlayerProfile({ friends: [...friends, friendProfile.friendCode] });
+  friendCodeInput.value = "";
+  friendsMessage.textContent = `${friendProfile.nickname} added to My Friends.`;
+  renderFriends();
+}
+
+function removeFriend(friendCode) {
+  if (!activePlayer) {
+    return;
+  }
+
+  const shouldRemove = confirm("Remove this friend from your list?");
+
+  if (!shouldRemove) {
+    return;
+  }
+
+  const friends = (activePlayer.friends || []).filter((savedFriendCode) => savedFriendCode !== friendCode);
+  updateActivePlayerProfile({ friends });
+  friendsMessage.textContent = "Friend removed.";
+  renderFriends();
+}
+
+function blockFriend(friendCode) {
+  if (!activePlayer) {
+    return;
+  }
+
+  const shouldBlock = confirm("Block this friend from chat and calls?");
+
+  if (!shouldBlock) {
+    return;
+  }
+
+  const blockedFriends = Array.isArray(activePlayer.blockedFriends) ? activePlayer.blockedFriends : [];
+  const friends = (activePlayer.friends || []).filter((savedFriendCode) => savedFriendCode !== friendCode);
+  updateActivePlayerProfile({
+    friends,
+    blockedFriends: blockedFriends.includes(friendCode) ? blockedFriends : [...blockedFriends, friendCode],
+  });
+  friendsMessage.textContent = "Friend blocked and removed from your list.";
+  selectedChatFriendCode = "";
+  selectedVoiceFriendCode = "";
+  selectedVideoFriendCode = "";
+  renderFriends();
+}
+
+function isFriendBlocked(friendCode) {
+  return Array.isArray(activePlayer?.blockedFriends) && activePlayer.blockedFriends.includes(friendCode);
+}
+
+function getChatMessages() {
+  const savedMessages = localStorage.getItem(friendChatKey);
+
+  if (!savedMessages) {
+    return [];
+  }
+
+  try {
+    const messages = JSON.parse(savedMessages);
+    return Array.isArray(messages) ? messages : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveChatMessages(messages) {
+  localStorage.setItem(friendChatKey, JSON.stringify(messages));
+}
+
+function getChatId(friendCode) {
+  if (!activePlayer?.friendCode || !friendCode) {
+    return "";
+  }
+
+  return [activePlayer.friendCode, friendCode].sort().join("__");
+}
+
+function getActiveChatMessages() {
+  const chatId = getChatId(selectedChatFriendCode);
+  return getChatMessages()
+    .filter((message) => message.chatId === chatId)
+    .sort((firstMessage, secondMessage) => firstMessage.createdAt - secondMessage.createdAt);
+}
+
+function hasUnsafeChatContent(messageText) {
+  const lowerMessage = messageText.toLowerCase();
+  const hasLink = /https?:\/\/|www\.|\.com|\.net|\.org|\.io|\.gg|\.co\b/.test(lowerMessage);
+  const hasEmail = /[^\s@]+@[^\s@]+\.[^\s@]+/.test(lowerMessage);
+  const hasPhone = /(?:\d[\s().-]?){7,}/.test(lowerMessage);
+  const hasBlockedWord = blockedChatWords.some((word) => lowerMessage.includes(word));
+  return hasLink || hasEmail || hasPhone || hasBlockedWord;
+}
+
+function validateChatMessage(messageText) {
+  const safeMessage = messageText.trim();
+
+  if (!safeMessage) {
+    return { ok: false, message: "Please write a message first." };
+  }
+
+  if (safeMessage.length > 150 || hasUnsafeChatContent(safeMessage)) {
+    return { ok: false, message: "Please keep messages safe and friendly." };
+  }
+
+  return { ok: true, text: safeMessage };
+}
+
+function renderQuickChatControls() {
+  quickMessageList.innerHTML = "";
+  stickerReactionList.innerHTML = "";
+
+  quickChatMessages.forEach((messageText) => {
+    const button = document.createElement("button");
+    button.className = "secondary-button quick-chat-button";
+    button.type = "button";
+    button.textContent = messageText;
+    button.addEventListener("click", () => sendChatMessage(messageText, "quick"));
+    quickMessageList.append(button);
+  });
+
+  stickerReactions.forEach((sticker) => {
+    const button = document.createElement("button");
+    button.className = "secondary-button quick-chat-button";
+    button.type = "button";
+    button.textContent = sticker.text;
+    button.addEventListener("click", () => sendChatMessage(sticker.text, "sticker", sticker.label));
+    stickerReactionList.append(button);
+  });
+}
+
+function renderChatFriends() {
+  chatFriendList.innerHTML = "";
+
+  if (!activePlayer) {
+    return;
+  }
+
+  const profiles = getPlayerProfiles();
+  const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
+
+  if (availableFriends.length === 0) {
+    chatFriendList.innerHTML = '<p class="empty-leaderboard">No friends available to chat. Add a friend code first.</p>';
+    return;
+  }
+
+  availableFriends.forEach((friendCode) => {
+    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
+    const row = document.createElement("article");
+    row.className = selectedChatFriendCode === friendCode ? "friend-entry selected-call-friend" : "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, friendProfile?.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const name = document.createElement("h3");
+    name.textContent = friendProfile?.nickname || "Friend not found on this device";
+    const code = document.createElement("p");
+    code.textContent = friendCode;
+    details.append(name, code);
+
+    const chooseButton = document.createElement("button");
+    chooseButton.className = "secondary-button";
+    chooseButton.type = "button";
+    chooseButton.textContent = "Choose Chat";
+    chooseButton.addEventListener("click", () => {
+      selectedChatFriendCode = friendCode;
+      chatMessage.textContent = "";
+      updateChatControls();
+      renderChatFriends();
+    });
+
+    row.append(avatar, details, chooseButton);
+    chatFriendList.append(row);
+  });
+}
+
+function renderChatHistory() {
+  chatHistory.innerHTML = "";
+
+  if (!selectedChatFriendCode) {
+    chatHistory.innerHTML = '<p class="empty-leaderboard">Choose a friend to see messages.</p>';
+    return;
+  }
+
+  const messages = getActiveChatMessages();
+
+  if (messages.length === 0) {
+    chatHistory.innerHTML = '<p class="empty-leaderboard">No messages yet. Send a safe hello.</p>';
+    return;
+  }
+
+  messages.forEach((message) => {
+    const bubble = document.createElement("article");
+    bubble.className = message.senderCode === activePlayer.friendCode ? "chat-bubble mine" : "chat-bubble";
+
+    const meta = document.createElement("p");
+    meta.className = "chat-meta";
+    const sentAt = new Date(message.createdAt);
+    meta.textContent = `${message.senderNickname} • ${sentAt.toLocaleDateString()} ${sentAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+
+    const text = document.createElement("p");
+    text.className = "chat-text";
+    text.textContent = message.text;
+
+    bubble.append(meta, text);
+    chatHistory.append(bubble);
+  });
+
+  chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function updateChatControls() {
+  const selectedProfile = findProfileByFriendCode(selectedChatFriendCode);
+  chatSelectedFriend.textContent = selectedProfile ? selectedProfile.nickname : "Choose a friend to chat with.";
+  sendChatMessageButton.disabled = !selectedProfile;
+  clearChatButton.disabled = !selectedProfile;
+  chatBlockFriendButton.disabled = !selectedProfile;
+  chatRemoveFriendButton.disabled = !selectedProfile;
+  chatMessageInput.disabled = !selectedProfile;
+  renderChatHistory();
+}
+
+function sendChatMessage(messageText, messageType = "typed", sticker = "") {
+  const selectedProfile = findProfileByFriendCode(selectedChatFriendCode);
+
+  if (!activePlayer || !selectedProfile) {
+    chatMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  const validation = validateChatMessage(messageText);
+
+  if (!validation.ok) {
+    chatMessage.textContent = validation.message;
+    return;
+  }
+
+  const messages = getChatMessages();
+  messages.push({
+    id: crypto.randomUUID(),
+    chatId: getChatId(selectedChatFriendCode),
+    senderCode: activePlayer.friendCode,
+    receiverCode: selectedChatFriendCode,
+    senderNickname: activePlayer.nickname,
+    receiverNickname: selectedProfile.nickname,
+    text: validation.text,
+    type: messageType,
+    sticker,
+    createdAt: Date.now(),
+  });
+
+  saveChatMessages(messages);
+  chatMessageInput.value = "";
+  chatMessage.textContent = "Message sent.";
+  renderChatHistory();
+}
+
+function sendTypedChatMessage() {
+  sendChatMessage(chatMessageInput.value, "typed");
+}
+
+function removeSelectedChatFriend() {
+  if (!selectedChatFriendCode) {
+    chatMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  removeFriend(selectedChatFriendCode);
+  selectedChatFriendCode = "";
+  renderChatFriends();
+  updateChatControls();
+}
+
+function blockSelectedChatFriend() {
+  if (!selectedChatFriendCode) {
+    chatMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  blockFriend(selectedChatFriendCode);
+  selectedChatFriendCode = "";
+  renderChatFriends();
+  updateChatControls();
+}
+
+function clearSelectedChat() {
+  if (!selectedChatFriendCode) {
+    chatMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  const shouldClear = confirm("Clear this chat history on this browser?");
+
+  if (!shouldClear) {
+    return;
+  }
+
+  const chatId = getChatId(selectedChatFriendCode);
+  const messages = getChatMessages().filter((message) => message.chatId !== chatId);
+  saveChatMessages(messages);
+  chatMessage.textContent = "Chat cleared on this browser.";
+  renderChatHistory();
+}
+
+function renderFriends() {
+  if (!activePlayer) {
+    return;
+  }
+
+  activePlayer = ensureFriendProfile(activePlayer);
+  saveActivePlayerProfile();
+  myFriendCode.textContent = activePlayer.friendCode;
+  friendsList.innerHTML = "";
+
+  const profiles = getPlayerProfiles();
+  const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+
+  if (friendCodes.length === 0) {
+    friendsList.innerHTML = '<p class="empty-leaderboard">No friends added yet. Share your code with someone you know.</p>';
+    return;
+  }
+
+  friendCodes.forEach((friendCode) => {
+    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
+    const row = document.createElement("article");
+    row.className = "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, friendProfile?.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+
+    const name = document.createElement("h3");
+    name.textContent = friendProfile?.nickname || "Friend not found on this device";
+
+    const code = document.createElement("p");
+    code.textContent = friendCode;
+
+    const stars = document.createElement("p");
+    stars.textContent = friendProfile ? `Stars: ${friendProfile.stars || 0}` : "This profile is not saved here anymore.";
+
+    details.append(name, code, stars);
+
+    const removeButton = document.createElement("button");
+    removeButton.className = "secondary-button";
+    removeButton.type = "button";
+    removeButton.textContent = "Remove Friend";
+    removeButton.addEventListener("click", () => removeFriend(friendCode));
+
+    const blockButton = document.createElement("button");
+    blockButton.className = "secondary-button";
+    blockButton.type = "button";
+    blockButton.textContent = "Block Friend";
+    blockButton.addEventListener("click", () => blockFriend(friendCode));
+
+    row.append(avatar, details, removeButton, blockButton);
+    friendsList.append(row);
+  });
+}
+
+function renderVoiceCallFriends() {
+  voiceFriendList.innerHTML = "";
+
+  if (!activePlayer) {
+    return;
+  }
+
+  const profiles = getPlayerProfiles();
+  const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
+
+  if (availableFriends.length === 0) {
+    voiceFriendList.innerHTML = '<p class="empty-leaderboard">No friends available to call. Add a friend code first.</p>';
+    return;
+  }
+
+  availableFriends.forEach((friendCode) => {
+    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
+    const row = document.createElement("article");
+    row.className = selectedVoiceFriendCode === friendCode ? "friend-entry selected-call-friend" : "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, friendProfile?.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const name = document.createElement("h3");
+    name.textContent = friendProfile?.nickname || "Friend not found on this device";
+    const code = document.createElement("p");
+    code.textContent = friendCode;
+    details.append(name, code);
+
+    const chooseButton = document.createElement("button");
+    chooseButton.className = "secondary-button";
+    chooseButton.type = "button";
+    chooseButton.textContent = voiceCallPeople.includes(friendCode) ? "In Call List" : "Choose Friend";
+    chooseButton.addEventListener("click", () => {
+      selectedVoiceFriendCode = friendCode;
+      updateVoiceCallControls();
+      renderVoiceCallFriends();
+    });
+
+    const blockButton = document.createElement("button");
+    blockButton.className = "secondary-button";
+    blockButton.type = "button";
+    blockButton.textContent = "Block Friend";
+    blockButton.addEventListener("click", () => {
+      blockFriend(friendCode);
+      renderVoiceCallFriends();
+      updateVoiceCallControls();
+    });
+
+    row.append(avatar, details, chooseButton, blockButton);
+    voiceFriendList.append(row);
+  });
+}
+
+function renderPeopleInCall() {
+  peopleInCallList.innerHTML = "";
+  const profiles = getPlayerProfiles();
+  const people = voiceCallPeople.length > 0 ? voiceCallPeople : [activePlayer?.friendCode].filter(Boolean);
+
+  people.forEach((friendCode) => {
+    const profile = friendCode === activePlayer?.friendCode ? activePlayer : profiles.find((savedProfile) => savedProfile.friendCode === friendCode);
+    const row = document.createElement("article");
+    row.className = "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, profile?.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const name = document.createElement("h3");
+    name.textContent = profile?.nickname || "Invited friend";
+    const status = document.createElement("p");
+    status.textContent = friendCode === activePlayer?.friendCode ? "Host preview" : "Invite preview";
+    details.append(name, status);
+    row.append(avatar, details);
+    peopleInCallList.append(row);
+  });
+}
+
+function updateVoiceCallControls() {
+  const selectedProfile = findProfileByFriendCode(selectedVoiceFriendCode);
+  voiceSelectedFriend.textContent = selectedProfile ? `Selected friend: ${selectedProfile.nickname}` : "Choose a friend to call.";
+  incomingCallText.textContent = selectedProfile ? `${selectedProfile.nickname} would see an incoming call invite after backend setup.` : "No incoming call.";
+  startVoiceCallButton.disabled = !selectedProfile;
+  addFriendToCallButton.disabled = !selectedProfile;
+  acceptCallButton.disabled = true;
+  declineCallButton.disabled = true;
+  muteCallButton.disabled = true;
+  endCallButton.disabled = voiceCallPeople.length <= 1;
+  muteCallButton.textContent = voiceCallMuted ? "Unmute" : "Mute";
+  voiceCallStatus.textContent = "Status: group voice calls need online backend setup before they can work.";
+  renderPeopleInCall();
+}
+
+function renderVideoCallFriends() {
+  videoFriendList.innerHTML = "";
+
+  if (!activePlayer) {
+    return;
+  }
+
+  const profiles = getPlayerProfiles();
+  const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
+  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
+
+  if (availableFriends.length === 0) {
+    videoFriendList.innerHTML = '<p class="empty-leaderboard">No friends available to video call. Add a friend code first.</p>';
+    return;
+  }
+
+  availableFriends.forEach((friendCode) => {
+    const friendProfile = profiles.find((profile) => profile.friendCode === friendCode);
+    const row = document.createElement("article");
+    row.className = selectedVideoFriendCode === friendCode ? "friend-entry selected-call-friend" : "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, friendProfile?.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const name = document.createElement("h3");
+    name.textContent = friendProfile?.nickname || "Friend not found on this device";
+    const code = document.createElement("p");
+    code.textContent = friendCode;
+    details.append(name, code);
+
+    const chooseButton = document.createElement("button");
+    chooseButton.className = "secondary-button";
+    chooseButton.type = "button";
+    chooseButton.textContent = "Choose Friend";
+    chooseButton.addEventListener("click", () => {
+      selectedVideoFriendCode = friendCode;
+      updateVideoCallControls();
+      renderVideoCallFriends();
+    });
+
+    const removeButton = document.createElement("button");
+    removeButton.className = "secondary-button";
+    removeButton.type = "button";
+    removeButton.textContent = "Remove Friend";
+    removeButton.addEventListener("click", () => {
+      removeFriend(friendCode);
+      selectedVideoFriendCode = selectedVideoFriendCode === friendCode ? "" : selectedVideoFriendCode;
+      renderVideoCallFriends();
+      updateVideoCallControls();
+    });
+
+    const blockButton = document.createElement("button");
+    blockButton.className = "secondary-button";
+    blockButton.type = "button";
+    blockButton.textContent = "Block Friend";
+    blockButton.addEventListener("click", () => {
+      blockFriend(friendCode);
+      selectedVideoFriendCode = selectedVideoFriendCode === friendCode ? "" : selectedVideoFriendCode;
+      renderVideoCallFriends();
+      updateVideoCallControls();
+    });
+
+    row.append(avatar, details, chooseButton, removeButton, blockButton);
+    videoFriendList.append(row);
+  });
+}
+
+function updateVideoCallControls() {
+  const selectedProfile = findProfileByFriendCode(selectedVideoFriendCode);
+  videoSelectedFriend.textContent = selectedProfile ? `Selected friend: ${selectedProfile.nickname}` : "Choose a friend to video call.";
+  incomingVideoCallText.textContent = selectedProfile ? `${selectedProfile.nickname} would see an incoming video call invite after backend setup.` : "No incoming video call.";
+  startVideoCallButton.disabled = !selectedProfile;
+  acceptVideoCallButton.disabled = true;
+  declineVideoCallButton.disabled = true;
+  muteVideoCallButton.disabled = !localVideoStream;
+  toggleCameraButton.disabled = !localVideoStream;
+  endVideoCallButton.disabled = !localVideoStream;
+  muteVideoCallButton.textContent = videoMicMuted ? "Unmute Microphone" : "Mute Microphone";
+  toggleCameraButton.textContent = videoCameraOff ? "Turn Camera On" : "Turn Camera Off";
+  friendVideoPlaceholder.textContent = selectedProfile
+    ? "Live friend video needs WebRTC and backend signalling."
+    : "Choose a friend first.";
+
+  if (!localVideoStream) {
+    localVideoNote.textContent = "Camera is off.";
+    videoCallStatus.textContent = "Status: live video calls need online backend setup before friends can connect.";
+  }
+}
+
+async function startVideoCallPreview() {
+  const selectedProfile = findProfileByFriendCode(selectedVideoFriendCode);
+
+  if (!selectedProfile) {
+    videoCallStatus.textContent = "Choose a friend first.";
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    videoCallStatus.textContent = "This browser does not support camera preview here.";
+    return;
+  }
+
+  try {
+    stopVideoPreview({ keepStatus: true });
+    localVideoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideoPreview.srcObject = localVideoStream;
+    videoMicMuted = false;
+    videoCameraOff = false;
+    localVideoNote.textContent = "Camera preview is on. Nothing is recorded or saved.";
+    videoCallStatus.textContent = "Camera preview started. Live friend video needs online backend setup before friends can connect.";
+  } catch {
+    videoCallStatus.textContent = "Camera preview could not start. Check camera permission, then try again.";
+  }
+
+  updateVideoCallControls();
+}
+
+function stopVideoPreview(options = {}) {
+  if (localVideoStream) {
+    localVideoStream.getTracks().forEach((track) => track.stop());
+  }
+
+  localVideoStream = null;
+  videoMicMuted = false;
+  videoCameraOff = false;
+
+  if (localVideoPreview) {
+    localVideoPreview.srcObject = null;
+  }
+
+  if (localVideoNote && !options.keepStatus) {
+    localVideoNote.textContent = "Camera is off.";
+  }
+}
+
+function toggleVideoMic() {
+  if (!localVideoStream) {
+    videoCallStatus.textContent = "Start the camera preview first.";
+    return;
+  }
+
+  videoMicMuted = !videoMicMuted;
+  localVideoStream.getAudioTracks().forEach((track) => {
+    track.enabled = !videoMicMuted;
+  });
+  videoCallStatus.textContent = videoMicMuted ? "Microphone muted." : "Microphone unmuted.";
+  updateVideoCallControls();
+}
+
+function toggleVideoCamera() {
+  if (!localVideoStream) {
+    videoCallStatus.textContent = "Start the camera preview first.";
+    return;
+  }
+
+  videoCameraOff = !videoCameraOff;
+  localVideoStream.getVideoTracks().forEach((track) => {
+    track.enabled = !videoCameraOff;
+  });
+  localVideoNote.textContent = videoCameraOff ? "Camera is off." : "Camera preview is on. Nothing is recorded or saved.";
+  videoCallStatus.textContent = videoCameraOff ? "Camera turned off." : "Camera turned on.";
+  updateVideoCallControls();
+}
+
+function endVideoCallPreview() {
+  stopVideoPreview();
+  videoCallStatus.textContent = "Call ended. Camera and microphone are off.";
+  updateVideoCallControls();
+}
+
+function startVoiceCallPreview() {
+  if (!selectedVoiceFriendCode) {
+    voiceCallStatus.textContent = "Choose a friend first.";
+    return;
+  }
+
+  if (!voiceCallPeople.includes(selectedVoiceFriendCode)) {
+    voiceCallPeople = [...voiceCallPeople, selectedVoiceFriendCode];
+  }
+
+  voiceCallStatus.textContent = "Preview only: a real call would create a backend call room and send an invite.";
+  renderVoiceCallFriends();
+  updateVoiceCallControls();
+}
+
+function addFriendToCallPreview() {
+  if (!selectedVoiceFriendCode) {
+    voiceCallStatus.textContent = "Choose another friend to invite.";
+    return;
+  }
+
+  if (voiceCallPeople.includes(selectedVoiceFriendCode)) {
+    voiceCallStatus.textContent = "That friend is already in the call preview list.";
+    return;
+  }
+
+  voiceCallPeople = [...voiceCallPeople, selectedVoiceFriendCode];
+  voiceCallStatus.textContent = "Preview only: this would send a group call invite after backend setup.";
+  renderVoiceCallFriends();
+  updateVoiceCallControls();
+}
+
+function declineCallPreview() {
+  voiceCallStatus.textContent = "Preview only: the incoming call was declined.";
+}
+
+function endCallPreview() {
+  voiceCallPeople = activePlayer ? [activePlayer.friendCode] : [];
+  selectedVoiceFriendCode = "";
+  voiceCallMuted = false;
+  voiceCallStatus.textContent = "Call ended.";
+  renderVoiceCallFriends();
+  updateVoiceCallControls();
+}
+
+function makeDiaryChoicePanel(panel, title, options, name, lockedMessage, isUnlocked) {
+  panel.innerHTML = "";
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  panel.append(heading);
+
+  if (!isUnlocked) {
+    const lockedNote = document.createElement("p");
+    lockedNote.className = "locked-diary-note";
+    lockedNote.textContent = lockedMessage;
+    panel.append(lockedNote);
+    return;
+  }
+
+  const choices = document.createElement("div");
+  choices.className = "diary-choice-grid";
+
+  options.forEach((option, index) => {
+    const label = document.createElement("label");
+    label.className = "diary-choice";
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = name;
+    input.value = option;
+
+    if (index === 0) {
+      input.checked = true;
+    }
+
+    const span = document.createElement("span");
+    span.textContent = option;
+    label.append(input, span);
+    choices.append(label);
+  });
+
+  panel.append(choices);
+}
+
+function renderDiaryUnlockPanels() {
+  makeDiaryChoicePanel(
+    diaryMoodPanel,
+    "Mood Tracker",
+    diaryMoodOptions,
+    "diary-mood",
+    "Buy Mood Tracker in the shop to track moods.",
+    hasPurchased("mood-tracker"),
+  );
+  makeDiaryChoicePanel(
+    diaryStickerPanel,
+    "Secret Sticker Pack",
+    diaryStickerOptions,
+    "diary-sticker",
+    "Buy Secret Sticker Pack in the shop to use stickers.",
+    hasPurchased("secret-sticker-pack"),
+  );
+}
+
+function getSelectedDiaryChoice(name) {
+  return document.querySelector(`input[name="${name}"]:checked`)?.value || "";
+}
+
+function renderDiaryHistory() {
+  const entries = getDiaryEntries();
+  diaryHistory.innerHTML = "";
+
+  if (entries.length === 0) {
+    diaryHistory.innerHTML = '<p class="empty-leaderboard">No diary entries yet.</p>';
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const card = document.createElement("article");
+    card.className = "diary-entry";
+
+    const meta = document.createElement("p");
+    meta.className = "diary-entry-meta";
+    meta.textContent = [entry.date, entry.time, entry.mood && `Mood: ${entry.mood}`, entry.sticker && `Sticker: ${entry.sticker}`].filter(Boolean).join(" • ");
+
+    const text = document.createElement("p");
+    text.className = "diary-entry-text";
+    text.textContent = entry.text;
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "secondary-button";
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => deleteDiaryEntry(entry.id));
+
+    card.append(meta, text, deleteButton);
+    diaryHistory.append(card);
+  });
+}
+
+function deleteDiaryEntry(entryId) {
+  const shouldDelete = confirm("Delete this diary entry?");
+
+  if (!shouldDelete) {
+    return;
+  }
+
+  saveDiaryEntries(getDiaryEntries().filter((entry) => entry.id !== entryId));
+  diaryMessage.textContent = "Diary entry deleted.";
+  renderDiaryHistory();
+}
+
+function renderShop() {
+  const stars = getStarBalance();
+  const rewards = getPurchasedRewards();
+  const visibleItems = shopItems.filter((item) => item.category === activeShopCategory);
+  const activeTheme = getActiveTheme();
+  shopStars.textContent = `⭐ Stars: ${stars}`;
+  shopTabs.innerHTML = "";
+  shopList.innerHTML = "";
+
+  shopCategories.forEach((category) => {
+    const tab = document.createElement("button");
+    tab.className = category === activeShopCategory ? "shop-tab active" : "shop-tab";
+    tab.type = "button";
+    tab.textContent = category;
+    tab.addEventListener("click", () => {
+      activeShopCategory = category;
+      renderShop();
+    });
+    shopTabs.append(tab);
+  });
+
+  if (activeShopCategory === "Themes") {
+    const defaultCard = document.createElement("article");
+    defaultCard.className = activeTheme === "default" ? "shop-item active-theme-item" : "shop-item";
+
+    const icon = document.createElement("div");
+    icon.className = "shop-icon";
+    icon.textContent = "✦";
+
+    const details = document.createElement("div");
+    details.className = "shop-details";
+
+    const meta = document.createElement("p");
+    meta.className = "shop-category";
+    meta.textContent = "Themes";
+
+    const title = document.createElement("h3");
+    title.textContent = "Default Theme";
+
+    const description = document.createElement("p");
+    description.className = "shop-description";
+    description.textContent = "The original light mystery look.";
+
+    const status = document.createElement("p");
+    status.className = "theme-status";
+    status.textContent = activeTheme === "default" ? "Current theme" : `Current theme: ${getActiveThemeName()}`;
+
+    const action = document.createElement("button");
+    action.className = activeTheme === "default" ? "purchased-label" : "secondary-button";
+    action.type = "button";
+    action.textContent = activeTheme === "default" ? "Active Theme" : "Apply Theme";
+    action.disabled = activeTheme === "default";
+    action.addEventListener("click", () => setActiveTheme("default"));
+
+    details.append(meta, title, description, status, action);
+    defaultCard.append(icon, details);
+    shopList.append(defaultCard);
+  }
+
+  visibleItems.forEach((item) => {
+    const isPurchased = rewards.includes(item.id);
+    const isTheme = isThemeReward(item);
+    const isGameReward = isGamePack(item);
+    const isDiaryItem = isDiaryReward(item);
+    const isActiveTheme = activeTheme === item.id;
+    const card = document.createElement("article");
+    card.className = isActiveTheme ? "shop-item active-theme-item" : "shop-item";
+
+    const icon = document.createElement("div");
+    icon.className = "shop-icon";
+    icon.textContent = item.icon;
+
+    const details = document.createElement("div");
+    details.className = "shop-details";
+
+    const meta = document.createElement("p");
+    meta.className = "shop-category";
+    meta.textContent = item.category;
+
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+
+    const cost = document.createElement("p");
+    cost.className = "shop-cost";
+    cost.textContent = `⭐ ${item.cost} stars`;
+
+    const description = document.createElement("p");
+    description.className = "shop-description";
+    description.textContent = item.description;
+
+    const effect = document.createElement("p");
+    effect.className = "shop-effect";
+    effect.innerHTML = `<strong>What this does:</strong> ${item.effect}`;
+
+    const action = document.createElement("button");
+    action.className = isPurchased ? "purchased-label" : "save-quiz-button";
+    action.type = "button";
+    action.textContent = isPurchased && isGameReward
+      ? getPurchasedGamePackLabel(item)
+      : isPurchased && isDiaryItem
+        ? getPurchasedDiaryRewardLabel(item)
+        : isPurchased
+          ? "Purchased"
+          : "Buy";
+    action.disabled = isPurchased;
+
+    if (!isPurchased) {
+      action.addEventListener("click", () => buyShopItem(item));
+    }
+
+    details.append(meta, title, cost, description, effect, action);
+
+    if (isTheme && isPurchased) {
+      const themeButton = document.createElement("button");
+      themeButton.className = isActiveTheme ? "purchased-label" : "secondary-button";
+      themeButton.type = "button";
+      themeButton.textContent = isActiveTheme ? "Active Theme" : "Apply Theme";
+      themeButton.disabled = isActiveTheme;
+      themeButton.addEventListener("click", () => setActiveTheme(item.id));
+      details.append(themeButton);
+    }
+
+    if (item.id === "daily-diary" && isPurchased) {
+      const diaryButton = document.createElement("button");
+      diaryButton.className = "secondary-button";
+      diaryButton.type = "button";
+      diaryButton.textContent = "Open Diary";
+      diaryButton.addEventListener("click", showDiary);
+      details.append(diaryButton);
+    }
+
+    card.append(icon, details);
+    shopList.append(card);
+  });
+}
+
+function buyShopItem(item) {
+  const rewards = getPurchasedRewards();
+
+  if (rewards.includes(item.id)) {
+    renderShop();
+    return;
+  }
+
+  const stars = getStarBalance();
+
+  if (stars < item.cost) {
+    shopMessage.textContent = "You need more stars to unlock this.";
+    return;
+  }
+
+  setStarBalance(stars - item.cost);
+  savePurchasedRewards([...rewards, item.id]);
+  shopMessage.textContent = `${item.name} unlocked.`;
+  applyPurchasedEffects();
+  updateGamePackStatuses();
+  renderShop();
+}
+
+function saveDiaryNote() {
+  if (!hasPurchased("daily-diary")) {
+    diaryMessage.textContent = "Unlock Daily Diary in the shop first.";
+    return;
+  }
+
+  const text = diaryNote.value.trim();
+
+  if (!text) {
+    diaryMessage.textContent = "Write a diary note before saving.";
+    return;
+  }
+
+  const now = new Date();
+  const entry = {
+    id: crypto.randomUUID(),
+    date: now.toISOString().slice(0, 10),
+    time: now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    text,
+    mood: hasPurchased("mood-tracker") ? getSelectedDiaryChoice("diary-mood") : "",
+    sticker: hasPurchased("secret-sticker-pack") ? getSelectedDiaryChoice("diary-sticker") : "",
+    createdAt: now.getTime(),
+  };
+
+  saveDiaryEntries([entry, ...getDiaryEntries()]);
+  diaryNote.value = "";
+  diaryMessage.textContent = "Diary entry saved on this browser.";
+  renderDiaryHistory();
+}
+
+function resetEverything() {
+  const shouldReset = confirm("This will delete your saved quiz, leaderboard, stars, rewards, diary, and settings. Are you sure?");
+
+  if (!shouldReset) {
+    return;
+  }
+
+  const typedWord = prompt("Type RESET to delete everything.");
+
+  if (typedWord !== "RESET") {
+    return;
+  }
+
+  localStorage.clear();
+  questions = [];
+  currentQuestion = 0;
+  correctAnswers = 0;
+  latestResult = null;
+  activeQuizSource = "custom";
+  activeQuizMode = "scored";
+  activePlayer = null;
+  guestMode = false;
+  renderCreatorFields(minQuestions, []);
+  renderLeaderboard();
+  showPlayerGate();
+}
+
+function createPlayer(event) {
+  event.preventDefault();
+
+  const previousNickname = activePlayer?.nickname || "";
+  const nicknameCheck = validateNickname(newPlayerNickname.value, { currentNickname: previousNickname });
+
+  if (nicknameCheck.message) {
+    createPlayerMessage.textContent = nicknameCheck.message;
+    return;
+  }
+
+  const nickname = nicknameCheck.displayName;
+  const profiles = getPlayerProfiles();
+  const existingProfile = profiles.find((profile) => normalizeNickname(profile.nickname) === nicknameCheck.normalizedName);
+
+  if (existingProfile && normalizeNickname(existingProfile.nickname) !== normalizeNickname(activePlayer?.nickname)) {
+    createPlayerMessage.textContent = "I’m sorry, but someone else has this name. Please choose something else.";
+    return;
+  }
+
+  const avatar = getUnlockedAvatar(getSelectedAvatar());
+  const profile = {
+    stars: 0,
+    purchasedRewards: [],
+    diaryAccess: false,
+    diaryNotes: {},
+    settings: {},
+    createdAt: Date.now(),
+    ...activePlayer,
+    ...existingProfile,
+    nickname,
+    friendCode: activePlayer?.friendCode || existingProfile?.friendCode || generateFriendCode(nickname, profiles),
+    friends: activePlayer?.friends || existingProfile?.friends || [],
+    password: activePlayer?.password || existingProfile?.password || "",
+    avatar,
+  };
+
+  const updatedProfiles = existingProfile || activePlayer
+    ? profiles.map((savedProfile) => (
+      normalizeNickname(savedProfile.nickname) === normalizeNickname(existingProfile?.nickname || previousNickname)
+        ? profile
+        : savedProfile
+    ))
+    : [...profiles, profile];
+
+  savePlayerProfiles(updatedProfiles);
+  replaceUsedNickname(previousNickname, nickname);
+  syncNicknameAcrossSavedData(previousNickname, nickname, avatar);
+  setActivePlayer(profile);
+  createPlayerForm.reset();
+  selectedAvatar = createDefaultAvatar();
+  updateAvatarPreview();
+  showStart();
+}
+
+function loginPlayer(event) {
+  event.preventDefault();
+
+  const nickname = cleanPlayerNickname(loginPlayerNickname.value);
+  const password = loginPlayerPassword.value;
+  const profile = getPlayerProfiles().find((savedProfile) => normalizeNickname(savedProfile.nickname) === normalizeNickname(nickname) && (!savedProfile.password || savedProfile.password === password));
+
+  if (!profile) {
+    loginPlayerMessage.textContent = "That player did not open. Check the nickname and password.";
+    return;
+  }
+
+  setActivePlayer(profile);
+  loginPlayerForm.reset();
+  showStart();
+}
+
+function switchPlayer() {
+  stopVideoPreview();
+  activePlayer = null;
+  guestMode = false;
+  localStorage.removeItem(currentPlayerKey);
+  showPlayerGate();
+}
+
+function handleQuestionTotalChange() {
+  renderCreatorFields(questionTotalInput.value);
+}
+
+function handleQuizSave(event) {
+  event.preventDefault();
+
+  const quizQuestions = readCreatorQuestions();
+  const missingFields = getMissingCreatorFields(quizQuestions);
+  const quizTitle = quizTitleInput.value.trim();
+  const quizTheme = quizThemeInput.value.trim();
+
+  if (!quizTitle) {
+    creatorMessage.textContent = "Add a quiz title first.";
+    return;
+  }
+
+  if (missingFields.length > 0) {
+    creatorMessage.textContent = `${missingFields[0]} Check the case cards, then try saving again.`;
+    return;
+  }
+
+  const savedQuizzes = getSavedQuizzes();
+  const now = new Date().toISOString();
+
+  if (editingQuizId) {
+    const existingQuiz = findSavedQuizById(editingQuizId);
+    const updatedQuiz = normalizeSavedQuizRecord({
+      ...existingQuiz,
+      id: editingQuizId,
+      title: quizTitle,
+      theme: quizTheme,
+      createdAt: existingQuiz?.createdAt || now,
+      updatedAt: now,
+      questions: quizQuestions,
+    }, quizTitle);
+    saveSavedQuizzes(savedQuizzes.map((quiz) => (quiz.id === editingQuizId ? updatedQuiz : quiz)));
+    activeQuizId = updatedQuiz.id;
+    creatorMessage.textContent = "Quiz updated safely in My Quizzes.";
+    return;
+  }
+
+  const newQuiz = normalizeSavedQuizRecord({
+    title: quizTitle,
+    theme: quizTheme,
+    createdAt: now,
+    updatedAt: now,
+    questions: quizQuestions,
+  }, quizTitle);
+  saveSavedQuizzes([...savedQuizzes, newQuiz]);
+  editingQuizId = newQuiz.id;
+  activeQuizId = newQuiz.id;
+  creatorMessage.textContent = "New quiz saved safely in My Quizzes.";
+}
+
+function renderSafeQuizzes() {
+  safeQuizList.innerHTML = "";
+
+  safeQuizzes.forEach((quiz) => {
+    const quizButton = document.createElement("button");
+    quizButton.className = "safe-quiz-option";
+    quizButton.type = "button";
+
+    const title = document.createElement("span");
+    title.className = "choice-title";
+    title.textContent = quiz.title;
+
+    const description = document.createElement("span");
+    description.className = "choice-description";
+    description.textContent = quiz.description;
+
+    quizButton.append(title, description);
+    quizButton.addEventListener("click", () => startQuiz(quiz.questions, "safe", quiz.mode || "scored"));
+    safeQuizList.append(quizButton);
+  });
+}
+
+function formatQuizDate(dateValue) {
+  if (!dateValue) {
+    return "Not saved yet";
+  }
+
+  return new Date(dateValue).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function renderMyQuizzes() {
+  const savedQuizzes = getSavedQuizzes();
+  myQuizzesList.innerHTML = "";
+
+  if (savedQuizzes.length === 0) {
+    myQuizzesList.innerHTML = '<p class="empty-leaderboard">You have not made any quizzes yet.</p>';
+    return;
+  }
+
+  savedQuizzes.forEach((quiz) => {
+    const card = document.createElement("article");
+    card.className = "saved-quiz-card";
+
+    const title = document.createElement("h3");
+    title.textContent = quiz.title;
+
+    const meta = document.createElement("p");
+    meta.className = "saved-quiz-meta";
+    meta.textContent = [
+      quiz.theme && `Theme: ${quiz.theme}`,
+      `${quiz.questions.length} questions`,
+      `Created: ${formatQuizDate(quiz.createdAt)}`,
+      `Edited: ${formatQuizDate(quiz.updatedAt)}`,
+    ].filter(Boolean).join(" • ");
+
+    const actions = document.createElement("div");
+    actions.className = "saved-quiz-actions";
+
+    const playButton = document.createElement("button");
+    playButton.className = "save-quiz-button";
+    playButton.type = "button";
+    playButton.textContent = "Play";
+    playButton.addEventListener("click", () => playSavedQuizById(quiz.id));
+
+    const editButton = document.createElement("button");
+    editButton.className = "secondary-button";
+    editButton.type = "button";
+    editButton.textContent = "Edit";
+    editButton.addEventListener("click", () => showQuizEditor(quiz.id));
+
+    const duplicateButton = document.createElement("button");
+    duplicateButton.className = "secondary-button";
+    duplicateButton.type = "button";
+    duplicateButton.textContent = "Duplicate";
+    duplicateButton.addEventListener("click", () => duplicateSavedQuiz(quiz.id));
+
+    const linkButton = document.createElement("button");
+    linkButton.className = "secondary-button";
+    linkButton.type = "button";
+    linkButton.textContent = "Create Friend Link";
+    linkButton.addEventListener("click", () => createFriendLinkForQuiz(quiz.id));
+
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "secondary-button";
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => deleteSavedQuiz(quiz.id));
+
+    actions.append(playButton, editButton, duplicateButton, linkButton, deleteButton);
+    card.append(title, meta, actions);
+    myQuizzesList.append(card);
+  });
+}
+
+function playSavedQuizById(quizId) {
+  const quiz = findSavedQuizById(quizId);
+
+  if (!quiz) {
+    showMyQuizzes();
+    myQuizzesMessage.textContent = "That quiz could not be found.";
+    return;
+  }
+
+  activeQuizId = quiz.id;
+  startQuiz(quiz.questions, "custom", "scored", quiz.id);
+}
+
+function duplicateSavedQuiz(quizId) {
+  const quiz = findSavedQuizById(quizId);
+
+  if (!quiz) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const duplicate = normalizeSavedQuizRecord({
+    ...quiz,
+    id: `quiz-${crypto.randomUUID()}`,
+    title: `${quiz.title} Copy`,
+    createdAt: now,
+    updatedAt: now,
+    questions: quiz.questions,
+  });
+  saveSavedQuizzes([...getSavedQuizzes(), duplicate]);
+  renderMyQuizzes();
+  myQuizzesMessage.textContent = "Quiz duplicated.";
+}
+
+function deleteSavedQuiz(quizId) {
+  const shouldDelete = confirm("Are you sure you want to delete this quiz? This cannot be undone.");
+
+  if (!shouldDelete) {
+    return;
+  }
+
+  saveSavedQuizzes(getSavedQuizzes().filter((quiz) => quiz.id !== quizId));
+
+  if (activeQuizId === quizId) {
+    activeQuizId = "";
+  }
+
+  renderMyQuizzes();
+  myQuizzesMessage.textContent = "Quiz deleted.";
+}
+
+function generateShortQuizId() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let quizId = "QZ-";
+
+  for (let index = 0; index < 5; index += 1) {
+    quizId += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+
+  return quizId;
+}
+
+function buildShortFriendLink(quizId) {
+  const friendUrl = new URL(window.location.href);
+  friendUrl.search = "";
+  friendUrl.hash = "";
+  friendUrl.searchParams.set("quiz", quizId);
+  return friendUrl.toString();
+}
+
+function getOnlineSharingSetupMessage() {
+  return `Short friend links need online storage setup first. Add ${onlineQuizProvider} with quizzes and quiz_scores tables, then this button can save the quiz online and create a short ?quiz= link.`;
+}
+
+function showOnlineSharingNotReady(messageTarget, outputTarget = null) {
+  if (outputTarget) {
+    outputTarget.classList.add("hidden");
+  }
+
+  messageTarget.textContent = getOnlineSharingSetupMessage();
+}
+
+async function createOnlineFriendLink(quiz) {
+  if (!onlineQuizSharing.isConfigured) {
+    throw new Error("Online quiz sharing is not configured yet.");
+  }
+
+  const quizId = generateShortQuizId();
+  await onlineQuizSharing.saveQuiz({
+    quizId,
+    title: quiz.title,
+    theme: quiz.theme,
+    questions: quiz.questions,
+    creatorNickname: activePlayer?.nickname || "",
+  });
+
+  return buildShortFriendLink(quizId);
+}
+
+function createFriendLink() {
+  if (!editingQuizId) {
+    friendLinkMessage.textContent = "Save this quiz first, then I can make a friend link.";
+    friendLinkOutputWrap.classList.add("hidden");
+    return;
+  }
+
+  const savedQuiz = findSavedQuizById(editingQuizId);
+  const savedQuestions = savedQuiz?.questions || [];
+
+  if (savedQuestions.length === 0) {
+    friendLinkMessage.textContent = "Save your quiz first, then I can make a friend link.";
+    friendLinkOutputWrap.classList.add("hidden");
+    return;
+  }
+
+  if (!onlineQuizSharing.isConfigured) {
+    showOnlineSharingNotReady(friendLinkMessage, friendLinkOutputWrap);
+    return;
+  }
+
+  createOnlineFriendLink(savedQuiz).then((friendLink) => {
+    friendLinkOutput.value = friendLink;
+    friendLinkOutputWrap.classList.remove("hidden");
+    friendLinkMessage.textContent = "Short friend link ready.";
+  }).catch(() => {
+    showOnlineSharingNotReady(friendLinkMessage, friendLinkOutputWrap);
+  });
+}
+
+function createFriendLinkForQuiz(quizId) {
+  const quiz = findSavedQuizById(quizId);
+
+  if (!quiz) {
+    myQuizzesMessage.textContent = "That quiz could not be found.";
+    return;
+  }
+
+  if (!onlineQuizSharing.isConfigured) {
+    showOnlineSharingNotReady(myQuizzesMessage);
+    return;
+  }
+
+  createOnlineFriendLink(quiz).then(async (friendLink) => {
+    try {
+      await navigator.clipboard.writeText(friendLink);
+      myQuizzesMessage.textContent = `Short friend link copied for ${quiz.title}.`;
+    } catch {
+      myQuizzesMessage.textContent = `Short friend link for ${quiz.title}: ${friendLink}`;
+    }
+  }).catch(() => {
+    showOnlineSharingNotReady(myQuizzesMessage);
+  });
+}
+
+async function copyFriendLink() {
+  if (!friendLinkOutput.value) {
+    friendLinkMessage.textContent = "Create a friend link first.";
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(friendLinkOutput.value);
+    friendLinkMessage.textContent = "Friend link copied.";
+  } catch {
+    friendLinkOutput.select();
+    document.execCommand("copy");
+    friendLinkMessage.textContent = "Friend link copied.";
+  }
+}
+
+function parseSharedQuizCode(code) {
+  const parsedCode = JSON.parse(code);
+  const quizQuestions = Array.isArray(parsedCode) ? parsedCode : parsedCode.questions;
+  return normalizeQuizQuestions(quizQuestions);
+}
+
+async function openOnlineQuizFromLink(quizId) {
+  hideMainSections();
+  sharedQuizCard.classList.remove("hidden");
+  sharedQuizCode.value = "";
+  activeOnlineQuizId = quizId;
+  sharedLinkPanel.classList.add("hidden");
+  startSharedLinkQuizButton.classList.add("hidden");
+
+  if (!onlineQuizSharing.isConfigured) {
+    sharedQuizMessage.textContent = "Short friend links need online storage setup first. This quiz cannot load until Supabase or Firebase is connected.";
+    return true;
+  }
+
+  try {
+    const onlineQuiz = await onlineQuizSharing.loadQuiz(quizId);
+    sharedLinkQuestions = normalizeQuizQuestions(onlineQuiz?.questions || []);
+  } catch {
+    sharedLinkQuestions = [];
+  }
+
+  if (sharedLinkQuestions.length === 0) {
+    sharedQuizMessage.textContent = "This quiz link was not found. Please ask your friend to send it again.";
+    return true;
+  }
+
+  sharedLinkPanel.classList.remove("hidden");
+  startSharedLinkQuizButton.classList.remove("hidden");
+  sharedQuizMessage.textContent = "Someone sent you a quiz! This shared quiz is play-only, so it will not edit your saved quiz.";
+  return true;
+}
+
+async function loadSharedQuizFromUrl() {
+  const quizId = new URLSearchParams(window.location.search).get("quiz");
+
+  if (!quizId) {
+    return false;
+  }
+
+  return openOnlineQuizFromLink(quizId);
+}
+
+function loadSharedQuiz() {
+  let sharedQuestions = [];
+
+  try {
+    sharedQuestions = parseSharedQuizCode(sharedQuizCode.value.trim());
+  } catch {
+    sharedQuizMessage.textContent = "That code did not open. Check that it was copied fully, then try again.";
+    return;
+  }
+
+  if (sharedQuestions.length === 0) {
+    sharedQuizMessage.textContent = "That code needs questions, 4 answers for each question, and a correct answer number.";
+    return;
+  }
+
+  activeOnlineQuizId = "";
+  sharedQuizMessage.textContent = "Shared quiz loaded.";
+  startQuiz(sharedQuestions, "shared");
+}
+
+function startSharedLinkQuiz() {
+  if (sharedLinkQuestions.length === 0) {
+    sharedQuizMessage.textContent = "This quiz link does not look right. Please ask your friend to send it again.";
+    return;
+  }
+
+  startQuiz(sharedLinkQuestions, activeOnlineQuizId ? "online" : "shared", "scored", activeOnlineQuizId);
+}
+
+function replayCurrentQuiz() {
+  if (questions.length > 0) {
+    startQuiz(questions, activeQuizSource, activeQuizMode, activeQuizId);
+    return;
+  }
+
+  showStart();
+}
+
+function goHome() {
+  stopVideoPreview();
+  showStart();
+}
+
+playBestieGameButton.addEventListener("click", showBestieQuizHome);
+playWouldYouRatherGameButton.addEventListener("click", () => startMiniGame("wouldYouRather"));
+playThisOrThatGameButton.addEventListener("click", () => startMiniGame("thisOrThat"));
+playMysteryGameButton.addEventListener("click", () => startMiniGame("mysteryPersonality"));
+playFavouriteGameButton.addEventListener("click", () => startMiniGame("guessFavourite"));
+miniGameAgainButton.addEventListener("click", () => startMiniGame(activeMiniGame));
+makeOwnQuizButton.addEventListener("click", showMyQuizzes);
+createNewQuizButton.addEventListener("click", showNewQuizCreator);
+playSafeQuizzesButton?.addEventListener("click", showSafeQuizzes);
+playSharedQuizButton.addEventListener("click", showSharedQuiz);
+createPlayerChoice.addEventListener("click", showCreatePlayer);
+createAvatarHomeButton.addEventListener("click", showCreatePlayer);
+editAvatarButton.addEventListener("click", showCreatePlayer);
+loginPlayerChoice.addEventListener("click", showLoginPlayer);
+guestPlayerChoice.addEventListener("click", useGuestMode);
+createPlayerForm.addEventListener("submit", createPlayer);
+loginPlayerForm.addEventListener("submit", loginPlayer);
+profileHomeButtons.forEach((button) => button.addEventListener("click", showPlayerGate));
+switchPlayerButton.addEventListener("click", switchPlayer);
+homeButtons.forEach((button) => button.addEventListener("click", goHome));
+gamesButtons.forEach((button) => button.addEventListener("click", showStart));
+openShopButton.addEventListener("click", showShop);
+openStarLeaderboardButton.addEventListener("click", showStarLeaderboard);
+openFriendsButton.addEventListener("click", showFriends);
+openChatButton.addEventListener("click", showChat);
+openVoiceCallButton.addEventListener("click", showVoiceCall);
+openVideoCallButton.addEventListener("click", showVideoCall);
+copyFriendCodeButton.addEventListener("click", copyFriendCode);
+addFriendButton.addEventListener("click", addFriendByCode);
+startVoiceCallButton.addEventListener("click", startVoiceCallPreview);
+addFriendToCallButton.addEventListener("click", addFriendToCallPreview);
+acceptCallButton.addEventListener("click", () => {
+  voiceCallStatus.textContent = "Preview only: accepting calls needs WebRTC and backend signalling.";
+});
+declineCallButton.addEventListener("click", declineCallPreview);
+muteCallButton.addEventListener("click", () => {
+  voiceCallMuted = !voiceCallMuted;
+  updateVoiceCallControls();
+});
+endCallButton.addEventListener("click", endCallPreview);
+startVideoCallButton.addEventListener("click", startVideoCallPreview);
+acceptVideoCallButton.addEventListener("click", () => {
+  videoCallStatus.textContent = "Preview only: accepting video calls needs WebRTC and backend signalling.";
+});
+declineVideoCallButton.addEventListener("click", () => {
+  videoCallStatus.textContent = "Preview only: the incoming video call was declined.";
+});
+muteVideoCallButton.addEventListener("click", toggleVideoMic);
+toggleCameraButton.addEventListener("click", toggleVideoCamera);
+endVideoCallButton.addEventListener("click", endVideoCallPreview);
+sendChatMessageButton.addEventListener("click", sendTypedChatMessage);
+chatMessageInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    sendTypedChatMessage();
+  }
+});
+chatBlockFriendButton.addEventListener("click", blockSelectedChatFriend);
+chatRemoveFriendButton.addEventListener("click", removeSelectedChatFriend);
+clearChatButton.addEventListener("click", clearSelectedChat);
+backToShopButton.addEventListener("click", showShop);
+saveDiaryNoteButton.addEventListener("click", saveDiaryNote);
+questionTotalInput.addEventListener("input", handleQuestionTotalChange);
+questionTotalInput.addEventListener("change", handleQuestionTotalChange);
+quizBuilderForm.addEventListener("submit", handleQuizSave);
+playSavedQuizButton.addEventListener("click", () => {
+  if (editingQuizId) {
+    playSavedQuizById(editingQuizId);
+    return;
+  }
+
+  const firstQuiz = getSavedQuizzes()[0];
+  startQuiz(firstQuiz?.questions || getSavedQuiz(), "custom", "scored", firstQuiz?.id || "");
+});
+createFriendLinkButton.addEventListener("click", createFriendLink);
+copyFriendLinkButton.addEventListener("click", copyFriendLink);
+loadSharedQuizButton.addEventListener("click", loadSharedQuiz);
+startSharedLinkQuizButton.addEventListener("click", startSharedLinkQuiz);
+leaderboardForm.addEventListener("submit", addToLeaderboard);
+playAgainButton.addEventListener("click", replayCurrentQuiz);
+restartQuizButton.addEventListener("click", replayCurrentQuiz);
+editCurrentQuizButton.addEventListener("click", showSavedQuizEditor);
+editQuizButton.addEventListener("click", showSavedQuizEditor);
+resetEverythingButton.addEventListener("click", resetEverything);
+
+let savedQuizzes = getSavedQuizzes();
+let savedQuiz = savedQuizzes[0]?.questions || getSavedQuiz();
+
+renderCreatorFields(savedQuiz.length || minQuestions, savedQuiz);
+quizTitleInput.value = savedQuizzes[0]?.title || "";
+quizThemeInput.value = savedQuizzes[0]?.theme || "Best Friend";
+renderSafeQuizzes();
+seedUsedNicknamesFromSavedData();
+const savedPlayer = loadCurrentPlayer();
+
+if (savedPlayer) {
+  setActivePlayer(savedPlayer);
+}
+
+guestMode = false;
+updateAvatarPreview();
+updateProfileBar();
+applyPurchasedEffects();
+updateGamePackStatuses();
+loadSharedQuizFromUrl().then((openedSharedQuiz) => {
+  if (!openedSharedQuiz) {
+    showStart();
+  }
+});
+renderLeaderboard();
