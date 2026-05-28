@@ -47,16 +47,26 @@ async function supabaseRequest(path, { method = "GET", body = null, prefer = "" 
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
+  const rawText = await response.text();
 
   if (!response.ok) {
-    throw new Error(await response.text());
+    throw new Error(`Supabase request failed: ${response.status} ${response.statusText}. ${rawText || "No response body."}`);
   }
 
-  if (response.status === 204) {
+  if (!rawText) {
     return null;
   }
 
-  return response.json();
+  try {
+    return JSON.parse(rawText);
+  } catch (error) {
+    console.error("Supabase returned non-JSON response:", {
+      status: response.status,
+      statusText: response.statusText,
+      rawText,
+    });
+    throw error;
+  }
 }
 
 const onlineQuizSharing = {
