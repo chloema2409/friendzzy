@@ -390,6 +390,40 @@
           <h3>My Friends list</h3>
           <div id="friends-list" class="friends-list"></div>
         </div>
+        <div id="friend-action-panel" class="friend-action-panel hidden">
+          <div class="section-heading compact-heading">
+            <div>
+              <p class="eyebrow">Friend Actions</p>
+              <h3 id="friend-action-title">Choose a friend</h3>
+            </div>
+          </div>
+          <p class="safety-note">Use preset messages and quiz links only. No public feeds or stranger chat.</p>
+          <div class="friend-challenge-box">
+            <label for="friend-quiz-select">Choose a quiz to send</label>
+            <div class="save-row">
+              <select id="friend-quiz-select"></select>
+              <button id="send-friend-challenge" class="save-quiz-button" type="button">Create Challenge Link</button>
+            </div>
+            <div id="friend-challenge-output-wrap" class="friend-link-output-wrap hidden">
+              <label for="friend-challenge-output">Copyable challenge link</label>
+              <textarea id="friend-challenge-output" rows="4" readonly></textarea>
+              <button id="copy-friend-challenge" class="secondary-button" type="button">Copy Challenge Link</button>
+            </div>
+          </div>
+          <div class="quick-chat-wrap">
+            <h3>Preset messages</h3>
+            <div id="friend-preset-message-list" class="quick-message-list"></div>
+          </div>
+          <div class="quick-chat-wrap">
+            <h3>Sticker reactions</h3>
+            <div id="friend-sticker-list" class="quick-message-list"></div>
+          </div>
+          <p id="friend-action-message" class="friendly-message" aria-live="polite"></p>
+        </div>
+        <div class="friends-list-wrap">
+          <h3>Recent Friend Activity</h3>
+          <div id="friend-activity-list" class="friend-activity-list"></div>
+        </div>
       </section>
 
       <section id="chat-card" class="chat-card hidden" aria-labelledby="chat-title">

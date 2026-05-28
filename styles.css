@@ -1959,7 +1959,9 @@ h2 {
 
 .friend-code-card,
 .friend-add-box,
-.friend-entry {
+.friend-entry,
+.friend-action-panel,
+.friend-activity-item {
   margin-top: 14px;
   padding: 16px;
   border: 2px solid rgba(255, 255, 255, 0.85);
@@ -1973,6 +1975,7 @@ h2 {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 14px;
 }
 
@@ -1991,6 +1994,61 @@ h2 {
 .friends-list {
   display: grid;
   gap: 12px;
+}
+
+.friend-action-panel {
+  background: linear-gradient(135deg, #ffffff, var(--lavender));
+}
+
+.compact-heading {
+  margin-bottom: 10px;
+}
+
+.friend-challenge-box {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+#friend-quiz-select {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 2px solid rgba(167, 139, 250, 0.24);
+  border-radius: 16px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.9);
+  font: inherit;
+  font-weight: 800;
+}
+
+.friend-activity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.friend-activity-item {
+  margin-top: 0;
+  background: linear-gradient(135deg, #ffffff, var(--pink));
+}
+
+.friend-activity-item p,
+.friend-activity-item span {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.friend-activity-item p {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.friend-activity-item span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .friend-details {

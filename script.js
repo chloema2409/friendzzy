@@ -17,6 +17,8 @@ const guestDiaryKey = "bestieQuizGuestDiaryNotes";
 const diaryEntriesKey = "bestieDiaryEntries";
 const activeThemeKey = "bestieQuizActiveTheme";
 const friendChatKey = "bestieFriendChatMessages";
+const friendActivityKey = "bestieFriendActivity";
+const friendRewardLogKey = "bestieFriendRewardLog";
 const minQuestions = 5;
 const maxQuestions = 30;
 const maxLeaderboardEntries = 10;
@@ -270,6 +272,12 @@ const diaryStickerOptions = ["Star", "Moon", "Heart", "Key", "Diary", "Flower", 
 const diaryMoodOptions = ["Happy", "Calm", "Excited", "Tired", "Nervous", "Sad", "Proud", "Confused"];
 const quickChatMessages = [
   "Hi!",
+  "Play my quiz!",
+  "I got 10/10!",
+  "Try again!",
+  "You know me so well!",
+  "New quiz is ready!",
+  "Let’s play a game!",
   "Want to play a quiz?",
   "Want to play This or That?",
   "Want to play Would You Rather?",
@@ -281,6 +289,12 @@ const quickChatMessages = [
   "I unlocked something in the shop!",
 ];
 const stickerReactions = [
+  { label: "Amazing", text: "🌟 Amazing!" },
+  { label: "Funny", text: "😂 Funny!" },
+  { label: "Bestie", text: "💖 Bestie!" },
+  { label: "Champion", text: "🏆 Champion!" },
+  { label: "Surprised", text: "😮 I didn’t know that!" },
+  { label: "Play Again", text: "🎮 Play again!" },
   { label: "Star", text: "⭐ Star" },
   { label: "Heart", text: "💜 Heart" },
   { label: "Clue", text: "🔍 Clue" },
@@ -944,6 +958,7 @@ let miniGameAwarded = false;
 let miniGameRoundQuestions = [];
 let sharedLinkQuestions = [];
 let selectedChatFriendCode = "";
+let selectedFriendActionCode = "";
 
 const playerGate = document.querySelector("#player-gate");
 const createPlayerChoice = document.querySelector("#create-player-choice");
@@ -1042,6 +1057,17 @@ const friendCodeInput = document.querySelector("#friend-code-input");
 const addFriendButton = document.querySelector("#add-friend-button");
 const friendsMessage = document.querySelector("#friends-message");
 const friendsList = document.querySelector("#friends-list");
+const friendActionPanel = document.querySelector("#friend-action-panel");
+const friendActionTitle = document.querySelector("#friend-action-title");
+const friendQuizSelect = document.querySelector("#friend-quiz-select");
+const sendFriendChallengeButton = document.querySelector("#send-friend-challenge");
+const friendChallengeOutputWrap = document.querySelector("#friend-challenge-output-wrap");
+const friendChallengeOutput = document.querySelector("#friend-challenge-output");
+const copyFriendChallengeButton = document.querySelector("#copy-friend-challenge");
+const friendPresetMessageList = document.querySelector("#friend-preset-message-list");
+const friendStickerList = document.querySelector("#friend-sticker-list");
+const friendActionMessage = document.querySelector("#friend-action-message");
+const friendActivityList = document.querySelector("#friend-activity-list");
 const chatCard = document.querySelector("#chat-card");
 const chatFriendList = document.querySelector("#chat-friend-list");
 const chatSelectedFriend = document.querySelector("#chat-selected-friend");
@@ -2379,8 +2405,11 @@ async function showFriends() {
   updateProfileBar();
   friendsMessage.textContent = "";
   friendCodeInput.value = "";
+  selectedFriendActionCode = "";
+  friendActionPanel.classList.add("hidden");
   await syncOnlineFriendsToLocal();
   renderFriends();
+  renderFriendActivity();
   friendsCard.classList.remove("hidden");
 }
 
@@ -3356,6 +3385,10 @@ function removeFriend(friendCode) {
   const friendProfiles = { ...(activePlayer.friendProfiles || {}) };
   delete friendProfiles[normalizeFriendCode(friendCode)];
   updateActivePlayerProfile({ friends, friendProfiles });
+  if (selectedFriendActionCode === normalizeFriendCode(friendCode)) {
+    selectedFriendActionCode = "";
+    friendActionPanel.classList.add("hidden");
+  }
   friendsMessage.textContent = "Friend removed.";
   renderFriends();
 }
@@ -3382,11 +3415,307 @@ function blockFriend(friendCode) {
   });
   friendsMessage.textContent = "Friend blocked and removed from your list.";
   selectedChatFriendCode = "";
+  if (selectedFriendActionCode === normalizeFriendCode(friendCode)) {
+    selectedFriendActionCode = "";
+    friendActionPanel.classList.add("hidden");
+  }
   renderFriends();
 }
 
 function isFriendBlocked(friendCode) {
   return Array.isArray(activePlayer?.blockedFriends) && activePlayer.blockedFriends.includes(friendCode);
+}
+
+function getFriendActivity() {
+  const savedActivity = localStorage.getItem(friendActivityKey);
+
+  if (!savedActivity) {
+    return [];
+  }
+
+  try {
+    const activity = JSON.parse(savedActivity);
+    return Array.isArray(activity) ? activity : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFriendActivity(activity) {
+  localStorage.setItem(friendActivityKey, JSON.stringify(activity.slice(0, 40)));
+}
+
+function addFriendActivity(entry) {
+  const activity = getFriendActivity();
+  saveFriendActivity([
+    {
+      id: crypto.randomUUID(),
+      ownerCode: activePlayer?.friendCode || "",
+      createdAt: Date.now(),
+      ...entry,
+    },
+    ...activity,
+  ]);
+  renderFriendActivity();
+}
+
+function getFriendRewardLog() {
+  const savedLog = localStorage.getItem(friendRewardLogKey);
+
+  if (!savedLog) {
+    return {};
+  }
+
+  try {
+    const log = JSON.parse(savedLog);
+    return log && typeof log === "object" ? log : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFriendRewardLog(log) {
+  localStorage.setItem(friendRewardLogKey, JSON.stringify(log));
+}
+
+function awardFriendActionStars(actionKey, amount) {
+  if (!activePlayer) {
+    return false;
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rewardKey = `${today}:${activePlayer.friendCode}:${actionKey}`;
+  const log = getFriendRewardLog();
+
+  if (log[rewardKey]) {
+    return false;
+  }
+
+  log[rewardKey] = Date.now();
+  saveFriendRewardLog(log);
+  addStars(amount);
+  return true;
+}
+
+function getFriendActivityText(entry) {
+  if (entry.type === "challenge") {
+    return `You challenged ${entry.friendNickname} to “${entry.quizTitle}.”`;
+  }
+
+  if (entry.type === "message") {
+    return `You sent ${entry.friendNickname}: ${entry.text}`;
+  }
+
+  if (entry.type === "sticker") {
+    return `You sent ${entry.friendNickname} a sticker: ${entry.text}`;
+  }
+
+  return entry.text || "Friend activity saved.";
+}
+
+function renderFriendActivity() {
+  if (!friendActivityList) {
+    return;
+  }
+
+  const ownerCode = activePlayer?.friendCode || "";
+  const activity = getFriendActivity()
+    .filter((entry) => !ownerCode || !entry.ownerCode || entry.ownerCode === ownerCode)
+    .slice(0, 10);
+
+  friendActivityList.innerHTML = "";
+
+  if (activity.length === 0) {
+    friendActivityList.innerHTML = '<p class="empty-leaderboard">No friend activity yet. Send a quiz challenge or a safe reaction.</p>';
+    return;
+  }
+
+  activity.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = "friend-activity-item";
+
+    const text = document.createElement("p");
+    text.textContent = getFriendActivityText(entry);
+
+    const time = document.createElement("span");
+    const createdAt = new Date(entry.createdAt);
+    time.textContent = `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+
+    item.append(text, time);
+    friendActivityList.append(item);
+  });
+}
+
+function saveSafeFriendMessage(friendCode, messageText, messageType = "quick", sticker = "") {
+  const friendProfile = getFriendProfileSnapshot(friendCode);
+  const messages = getChatMessages();
+  messages.push({
+    id: crypto.randomUUID(),
+    chatId: [activePlayer.friendCode, friendProfile.friendCode].sort().join("__"),
+    senderCode: activePlayer.friendCode,
+    receiverCode: friendProfile.friendCode,
+    senderNickname: activePlayer.nickname,
+    receiverNickname: friendProfile.nickname,
+    text: messageText,
+    type: messageType,
+    sticker,
+    createdAt: Date.now(),
+  });
+
+  saveChatMessages(messages);
+  addFriendActivity({
+    type: messageType === "sticker" ? "sticker" : "message",
+    friendCode: friendProfile.friendCode,
+    friendNickname: friendProfile.nickname,
+    text: messageText,
+    sticker,
+  });
+}
+
+function renderFriendQuizSelect() {
+  const quizzes = getSavedQuizzes();
+  friendQuizSelect.innerHTML = "";
+
+  if (quizzes.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No saved quizzes yet";
+    friendQuizSelect.append(option);
+    sendFriendChallengeButton.disabled = true;
+    return;
+  }
+
+  quizzes.forEach((quiz) => {
+    const option = document.createElement("option");
+    option.value = quiz.id;
+    option.textContent = `${quiz.title} (${quiz.questions.length} clues)`;
+    friendQuizSelect.append(option);
+  });
+
+  sendFriendChallengeButton.disabled = false;
+}
+
+function renderFriendActionButtons() {
+  friendPresetMessageList.innerHTML = "";
+  friendStickerList.innerHTML = "";
+
+  quickChatMessages.forEach((messageText) => {
+    const button = document.createElement("button");
+    button.className = "secondary-button quick-chat-button";
+    button.type = "button";
+    button.textContent = messageText;
+    button.addEventListener("click", () => sendPresetMessageToSelectedFriend(messageText));
+    friendPresetMessageList.append(button);
+  });
+
+  stickerReactions.forEach((sticker) => {
+    const button = document.createElement("button");
+    button.className = "secondary-button quick-chat-button";
+    button.type = "button";
+    button.textContent = sticker.text;
+    button.addEventListener("click", () => sendStickerToSelectedFriend(sticker));
+    friendStickerList.append(button);
+  });
+}
+
+function openFriendActionPanel(friendCode) {
+  const friendProfile = getFriendProfileSnapshot(friendCode);
+  selectedFriendActionCode = friendProfile.friendCode;
+  friendActionTitle.textContent = `Send something to ${friendProfile.nickname}`;
+  friendActionMessage.textContent = "";
+  friendChallengeOutput.value = "";
+  friendChallengeOutputWrap.classList.add("hidden");
+  renderFriendQuizSelect();
+  renderFriendActionButtons();
+  friendActionPanel.classList.remove("hidden");
+}
+
+async function copyFriendChallengeLink() {
+  if (!friendChallengeOutput.value) {
+    friendActionMessage.textContent = "Create a challenge link first.";
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(friendChallengeOutput.value);
+    friendActionMessage.textContent = "Challenge link copied.";
+  } catch {
+    friendChallengeOutput.select();
+    document.execCommand("copy");
+    friendActionMessage.textContent = "Challenge link copied.";
+  }
+}
+
+async function createFriendChallenge() {
+  if (!selectedFriendActionCode) {
+    friendActionMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  const quiz = findSavedQuizById(friendQuizSelect.value);
+  const friendProfile = getFriendProfileSnapshot(selectedFriendActionCode);
+
+  if (!quiz) {
+    friendActionMessage.textContent = "Create or save a quiz first, then send a challenge.";
+    return;
+  }
+
+  if (!onlineQuizSharing.isConfigured) {
+    friendActionMessage.textContent = getOnlineSharingSetupMessage();
+    return;
+  }
+
+  friendActionMessage.textContent = `Creating a safe challenge for ${friendProfile.nickname}...`;
+
+  try {
+    const link = await createOnlineFriendLink(quiz);
+    const challengeUrl = new URL(link);
+    const challengeId = crypto.randomUUID();
+    challengeUrl.searchParams.set("challenge", challengeId);
+    challengeUrl.searchParams.set("from", activePlayer.friendCode);
+    const challengeLink = challengeUrl.toString();
+    const earnedStar = awardFriendActionStars(`challenge:${friendProfile.friendCode}:${quiz.id}`, 1);
+
+    friendChallengeOutput.value = `I challenge you to take my quiz!\nCan you score ${quiz.questions.length}/${quiz.questions.length}?\n${challengeLink}`;
+    friendChallengeOutputWrap.classList.remove("hidden");
+    addFriendActivity({
+      id: challengeId,
+      type: "challenge",
+      friendCode: friendProfile.friendCode,
+      friendNickname: friendProfile.nickname,
+      quizId: quiz.id,
+      quizTitle: quiz.title,
+      link: challengeLink,
+    });
+    friendActionMessage.textContent = earnedStar
+      ? "Challenge ready. You earned 1 star for sending a quiz challenge today."
+      : "Challenge ready. You already earned today's star for this friend and quiz.";
+  } catch (error) {
+    showOnlineSharingRequestError(friendActionMessage, error, friendChallengeOutputWrap);
+  }
+}
+
+function sendPresetMessageToSelectedFriend(messageText) {
+  if (!selectedFriendActionCode) {
+    friendActionMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  saveSafeFriendMessage(selectedFriendActionCode, messageText, "quick");
+  friendActionMessage.textContent = "Preset message saved in Friend Chat.";
+}
+
+function sendStickerToSelectedFriend(sticker) {
+  if (!selectedFriendActionCode) {
+    friendActionMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  saveSafeFriendMessage(selectedFriendActionCode, sticker.text, "sticker", sticker.label);
+  const earnedStar = awardFriendActionStars(`sticker:${selectedFriendActionCode}:${sticker.label}`, 1);
+  friendActionMessage.textContent = earnedStar
+    ? "Sticker reaction sent. You earned 1 star for a safe reaction today."
+    : "Sticker reaction sent. You already earned today's star for this sticker.";
 }
 
 function getChatMessages() {
@@ -3683,6 +4012,30 @@ function renderFriends() {
 
     details.append(name, code, stars);
 
+    const challengeButton = document.createElement("button");
+    challengeButton.className = "secondary-button";
+    challengeButton.type = "button";
+    challengeButton.textContent = "Send Quiz";
+    challengeButton.addEventListener("click", () => openFriendActionPanel(friendCode));
+
+    const messageButton = document.createElement("button");
+    messageButton.className = "secondary-button";
+    messageButton.type = "button";
+    messageButton.textContent = "Send Message";
+    messageButton.addEventListener("click", () => {
+      openFriendActionPanel(friendCode);
+      friendActionMessage.textContent = "Choose a preset message below.";
+    });
+
+    const stickerButton = document.createElement("button");
+    stickerButton.className = "secondary-button";
+    stickerButton.type = "button";
+    stickerButton.textContent = "Send Sticker";
+    stickerButton.addEventListener("click", () => {
+      openFriendActionPanel(friendCode);
+      friendActionMessage.textContent = "Choose a sticker reaction below.";
+    });
+
     const removeButton = document.createElement("button");
     removeButton.className = "secondary-button";
     removeButton.type = "button";
@@ -3695,9 +4048,11 @@ function renderFriends() {
     blockButton.textContent = "Block Friend";
     blockButton.addEventListener("click", () => blockFriend(friendCode));
 
-    row.append(avatar, details, removeButton, blockButton);
+    row.append(avatar, details, challengeButton, messageButton, stickerButton, removeButton, blockButton);
     friendsList.append(row);
   });
+
+  renderFriendActivity();
 }
 
 function makeDiaryChoicePanel(panel, title, options, name, lockedMessage, isUnlocked) {
@@ -4095,7 +4450,6 @@ function loginPlayer(event) {
 }
 
 function switchPlayer() {
-  stopVideoPreview();
   activePlayer = null;
   guestMode = false;
   localStorage.removeItem(currentPlayerKey);
@@ -4560,7 +4914,6 @@ function replayCurrentQuiz() {
 }
 
 function goHome() {
-  stopVideoPreview();
   showStart();
 }
 
@@ -4591,6 +4944,8 @@ openFriendsButton.addEventListener("click", showFriends);
 openChatButton.addEventListener("click", showChat);
 copyFriendCodeButton.addEventListener("click", copyFriendCode);
 addFriendButton.addEventListener("click", addFriendByCode);
+sendFriendChallengeButton.addEventListener("click", createFriendChallenge);
+copyFriendChallengeButton.addEventListener("click", copyFriendChallengeLink);
 sendChatMessageButton.addEventListener("click", sendTypedChatMessage);
 chatMessageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
