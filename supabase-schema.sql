@@ -165,3 +165,39 @@ with check (
 
 create index if not exists profiles_friend_code_idx on public.profiles (friend_code);
 create index if not exists friends_owner_friend_code_idx on public.friends (owner_friend_code);
+create index if not exists friends_friend_friend_code_idx on public.friends (friend_friend_code);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'friends_owner_friend_code_friend_friend_code_key'
+      and conrelid = 'public.friends'::regclass
+  ) then
+    alter table public.friends
+    add constraint friends_owner_friend_code_friend_friend_code_key
+    unique (owner_friend_code, friend_friend_code);
+  end if;
+end $$;
+
+-- Safely backfill reverse friendship rows for any old one-way friend links.
+insert into public.friends (
+  owner_friend_code,
+  friend_friend_code,
+  friend_nickname,
+  friend_emoji_avatar
+)
+select
+  existing.friend_friend_code as owner_friend_code,
+  existing.owner_friend_code as friend_friend_code,
+  coalesce(owner_profile.nickname, 'Friend') as friend_nickname,
+  coalesce(owner_profile.emoji_avatar, '🌙') as friend_emoji_avatar
+from public.friends existing
+left join public.profiles owner_profile
+  on owner_profile.friend_code = existing.owner_friend_code
+where existing.owner_friend_code <> existing.friend_friend_code
+on conflict (owner_friend_code, friend_friend_code) do update
+set
+  friend_nickname = excluded.friend_nickname,
+  friend_emoji_avatar = excluded.friend_emoji_avatar;

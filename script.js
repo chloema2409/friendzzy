@@ -200,37 +200,74 @@ const onlineFriendCodes = {
     return normalizeOnlineFriendProfile(Array.isArray(data) ? data[0] : null);
   },
   async saveFriend(ownerProfile, friendProfile) {
-    const safeOwnerCode = normalizeFriendCode(ownerProfile.friendCode);
+    const safeOwner = normalizeOnlineFriendProfile(ownerProfile);
     const safeFriend = normalizeOnlineFriendProfile(friendProfile);
 
-    if (!safeOwnerCode || !safeFriend) {
+    if (!safeOwner || !safeFriend || safeOwner.friendCode === safeFriend.friendCode) {
       return null;
     }
 
     return supabaseRequest("friends?on_conflict=owner_friend_code,friend_friend_code", {
       method: "POST",
       prefer: "resolution=merge-duplicates,return=minimal",
-      body: {
-        owner_friend_code: safeOwnerCode,
-        friend_friend_code: safeFriend.friendCode,
-        friend_nickname: safeFriend.nickname,
-        friend_emoji_avatar: safeFriend.avatar?.emojiAvatar || defaultEmojiAvatar,
-      },
+      body: [
+        {
+          owner_friend_code: safeOwner.friendCode,
+          friend_friend_code: safeFriend.friendCode,
+          friend_nickname: safeFriend.nickname,
+          friend_emoji_avatar: safeFriend.avatar?.emojiAvatar || defaultEmojiAvatar,
+        },
+        {
+          owner_friend_code: safeFriend.friendCode,
+          friend_friend_code: safeOwner.friendCode,
+          friend_nickname: safeOwner.nickname,
+          friend_emoji_avatar: safeOwner.avatar?.emojiAvatar || defaultEmojiAvatar,
+        },
+      ],
     });
   },
   async loadFriends(ownerFriendCode) {
-    const query = new URLSearchParams({
+    const safeOwnerCode = normalizeFriendCode(ownerFriendCode);
+    const outgoingQuery = new URLSearchParams({
       select: "friend_friend_code,friend_nickname,friend_emoji_avatar,created_at",
-      owner_friend_code: `eq.${normalizeFriendCode(ownerFriendCode)}`,
+      owner_friend_code: `eq.${safeOwnerCode}`,
       order: "created_at.desc",
     });
-    const data = await supabaseRequest(`friends?${query.toString()}`);
+    const incomingQuery = new URLSearchParams({
+      select: "owner_friend_code,created_at",
+      friend_friend_code: `eq.${safeOwnerCode}`,
+      order: "created_at.desc",
+    });
+    const [outgoingRows, incomingRows] = await Promise.all([
+      supabaseRequest(`friends?${outgoingQuery.toString()}`),
+      supabaseRequest(`friends?${incomingQuery.toString()}`),
+    ]);
+    const friendProfiles = [];
 
-    return (data || []).map((friend) => normalizeOnlineFriendProfile({
-      nickname: friend.friend_nickname,
-      friend_code: friend.friend_friend_code,
-      emoji_avatar: friend.friend_emoji_avatar,
-    })).filter(Boolean);
+    for (const friend of outgoingRows || []) {
+      const latestProfile = await onlineFriendCodes.findProfileByFriendCode(friend.friend_friend_code).catch(() => null);
+      friendProfiles.push(latestProfile || normalizeOnlineFriendProfile({
+        nickname: friend.friend_nickname,
+        friend_code: friend.friend_friend_code,
+        emoji_avatar: friend.friend_emoji_avatar,
+      }));
+    }
+
+    for (const friend of incomingRows || []) {
+      const latestProfile = await onlineFriendCodes.findProfileByFriendCode(friend.owner_friend_code).catch(() => null);
+      friendProfiles.push(latestProfile || normalizeOnlineFriendProfile({
+        friend_code: friend.owner_friend_code,
+      }));
+    }
+
+    const friendsByCode = new Map();
+    friendProfiles.filter(Boolean).forEach((friendProfile) => {
+      if (friendProfile.friendCode !== safeOwnerCode) {
+        friendsByCode.set(friendProfile.friendCode, friendProfile);
+      }
+    });
+
+    return [...friendsByCode.values()];
   },
 };
 window.bestieOnlineFriendCodes = onlineFriendCodes;
@@ -3257,6 +3294,51 @@ function buildFriendProfileMap(friendProfiles = {}, profile) {
   };
 }
 
+function addFriendToProfile(profile, friendProfile) {
+  const safeProfile = ensureFriendProfile(profile);
+  const safeFriend = normalizeOnlineFriendProfile(friendProfile);
+
+  if (!safeFriend || safeFriend.friendCode === normalizeFriendCode(safeProfile.friendCode)) {
+    return safeProfile;
+  }
+
+  const friendSet = new Set((safeProfile.friends || []).map(normalizeFriendCode));
+  friendSet.add(safeFriend.friendCode);
+
+  return {
+    ...safeProfile,
+    friends: [...friendSet],
+    friendProfiles: buildFriendProfileMap(safeProfile.friendProfiles, safeFriend),
+  };
+}
+
+function saveLocalMutualFriend(ownerProfile, friendProfile) {
+  const safeOwner = normalizeOnlineFriendProfile(ownerProfile);
+  const safeFriend = normalizeOnlineFriendProfile(friendProfile);
+
+  if (!safeOwner || !safeFriend || safeOwner.friendCode === safeFriend.friendCode) {
+    return;
+  }
+
+  const profiles = getPlayerProfiles();
+  const hasLocalFriendProfile = profiles.some((profile) => normalizeFriendCode(profile.friendCode || "") === safeFriend.friendCode);
+  const updatedProfiles = profiles.map((profile) => {
+    const profileCode = normalizeFriendCode(profile.friendCode || "");
+
+    if (profileCode === safeOwner.friendCode) {
+      return addFriendToProfile(profile, safeFriend);
+    }
+
+    if (hasLocalFriendProfile && profileCode === safeFriend.friendCode) {
+      return addFriendToProfile(profile, safeOwner);
+    }
+
+    return profile;
+  });
+
+  savePlayerProfiles(updatedProfiles);
+}
+
 async function syncOnlineFriendsToLocal() {
   if (!activePlayer || !onlineFriendCodes.isConfigured) {
     return;
@@ -3365,6 +3447,7 @@ async function addFriendByCode() {
     friends: [...friends, safeFriend.friendCode],
     friendProfiles,
   });
+  saveLocalMutualFriend(activePlayer, safeFriend);
   friendCodeInput.value = "";
   friendsMessage.textContent = `${safeFriend.nickname} added to My Friends.`;
   renderFriends();
