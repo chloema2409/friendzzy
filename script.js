@@ -3,6 +3,8 @@ const savedQuizzesKey = "bestieSavedQuizzes";
 const leaderboardKey = "bestieQuizLeaderboard";
 const quizLeaderboardsKey = "bestieQuizLeaderboardsByQuiz";
 const onlineQuizProvider = "Supabase";
+const supabaseUrl = window.FRIENDZZY_SUPABASE_URL || "https://henagvofjujsksuuuhfe.supabase.co";
+const supabasePublishableKey = window.FRIENDZZY_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_u54a7Fx1Dz7fxP_FjSmTGw_Eb_uSfM0";
 const starLeaderboardKey = "bestieStarLeaderboard";
 const guestStarNicknameKey = "bestieStarLeaderboardGuestNickname";
 const usedNicknamesKey = "bestieUsedNicknames";
@@ -21,19 +23,111 @@ const maxLeaderboardEntries = 10;
 const shopCategories = ["Diary", "Themes", "Games", "Profile"];
 let activeShopCategory = shopCategories[0];
 
+function isSupabaseConfigured() {
+  return Boolean(
+    supabaseUrl
+    && supabasePublishableKey
+    && supabaseUrl.startsWith("https://")
+    && supabasePublishableKey.startsWith("sb_publishable_")
+  );
+}
+
+async function supabaseRequest(path, { method = "GET", body = null, prefer = "" } = {}) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase URL or publishable key is missing.");
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    method,
+    headers: {
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${supabasePublishableKey}`,
+      "Content-Type": "application/json",
+      ...(prefer ? { Prefer: prefer } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
 const onlineQuizSharing = {
-  isConfigured: false,
-  async saveQuiz() {
-    throw new Error("Online quiz sharing is not configured yet.");
+  get isConfigured() {
+    return isSupabaseConfigured();
   },
-  async loadQuiz() {
-    throw new Error("Online quiz sharing is not configured yet.");
+  async saveQuiz(quiz) {
+    await supabaseRequest("quizzes", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: {
+        quiz_id: quiz.quizId,
+        title: quiz.title,
+        theme: quiz.theme,
+        questions_json: quiz.questions,
+        creator_nickname: quiz.creatorNickname || null,
+      },
+    });
   },
-  async saveScore() {
-    throw new Error("Online quiz score saving is not configured yet.");
+  async loadQuiz(quizId) {
+    const query = new URLSearchParams({
+      select: "quiz_id,title,theme,questions_json,creator_nickname,created_at",
+      quiz_id: `eq.${quizId}`,
+      limit: "1",
+    });
+    const data = await supabaseRequest(`quizzes?${query.toString()}`);
+    const quiz = Array.isArray(data) ? data[0] : null;
+
+    return quiz ? {
+      quizId: quiz.quiz_id,
+      title: quiz.title,
+      theme: quiz.theme,
+      questions: quiz.questions_json,
+      creatorNickname: quiz.creator_nickname,
+      createdAt: quiz.created_at,
+    } : null;
   },
-  async loadScores() {
-    throw new Error("Online quiz score loading is not configured yet.");
+  async saveScore(score) {
+    await supabaseRequest("quiz_scores", {
+      method: "POST",
+      prefer: "return=minimal",
+      body: {
+        quiz_id: score.quizId,
+        nickname: score.nickname,
+        score_percent: score.scorePercent,
+        correct_answers: score.correctAnswers,
+        total_questions: score.totalQuestions,
+        result_message: score.resultMessage,
+      },
+    });
+  },
+  async loadScores(quizId) {
+    const query = new URLSearchParams({
+      select: "id,nickname,score_percent,correct_answers,total_questions,result_message,created_at",
+      quiz_id: `eq.${quizId}`,
+      order: "score_percent.desc,created_at.asc",
+      limit: String(maxLeaderboardEntries),
+    });
+    const data = await supabaseRequest(`quiz_scores?${query.toString()}`);
+
+    return (data || []).map((entry) => ({
+      id: entry.id,
+      nickname: entry.nickname,
+      avatar: null,
+      scorePercentage: entry.score_percent,
+      correctAnswers: entry.correct_answers,
+      totalQuestions: entry.total_questions,
+      message: entry.result_message,
+      quizId,
+      createdAt: new Date(entry.created_at).getTime(),
+    }));
   },
 };
 window.bestieOnlineQuizSharing = onlineQuizSharing;
@@ -734,6 +828,7 @@ let activeQuizSource = "custom";
 let activeQuizMode = "scored";
 let activeQuizId = "";
 let activeOnlineQuizId = "";
+let onlineLeaderboardEntries = [];
 let editingQuizId = "";
 let activePlayer = null;
 let guestMode = false;
@@ -2339,6 +2434,7 @@ function showSharedQuiz() {
   hideMainSections();
   sharedQuizMessage.textContent = "";
   activeOnlineQuizId = "";
+  onlineLeaderboardEntries = [];
   sharedLinkPanel.classList.add("hidden");
   startSharedLinkQuizButton.classList.add("hidden");
   sharedQuizCard.classList.remove("hidden");
@@ -2820,7 +2916,7 @@ function cleanNickname(nickname) {
   return cleanPlayerNickname(nickname);
 }
 
-function addToLeaderboard(event) {
+async function addToLeaderboard(event) {
   event.preventDefault();
 
   if (!latestResult) {
@@ -2860,16 +2956,21 @@ function addToLeaderboard(event) {
   }
 
   if (activeOnlineQuizId && onlineQuizSharing.isConfigured) {
-    onlineQuizSharing.saveScore({
-      quizId: activeOnlineQuizId,
-      nickname: newEntry.nickname,
-      scorePercent: newEntry.scorePercentage,
-      correctAnswers: newEntry.correctAnswers,
-      totalQuestions: newEntry.totalQuestions,
-      resultMessage: newEntry.message,
-    }).catch(() => {
-      // The local leaderboard already saved the score; online retry can be added with the backend.
-    });
+    try {
+      await onlineQuizSharing.saveScore({
+        quizId: activeOnlineQuizId,
+        nickname: newEntry.nickname,
+        scorePercent: newEntry.scorePercentage,
+        correctAnswers: newEntry.correctAnswers,
+        totalQuestions: newEntry.totalQuestions,
+        resultMessage: newEntry.message,
+      });
+      onlineLeaderboardEntries = sortLeaderboard(await onlineQuizSharing.loadScores(activeOnlineQuizId));
+      leaderboardNicknameMessage.textContent = "Score saved to this online quiz leaderboard.";
+    } catch {
+      onlineLeaderboardEntries = sortLeaderboard([...onlineLeaderboardEntries, newEntry]);
+      leaderboardNicknameMessage.textContent = "Score saved on this browser. Online leaderboard needs the Supabase quiz_scores table to be ready.";
+    }
   }
 
   renderLeaderboard();
@@ -2880,11 +2981,13 @@ function addToLeaderboard(event) {
 }
 
 function renderLeaderboard() {
-  const leaderboard = activeQuizId ? sortLeaderboard(getQuizLeaderboard(activeQuizId)) : sortLeaderboard(getLeaderboard());
+  const leaderboard = activeOnlineQuizId
+    ? sortLeaderboard(onlineLeaderboardEntries)
+    : activeQuizId ? sortLeaderboard(getQuizLeaderboard(activeQuizId)) : sortLeaderboard(getLeaderboard());
   const activeQuiz = activeQuizId ? findSavedQuizById(activeQuizId) : null;
 
   if (leaderboard.length === 0) {
-    leaderboardList.innerHTML = `<p class="empty-leaderboard">${activeQuiz ? `No scores yet for ${activeQuiz.title}.` : "No scores yet. Be the first star on the board! ♥"}</p>`;
+    leaderboardList.innerHTML = `<p class="empty-leaderboard">${activeOnlineQuizId ? "No online scores yet for this shared quiz." : activeQuiz ? `No scores yet for ${activeQuiz.title}.` : "No scores yet. Be the first star on the board! ♥"}</p>`;
     return;
   }
 
@@ -4271,7 +4374,11 @@ function buildShortFriendLink(quizId) {
 }
 
 function getOnlineSharingSetupMessage() {
-  return `Short friend links need online storage setup first. Add ${onlineQuizProvider} with quizzes and quiz_scores tables, then this button can save the quiz online and create a short ?quiz= link.`;
+  return `Short friend links need ${onlineQuizProvider} config in config.js. The URL and publishable key must be available in the browser.`;
+}
+
+function getOnlineSharingRequestErrorMessage() {
+  return `Supabase is connected, but the quiz could not be saved or loaded. Check the browser console, then check the quizzes and quiz_scores tables and policies in Supabase.`;
 }
 
 function showOnlineSharingNotReady(messageTarget, outputTarget = null) {
@@ -4282,21 +4389,45 @@ function showOnlineSharingNotReady(messageTarget, outputTarget = null) {
   messageTarget.textContent = getOnlineSharingSetupMessage();
 }
 
+function showOnlineSharingRequestError(messageTarget, error, outputTarget = null) {
+  console.error("Supabase friend link error:", error);
+
+  if (outputTarget) {
+    outputTarget.classList.add("hidden");
+  }
+
+  messageTarget.textContent = getOnlineSharingRequestErrorMessage();
+}
+
 async function createOnlineFriendLink(quiz) {
   if (!onlineQuizSharing.isConfigured) {
     throw new Error("Online quiz sharing is not configured yet.");
   }
 
-  const quizId = generateShortQuizId();
-  await onlineQuizSharing.saveQuiz({
-    quizId,
-    title: quiz.title,
-    theme: quiz.theme,
-    questions: quiz.questions,
-    creatorNickname: activePlayer?.nickname || "",
-  });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const quizId = generateShortQuizId();
 
-  return buildShortFriendLink(quizId);
+    try {
+      await onlineQuizSharing.saveQuiz({
+        quizId,
+        title: quiz.title,
+        theme: quiz.theme,
+        questions: quiz.questions,
+        creatorNickname: activePlayer?.nickname || "",
+      });
+
+      return buildShortFriendLink(quizId);
+    } catch (error) {
+      const isDuplicateId = String(error?.message || "").toLowerCase().includes("duplicate")
+        || String(error?.code || "") === "23505";
+
+      if (!isDuplicateId || attempt === 4) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error("Could not create a unique quiz ID.");
 }
 
 function createFriendLink() {
@@ -4323,9 +4454,9 @@ function createFriendLink() {
   createOnlineFriendLink(savedQuiz).then((friendLink) => {
     friendLinkOutput.value = friendLink;
     friendLinkOutputWrap.classList.remove("hidden");
-    friendLinkMessage.textContent = "Short friend link ready.";
-  }).catch(() => {
-    showOnlineSharingNotReady(friendLinkMessage, friendLinkOutputWrap);
+    friendLinkMessage.textContent = "Short friend link ready. It only contains a quiz ID.";
+  }).catch((error) => {
+    showOnlineSharingRequestError(friendLinkMessage, error, friendLinkOutputWrap);
   });
 }
 
@@ -4349,8 +4480,8 @@ function createFriendLinkForQuiz(quizId) {
     } catch {
       myQuizzesMessage.textContent = `Short friend link for ${quiz.title}: ${friendLink}`;
     }
-  }).catch(() => {
-    showOnlineSharingNotReady(myQuizzesMessage);
+  }).catch((error) => {
+    showOnlineSharingRequestError(myQuizzesMessage, error);
   });
 }
 
@@ -4381,19 +4512,25 @@ async function openOnlineQuizFromLink(quizId) {
   sharedQuizCard.classList.remove("hidden");
   sharedQuizCode.value = "";
   activeOnlineQuizId = quizId;
+  onlineLeaderboardEntries = [];
   sharedLinkPanel.classList.add("hidden");
   startSharedLinkQuizButton.classList.add("hidden");
 
   if (!onlineQuizSharing.isConfigured) {
-    sharedQuizMessage.textContent = "Short friend links need online storage setup first. This quiz cannot load until Supabase or Firebase is connected.";
+    sharedQuizMessage.textContent = "Short friend links need Supabase config in config.js before this quiz can load.";
     return true;
   }
 
   try {
     const onlineQuiz = await onlineQuizSharing.loadQuiz(quizId);
     sharedLinkQuestions = normalizeQuizQuestions(onlineQuiz?.questions || []);
-  } catch {
+    onlineLeaderboardEntries = sortLeaderboard(await onlineQuizSharing.loadScores(quizId));
+  } catch (error) {
+    console.error("Supabase shared quiz load error:", error);
     sharedLinkQuestions = [];
+    onlineLeaderboardEntries = [];
+    sharedQuizMessage.textContent = "Supabase is connected, but this quiz could not load. Check the browser console and Supabase table policies.";
+    return true;
   }
 
   if (sharedLinkQuestions.length === 0) {
@@ -4433,6 +4570,7 @@ function loadSharedQuiz() {
   }
 
   activeOnlineQuizId = "";
+  onlineLeaderboardEntries = [];
   sharedQuizMessage.textContent = "Shared quiz loaded.";
   startQuiz(sharedQuestions, "shared");
 }
