@@ -28,18 +28,24 @@
         <button id="open-friends" class="secondary-button" type="button">My Friends</button>
         <button id="open-chat" class="secondary-button" type="button">Friend Chat</button>
         <button id="edit-avatar" class="secondary-button" type="button">Edit Avatar</button>
+        <button id="auth-logout" class="secondary-button hidden" type="button">Log Out</button>
         <button id="switch-player" class="secondary-button" type="button">Switch Player</button>
       </section>
 
       <section id="player-gate" class="start-card" aria-labelledby="player-gate-title">
         <p class="eyebrow">Player Profile</p>
         <h2 id="player-gate-title">How do you want to play?</h2>
-        <p class="safety-note">Use a nickname, not your full real name. Nickname uniqueness works on this device for now. Online nickname checking needs backend setup later.</p>
+        <p class="safety-note">Your visible player identity is a nickname and friend code. Do not use your real full name, school, phone number, address, or photos.</p>
         <div class="choice-grid">
           <button class="choice-card" id="create-player-choice" type="button">
             <span class="choice-icon" aria-hidden="true">✨</span>
             <span class="choice-title">Create New Player</span>
             <span class="choice-description">Make a local profile with a nickname and avatar.</span>
+          </button>
+          <button class="choice-card hidden" id="online-auth-choice" type="button">
+            <span class="choice-icon" aria-hidden="true">🔑</span>
+            <span class="choice-title">Parent Online Login</span>
+            <span class="choice-description">Future parent/guardian login. Email is for login only and is never shown publicly.</span>
           </button>
           <button class="choice-card" id="login-player-choice" type="button">
             <span class="choice-icon" aria-hidden="true">🔐</span>
@@ -91,11 +97,41 @@
         <form id="login-player-form" class="profile-form">
           <label for="login-player-nickname">Nickname</label>
           <input id="login-player-nickname" type="text" maxlength="20" autocomplete="off" required />
-          <label for="login-player-password">Password <span class="optional-label">if you made one before</span></label>
-          <input id="login-player-password" type="password" maxlength="30" autocomplete="current-password" />
           <p id="login-player-message" class="friendly-message" aria-live="polite"></p>
           <button class="save-quiz-button" type="submit">Log In</button>
         </form>
+      </section>
+
+      <section id="online-auth-card" class="player-card hidden" aria-labelledby="online-auth-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Supabase Auth</p>
+            <h2 id="online-auth-title">Parent online login</h2>
+          </div>
+          <button class="profile-home-button secondary-button" type="button">Back</button>
+        </div>
+        <p class="safety-note">This is for a later parent/guardian account. The app still shows only the child’s nickname and friend code. Email is for login/recovery only and is never shown publicly. Passwords are handled by Supabase Auth, not saved by this app.</p>
+        <div class="auth-grid">
+          <form id="auth-signup-form" class="profile-form auth-panel">
+            <h3>Create parent account</h3>
+            <label for="auth-signup-email">Parent/guardian email for login</label>
+            <input id="auth-signup-email" type="email" autocomplete="email" required />
+            <label for="auth-signup-password">Password</label>
+            <input id="auth-signup-password" type="password" minlength="6" autocomplete="new-password" required />
+            <label for="auth-signup-nickname">Child player nickname shown in the app</label>
+            <input id="auth-signup-nickname" type="text" maxlength="20" autocomplete="off" required />
+            <button class="save-quiz-button" type="submit">Sign Up</button>
+          </form>
+          <form id="auth-login-form" class="profile-form auth-panel">
+            <h3>Log in parent account</h3>
+            <label for="auth-login-email">Parent/guardian email for login</label>
+            <input id="auth-login-email" type="email" autocomplete="email" required />
+            <label for="auth-login-password">Password</label>
+            <input id="auth-login-password" type="password" autocomplete="current-password" required />
+            <button class="save-quiz-button" type="submit">Log In</button>
+          </form>
+        </div>
+        <p id="auth-message" class="friendly-message" aria-live="polite"></p>
       </section>
 
       <section id="game-menu-card" class="start-card hidden" aria-labelledby="game-menu-title">

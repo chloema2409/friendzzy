@@ -19,6 +19,7 @@ const activeThemeKey = "bestieQuizActiveTheme";
 const friendChatKey = "bestieFriendChatMessages";
 const friendActivityKey = "bestieFriendActivity";
 const friendRewardLogKey = "bestieFriendRewardLog";
+const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
 const minQuestions = 5;
 const maxQuestions = 30;
 const maxLeaderboardEntries = 10;
@@ -35,16 +36,80 @@ function isSupabaseConfigured() {
   );
 }
 
-async function supabaseRequest(path, { method = "GET", body = null, prefer = "" } = {}) {
+function getSupabaseAuthSession() {
+  const savedSession = localStorage.getItem(supabaseAuthSessionKey);
+
+  if (!savedSession) {
+    return null;
+  }
+
+  try {
+    const session = JSON.parse(savedSession);
+    return session?.access_token ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSupabaseAuthSession(session) {
+  if (!session?.access_token) {
+    return;
+  }
+
+  const expiresAt = session.expires_at || Math.floor(Date.now() / 1000) + (session.expires_in || 3600);
+  localStorage.setItem(supabaseAuthSessionKey, JSON.stringify({
+    ...session,
+    expires_at: expiresAt,
+  }));
+}
+
+function clearSupabaseAuthSession() {
+  localStorage.removeItem(supabaseAuthSessionKey);
+}
+
+function getSupabaseAccessToken() {
+  return getSupabaseAuthSession()?.access_token || "";
+}
+
+function getSupabaseAuthUser() {
+  return getSupabaseAuthSession()?.user || null;
+}
+
+async function supabaseAuthRequest(path, { method = "POST", body = null, token = "" } = {}) {
   if (!isSupabaseConfigured()) {
     throw new Error("Supabase URL or publishable key is missing.");
   }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/${path}`, {
+    method,
+    headers: {
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${token || supabasePublishableKey}`,
+      "Content-Type": "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const rawText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Supabase Auth request failed: ${response.status} ${response.statusText}. ${rawText || "No response body."}`);
+  }
+
+  return rawText ? JSON.parse(rawText) : null;
+}
+
+async function supabaseRequest(path, { method = "GET", body = null, prefer = "", auth = false } = {}) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Supabase URL or publishable key is missing.");
+  }
+
+  const bearerToken = auth ? getSupabaseAccessToken() : supabasePublishableKey;
 
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     method,
     headers: {
       apikey: supabasePublishableKey,
-      Authorization: `Bearer ${supabasePublishableKey}`,
+      Authorization: `Bearer ${bearerToken || supabasePublishableKey}`,
       "Content-Type": "application/json",
       ...(prefer ? { Prefer: prefer } : {}),
     },
@@ -158,6 +223,7 @@ function normalizeOnlineFriendProfile(profile) {
   }
 
   return {
+    userId: profile.user_id || profile.userId || "",
     nickname: profile.nickname || "Friend",
     friendCode,
     stars: Number.parseInt(profile.stars || "0", 10) || 0,
@@ -181,6 +247,7 @@ const onlineFriendCodes = {
       method: "POST",
       prefer: "resolution=merge-duplicates,return=representation",
       body: {
+        ...((safeProfile.userId || onlineAccountStorage.isLoggedIn) ? { user_id: safeProfile.userId || onlineAccountStorage.userId } : {}),
         nickname: safeProfile.nickname,
         normalized_nickname: normalizeNickname(safeProfile.nickname),
         emoji_avatar: avatar.emojiAvatar || defaultEmojiAvatar,
@@ -192,7 +259,7 @@ const onlineFriendCodes = {
   },
   async findProfileByFriendCode(friendCode) {
     const query = new URLSearchParams({
-      select: "nickname,normalized_nickname,emoji_avatar,friend_code,stars,created_at,updated_at",
+      select: "user_id,nickname,normalized_nickname,emoji_avatar,friend_code,stars,active_theme,created_at,updated_at",
       friend_code: `eq.${normalizeFriendCode(friendCode)}`,
       limit: "1",
     });
@@ -212,12 +279,16 @@ const onlineFriendCodes = {
       prefer: "resolution=merge-duplicates,return=minimal",
       body: [
         {
+          owner_user_id: safeOwner.userId || null,
+          friend_user_id: safeFriend.userId || null,
           owner_friend_code: safeOwner.friendCode,
           friend_friend_code: safeFriend.friendCode,
           friend_nickname: safeFriend.nickname,
           friend_emoji_avatar: safeFriend.avatar?.emojiAvatar || defaultEmojiAvatar,
         },
         {
+          owner_user_id: safeFriend.userId || null,
+          friend_user_id: safeOwner.userId || null,
           owner_friend_code: safeFriend.friendCode,
           friend_friend_code: safeOwner.friendCode,
           friend_nickname: safeOwner.nickname,
@@ -229,12 +300,12 @@ const onlineFriendCodes = {
   async loadFriends(ownerFriendCode) {
     const safeOwnerCode = normalizeFriendCode(ownerFriendCode);
     const outgoingQuery = new URLSearchParams({
-      select: "friend_friend_code,friend_nickname,friend_emoji_avatar,created_at",
+      select: "friend_user_id,friend_friend_code,friend_nickname,friend_emoji_avatar,created_at",
       owner_friend_code: `eq.${safeOwnerCode}`,
       order: "created_at.desc",
     });
     const incomingQuery = new URLSearchParams({
-      select: "owner_friend_code,created_at",
+      select: "owner_user_id,owner_friend_code,created_at",
       friend_friend_code: `eq.${safeOwnerCode}`,
       order: "created_at.desc",
     });
@@ -280,6 +351,8 @@ function normalizeOnlineMessage(message) {
   return {
     id: message.id || crypto.randomUUID(),
     chatId: message.conversation_id || message.chatId || "",
+    senderUserId: message.sender_user_id || message.senderUserId || "",
+    receiverUserId: message.receiver_user_id || message.receiverUserId || "",
     senderCode: normalizeFriendCode(message.sender_friend_code || message.senderCode || ""),
     receiverCode: normalizeFriendCode(message.receiver_friend_code || message.receiverCode || ""),
     senderNickname: message.sender_nickname || message.senderNickname || "Friend",
@@ -305,9 +378,12 @@ const onlineFriendMessages = {
 
     const data = await supabaseRequest("messages", {
       method: "POST",
+      auth: onlineAccountStorage.isLoggedIn,
       prefer: "return=representation",
       body: {
         conversation_id: safeMessage.chatId,
+        sender_user_id: activePlayer?.userId || (onlineAccountStorage.isLoggedIn ? onlineAccountStorage.userId : null),
+        receiver_user_id: getFriendProfileSnapshot(safeMessage.receiverCode).userId || null,
         sender_friend_code: safeMessage.senderCode,
         receiver_friend_code: safeMessage.receiverCode,
         sender_nickname: safeMessage.senderNickname,
@@ -324,16 +400,251 @@ const onlineFriendMessages = {
   },
   async loadMessages(conversationId) {
     const query = new URLSearchParams({
-      select: "id,conversation_id,sender_friend_code,receiver_friend_code,sender_nickname,sender_emoji_avatar,receiver_nickname,receiver_emoji_avatar,message_text,message_type,sticker,created_at,read_at",
+      select: "id,conversation_id,sender_user_id,receiver_user_id,sender_friend_code,receiver_friend_code,sender_nickname,sender_emoji_avatar,receiver_nickname,receiver_emoji_avatar,message_text,message_type,sticker,created_at,read_at",
       conversation_id: `eq.${conversationId}`,
       order: "created_at.asc",
     });
-    const data = await supabaseRequest(`messages?${query.toString()}`);
+    const data = await supabaseRequest(`messages?${query.toString()}`, { auth: onlineAccountStorage.isLoggedIn });
 
     return (data || []).map(normalizeOnlineMessage).filter(Boolean);
   },
 };
 window.bestieOnlineFriendMessages = onlineFriendMessages;
+
+function normalizeAuthProfile(profile) {
+  if (!profile) {
+    return null;
+  }
+
+  const avatar = {
+    ...createDefaultAvatar(),
+    emojiAvatar: profile.emoji_avatar || profile.emojiAvatar || defaultEmojiAvatar,
+  };
+
+  return ensureFriendProfile({
+    userId: profile.user_id || profile.userId || "",
+    nickname: profile.nickname || "Mystery Player",
+    normalizedNickname: profile.normalized_nickname || normalizeNickname(profile.nickname || ""),
+    avatar,
+    friendCode: normalizeFriendCode(profile.friend_code || profile.friendCode || ""),
+    stars: Number.parseInt(profile.stars || "0", 10) || 0,
+    activeTheme: profile.active_theme || "default",
+    purchasedRewards: [],
+    diaryAccess: false,
+    diaryNotes: {},
+    settings: {},
+    createdAt: profile.created_at ? new Date(profile.created_at).getTime() : Date.now(),
+  });
+}
+
+const onlineAccountStorage = {
+  get isLoggedIn() {
+    return Boolean(getSupabaseAccessToken() && getSupabaseAuthUser()?.id);
+  },
+  get userId() {
+    return getSupabaseAuthUser()?.id || "";
+  },
+  async signUp({ email, password, nickname }) {
+    return supabaseAuthRequest("signup", {
+      body: {
+        email,
+        password,
+        data: {
+          nickname,
+        },
+      },
+    });
+  },
+  async signIn({ email, password }) {
+    return supabaseAuthRequest("token?grant_type=password", {
+      body: {
+        email,
+        password,
+      },
+    });
+  },
+  async refreshSession() {
+    const session = getSupabaseAuthSession();
+
+    if (!session?.refresh_token) {
+      return null;
+    }
+
+    const refreshedSession = await supabaseAuthRequest("token?grant_type=refresh_token", {
+      body: {
+        refresh_token: session.refresh_token,
+      },
+    });
+    saveSupabaseAuthSession(refreshedSession);
+    return refreshedSession;
+  },
+  async signOut() {
+    const token = getSupabaseAccessToken();
+
+    if (token) {
+      await supabaseAuthRequest("logout", {
+        token,
+        body: {},
+      }).catch((error) => console.error("Supabase logout error:", error));
+    }
+
+    clearSupabaseAuthSession();
+  },
+  async loadProfile() {
+    const userId = this.userId;
+
+    if (!userId) {
+      return null;
+    }
+
+    const query = new URLSearchParams({
+      select: "user_id,nickname,normalized_nickname,emoji_avatar,friend_code,stars,active_theme,created_at,updated_at",
+      user_id: `eq.${userId}`,
+      limit: "1",
+    });
+    const data = await supabaseRequest(`profiles?${query.toString()}`, { auth: true });
+    return normalizeAuthProfile(Array.isArray(data) ? data[0] : null);
+  },
+  async saveProfile(profile) {
+    const userId = this.userId;
+
+    if (!userId || !profile?.nickname) {
+      return null;
+    }
+
+    const avatar = getUnlockedAvatar(profile.avatar || createDefaultAvatar());
+    const data = await supabaseRequest("profiles?on_conflict=user_id", {
+      method: "POST",
+      auth: true,
+      prefer: "resolution=merge-duplicates,return=representation",
+      body: {
+        user_id: userId,
+        nickname: profile.nickname,
+        normalized_nickname: normalizeNickname(profile.nickname),
+        emoji_avatar: avatar.emojiAvatar || defaultEmojiAvatar,
+        friend_code: normalizeFriendCode(profile.friendCode),
+        stars: profile.stars || 0,
+        active_theme: getActiveTheme(),
+        updated_at: new Date().toISOString(),
+      },
+    });
+
+    return normalizeAuthProfile(Array.isArray(data) ? data[0] : null);
+  },
+  async loadPurchases() {
+    const query = new URLSearchParams({
+      select: "item_id,purchased_at",
+      order: "purchased_at.asc",
+    });
+    const data = await supabaseRequest(`purchases?${query.toString()}`, { auth: true });
+    return (data || []).map((purchase) => purchase.item_id).filter(Boolean);
+  },
+  async savePurchases(itemIds) {
+    const userId = this.userId;
+    const uniqueItemIds = [...new Set(itemIds || [])].filter(Boolean);
+
+    if (!userId || uniqueItemIds.length === 0) {
+      return;
+    }
+
+    await supabaseRequest("purchases?on_conflict=user_id,item_id", {
+      method: "POST",
+      auth: true,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: uniqueItemIds.map((itemId) => ({
+        user_id: userId,
+        item_id: itemId,
+      })),
+    });
+  },
+  async loadDiaryEntries() {
+    const query = new URLSearchParams({
+      select: "id,local_entry_id,text,mood,sticker,created_at",
+      order: "created_at.desc",
+    });
+    const data = await supabaseRequest(`diary_entries?${query.toString()}`, { auth: true });
+
+    return normalizeDiaryEntries((data || []).map((entry) => {
+      const createdAt = entry.created_at ? new Date(entry.created_at) : new Date();
+      return {
+        id: entry.local_entry_id || entry.id,
+        date: createdAt.toISOString().slice(0, 10),
+        time: createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        text: entry.text,
+        mood: entry.mood || "",
+        sticker: entry.sticker || "",
+        createdAt: createdAt.getTime(),
+      };
+    }));
+  },
+  async saveDiaryEntries(entries) {
+    const userId = this.userId;
+    const safeEntries = normalizeDiaryEntries(entries);
+
+    if (!userId || safeEntries.length === 0) {
+      return;
+    }
+
+    await supabaseRequest("diary_entries?on_conflict=user_id,local_entry_id", {
+      method: "POST",
+      auth: true,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: safeEntries.map((entry) => ({
+        user_id: userId,
+        local_entry_id: entry.id,
+        text: entry.text,
+        mood: entry.mood || null,
+        sticker: entry.sticker || null,
+        created_at: new Date(entry.createdAt || Date.now()).toISOString(),
+      })),
+    });
+  },
+  async loadQuizzes() {
+    const query = new URLSearchParams({
+      select: "id,local_quiz_id,quiz_id,title,theme,questions_json,created_at,updated_at",
+      order: "updated_at.desc",
+    });
+    const data = await supabaseRequest(`quizzes?${query.toString()}`, { auth: true });
+
+    return (data || [])
+      .map((quiz, index) => normalizeSavedQuizRecord({
+        id: quiz.local_quiz_id || quiz.quiz_id || quiz.id,
+        onlineQuizId: quiz.quiz_id,
+        title: quiz.title,
+        theme: quiz.theme,
+        questions: quiz.questions_json,
+        createdAt: quiz.created_at,
+        updatedAt: quiz.updated_at || quiz.created_at,
+      }, index === 0 ? "My Online Quiz" : `Online Quiz ${index + 1}`))
+      .filter((quiz) => quiz.questions.length > 0);
+  },
+  async saveQuizzes(quizzes) {
+    const userId = this.userId;
+    const safeQuizzes = (quizzes || []).map((quiz) => normalizeSavedQuizRecord(quiz)).filter((quiz) => quiz.questions.length > 0);
+
+    if (!userId || safeQuizzes.length === 0) {
+      return;
+    }
+
+    await supabaseRequest("quizzes?on_conflict=owner_id,local_quiz_id", {
+      method: "POST",
+      auth: true,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: safeQuizzes.map((quiz) => ({
+        owner_id: userId,
+        local_quiz_id: quiz.id,
+        quiz_id: quiz.onlineQuizId || quiz.quizId || `LOCAL-${quiz.id.replace(/[^a-z0-9]/gi, "").slice(0, 12).toUpperCase()}`,
+        title: quiz.title,
+        theme: quiz.theme,
+        questions_json: quiz.questions,
+        creator_nickname: activePlayer?.nickname || null,
+        created_at: quiz.createdAt || new Date().toISOString(),
+        updated_at: quiz.updatedAt || new Date().toISOString(),
+      })),
+    });
+  },
+};
+window.bestieOnlineAccountStorage = onlineAccountStorage;
 
 const themeRewards = {
   "secret-notebook-theme": {
@@ -1061,15 +1372,20 @@ let selectedChatFriendCode = "";
 let activeOnlineChatMessages = [];
 let chatLoadedFromSupabase = false;
 let selectedFriendActionCode = "";
+let onlineAccountSyncInProgress = false;
 
 const playerGate = document.querySelector("#player-gate");
 const createPlayerChoice = document.querySelector("#create-player-choice");
+const onlineAuthChoice = document.querySelector("#online-auth-choice");
 const loginPlayerChoice = document.querySelector("#login-player-choice");
 const guestPlayerChoice = document.querySelector("#guest-player-choice");
 const createPlayerCard = document.querySelector("#create-player-card");
 const loginPlayerCard = document.querySelector("#login-player-card");
+const onlineAuthCard = document.querySelector("#online-auth-card");
 const createPlayerForm = document.querySelector("#create-player-form");
 const loginPlayerForm = document.querySelector("#login-player-form");
+const authSignupForm = document.querySelector("#auth-signup-form");
+const authLoginForm = document.querySelector("#auth-login-form");
 const profileHomeButtons = document.querySelectorAll(".profile-home-button");
 const profileBar = document.querySelector("#profile-bar");
 const profileAvatar = document.querySelector("#profile-avatar");
@@ -1080,13 +1396,19 @@ const openStarLeaderboardButton = document.querySelector("#open-star-leaderboard
 const openFriendsButton = document.querySelector("#open-friends");
 const openChatButton = document.querySelector("#open-chat");
 const editAvatarButton = document.querySelector("#edit-avatar");
+const authLogoutButton = document.querySelector("#auth-logout");
 const switchPlayerButton = document.querySelector("#switch-player");
 const createPlayerMessage = document.querySelector("#create-player-message");
 const loginPlayerMessage = document.querySelector("#login-player-message");
+const authMessage = document.querySelector("#auth-message");
 const newPlayerNickname = document.querySelector("#new-player-nickname");
 const avatarNameInput = document.querySelector("#avatar-name");
 const loginPlayerNickname = document.querySelector("#login-player-nickname");
-const loginPlayerPassword = document.querySelector("#login-player-password");
+const authSignupEmail = document.querySelector("#auth-signup-email");
+const authSignupPassword = document.querySelector("#auth-signup-password");
+const authSignupNickname = document.querySelector("#auth-signup-nickname");
+const authLoginEmail = document.querySelector("#auth-login-email");
+const authLoginPassword = document.querySelector("#auth-login-password");
 const avatarPreview = document.querySelector("#avatar-preview");
 const avatarOptionPanels = document.querySelector("#avatar-option-panels");
 const gameMenuCard = document.querySelector("#game-menu-card");
@@ -1240,6 +1562,7 @@ function normalizeSavedQuizRecord(quiz, fallbackTitle = "Untitled Quiz") {
 
   return {
     id: quiz?.id || `quiz-${crypto.randomUUID()}`,
+    onlineQuizId: quiz?.onlineQuizId || quiz?.quizId || "",
     title: String(quiz?.title || fallbackTitle).trim() || fallbackTitle,
     theme: String(quiz?.theme || "Best Friend").trim(),
     createdAt: quiz?.createdAt || now,
@@ -1265,6 +1588,12 @@ function getSavedQuizzesRaw() {
 
 function saveSavedQuizzes(quizzes) {
   localStorage.setItem(savedQuizzesKey, JSON.stringify(quizzes));
+
+  if (onlineAccountStorage?.isLoggedIn && !onlineAccountSyncInProgress) {
+    onlineAccountStorage.saveQuizzes(quizzes).catch((error) => {
+      console.error("Supabase saved quizzes sync error:", error);
+    });
+  }
 }
 
 function migrateOldQuizToSavedQuizzes() {
@@ -1583,13 +1912,21 @@ function ensureFriendProfile(profile, profiles = getPlayerProfiles()) {
 }
 
 function syncActiveProfileOnline() {
-  if (!activePlayer || !onlineFriendCodes.isConfigured) {
+  if (!activePlayer || onlineAccountSyncInProgress) {
     return;
   }
 
-  onlineFriendCodes.saveProfile(activePlayer).catch((error) => {
-    console.error("Supabase profile sync error:", error);
-  });
+  if (onlineAccountStorage.isLoggedIn) {
+    onlineAccountStorage.saveProfile(activePlayer).catch((error) => {
+      console.error("Supabase Auth profile sync error:", error);
+    });
+  }
+
+  if (onlineFriendCodes.isConfigured) {
+    onlineFriendCodes.saveProfile(activePlayer).catch((error) => {
+      console.error("Supabase profile sync error:", error);
+    });
+  }
 }
 
 function saveActivePlayerProfile() {
@@ -1684,6 +2021,12 @@ function savePurchasedRewards(rewards) {
       purchasedRewards: rewards,
       diaryAccess: rewards.includes("daily-diary"),
     });
+
+    if (onlineAccountStorage.isLoggedIn && !onlineAccountSyncInProgress) {
+      onlineAccountStorage.savePurchases(rewards).catch((error) => {
+        console.error("Supabase purchases sync error:", error);
+      });
+    }
     return;
   }
 
@@ -1758,6 +2101,12 @@ function getActiveTheme() {
 
 function saveActiveTheme(themeId) {
   localStorage.setItem(activeThemeKey, themeId);
+
+  if (activePlayer && onlineAccountStorage.isLoggedIn && !onlineAccountSyncInProgress) {
+    onlineAccountStorage.saveProfile({ ...activePlayer, activeTheme: themeId }).catch((error) => {
+      console.error("Supabase theme sync error:", error);
+    });
+  }
 }
 
 function getActiveThemeName() {
@@ -1856,7 +2205,14 @@ function getDiaryEntries() {
 }
 
 function saveDiaryEntries(entries) {
-  localStorage.setItem(diaryEntriesKey, JSON.stringify(normalizeDiaryEntries(entries)));
+  const safeEntries = normalizeDiaryEntries(entries);
+  localStorage.setItem(diaryEntriesKey, JSON.stringify(safeEntries));
+
+  if (onlineAccountStorage.isLoggedIn && !onlineAccountSyncInProgress) {
+    onlineAccountStorage.saveDiaryEntries(safeEntries).catch((error) => {
+      console.error("Supabase diary sync error:", error);
+    });
+  }
 }
 
 function applyPurchasedEffects() {
@@ -2197,6 +2553,7 @@ function updateProfileBar() {
     openFriendsButton.hidden = true;
     openChatButton.hidden = true;
     editAvatarButton.hidden = false;
+    authLogoutButton.classList.toggle("hidden", !onlineAccountStorage.isLoggedIn);
     switchPlayerButton.hidden = false;
     return;
   }
@@ -2209,6 +2566,7 @@ function updateProfileBar() {
     openFriendsButton.hidden = false;
     openChatButton.hidden = false;
     editAvatarButton.hidden = false;
+    authLogoutButton.classList.toggle("hidden", !onlineAccountStorage.isLoggedIn);
     switchPlayerButton.hidden = false;
     return;
   }
@@ -2220,6 +2578,7 @@ function updateProfileBar() {
   openFriendsButton.hidden = true;
   openChatButton.hidden = true;
   editAvatarButton.hidden = false;
+  authLogoutButton.classList.add("hidden");
   switchPlayerButton.hidden = true;
 }
 
@@ -2402,6 +2761,7 @@ function hideMainSections() {
   playerGate.classList.add("hidden");
   createPlayerCard.classList.add("hidden");
   loginPlayerCard.classList.add("hidden");
+  onlineAuthCard.classList.add("hidden");
   gameMenuCard.classList.add("hidden");
   startCard.classList.add("hidden");
   safeQuizCard.classList.add("hidden");
@@ -2442,6 +2802,14 @@ function showLoginPlayer() {
   hideMainSections();
   loginPlayerMessage.textContent = "";
   loginPlayerCard.classList.remove("hidden");
+}
+
+function showOnlineAuth() {
+  hideMainSections();
+  authMessage.textContent = onlineAccountStorage.isLoggedIn
+    ? "You are already logged in online. Use Log Out if you want a different account."
+    : "";
+  onlineAuthCard.classList.remove("hidden");
 }
 
 function showStart() {
@@ -3341,6 +3709,7 @@ function findProfileByFriendCode(code) {
 function getFriendProfileSnapshot(friendCode) {
   const safeFriendCode = normalizeFriendCode(friendCode);
   return findProfileByFriendCode(safeFriendCode) || {
+    userId: "",
     nickname: "Friend",
     friendCode: safeFriendCode,
     stars: 0,
@@ -3707,6 +4076,8 @@ async function saveFriendMessage(friendCode, messageText, messageType = "typed",
   const message = {
     id: crypto.randomUUID(),
     chatId: getChatId(safeFriendCode),
+    senderUserId: activePlayer.userId || onlineAccountStorage.userId,
+    receiverUserId: friendProfile.userId || "",
     senderCode: normalizeFriendCode(activePlayer.friendCode),
     receiverCode: safeFriendCode,
     senderNickname: activePlayer.nickname,
@@ -4643,6 +5014,260 @@ function resetEverything() {
   showPlayerGate();
 }
 
+function getAuthDisplayEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function getFallbackNicknameFromEmail(email) {
+  const localPart = getAuthDisplayEmail(email).split("@")[0] || "MysteryPlayer";
+  const safeNickname = cleanPlayerNickname(localPart.replace(/[^a-z0-9_-]/gi, "").slice(0, 20));
+  return safeNickname || "MysteryPlayer";
+}
+
+function buildProfileForAuth(user, preferredNickname = "") {
+  const localProfile = activePlayer || loadCurrentPlayer();
+  const nickname = cleanPlayerNickname(preferredNickname || localProfile?.nickname || user?.user_metadata?.nickname || getFallbackNicknameFromEmail(user?.email));
+  const profiles = getPlayerProfiles();
+  const avatar = getUnlockedAvatar(localProfile?.avatar || getSelectedAvatar() || createDefaultAvatar());
+
+  return ensureFriendProfile({
+    stars: localProfile?.stars || getStarBalance(),
+    purchasedRewards: localProfile?.purchasedRewards || getPurchasedRewards(),
+    diaryAccess: localProfile?.diaryAccess || hasPurchased("daily-diary"),
+    diaryNotes: localProfile?.diaryNotes || getDiaryNotes(),
+    settings: {},
+    createdAt: Date.now(),
+    ...localProfile,
+    userId: user?.id || onlineAccountStorage.userId,
+    nickname,
+    friendCode: localProfile?.friendCode || generateFriendCode(nickname, profiles),
+    avatar,
+  });
+}
+
+function mergeDiaryEntryLists(firstEntries, secondEntries) {
+  const entriesByKey = new Map();
+
+  [...normalizeDiaryEntries(firstEntries), ...normalizeDiaryEntries(secondEntries)].forEach((entry) => {
+    const key = entry.id || `${entry.createdAt}:${entry.text}`;
+    entriesByKey.set(key, {
+      ...entriesByKey.get(key),
+      ...entry,
+    });
+  });
+
+  return [...entriesByKey.values()].sort((firstEntry, secondEntry) => secondEntry.createdAt - firstEntry.createdAt);
+}
+
+function mergeSavedQuizLists(firstQuizzes, secondQuizzes) {
+  const quizzesById = new Map();
+
+  [...(firstQuizzes || []), ...(secondQuizzes || [])].forEach((quiz, index) => {
+    const normalizedQuiz = normalizeSavedQuizRecord(quiz, `Quiz ${index + 1}`);
+
+    if (normalizedQuiz.questions.length === 0) {
+      return;
+    }
+
+    quizzesById.set(normalizedQuiz.id, {
+      ...quizzesById.get(normalizedQuiz.id),
+      ...normalizedQuiz,
+    });
+  });
+
+  return [...quizzesById.values()].sort((firstQuiz, secondQuiz) => new Date(secondQuiz.updatedAt) - new Date(firstQuiz.updatedAt));
+}
+
+async function saveLocalAccountDataToSupabase() {
+  if (!onlineAccountStorage.isLoggedIn || !activePlayer) {
+    return;
+  }
+
+  onlineAccountSyncInProgress = true;
+
+  try {
+    await onlineAccountStorage.saveProfile(activePlayer).catch((error) => console.error("Supabase profile import error:", error));
+    await onlineAccountStorage.savePurchases(getPurchasedRewards()).catch((error) => console.error("Supabase purchases import error:", error));
+    await onlineAccountStorage.saveDiaryEntries(getDiaryEntries()).catch((error) => console.error("Supabase diary import error:", error));
+    await onlineAccountStorage.saveQuizzes(getSavedQuizzes()).catch((error) => console.error("Supabase quizzes import error:", error));
+  } finally {
+    onlineAccountSyncInProgress = false;
+  }
+}
+
+async function loadSupabaseAccountDataToLocal() {
+  if (!onlineAccountStorage.isLoggedIn) {
+    return null;
+  }
+
+  onlineAccountSyncInProgress = true;
+
+  try {
+    const [onlineProfile, onlinePurchases, onlineDiaryEntries, onlineQuizzes] = await Promise.all([
+      onlineAccountStorage.loadProfile().catch((error) => {
+        console.error("Supabase profile load error:", error);
+        return null;
+      }),
+      onlineAccountStorage.loadPurchases().catch(() => []),
+      onlineAccountStorage.loadDiaryEntries().catch(() => []),
+      onlineAccountStorage.loadQuizzes().catch(() => []),
+    ]);
+
+    if (onlineProfile) {
+      activePlayer = ensureFriendProfile({
+        ...activePlayer,
+        ...onlineProfile,
+        purchasedRewards: [...new Set([...(activePlayer?.purchasedRewards || []), ...onlinePurchases])],
+        diaryAccess: [...new Set([...(activePlayer?.purchasedRewards || []), ...onlinePurchases])].includes("daily-diary"),
+      });
+      localStorage.setItem(currentPlayerKey, activePlayer.nickname);
+      savePlayerProfiles(getPlayerProfiles().filter((profile) => normalizeNickname(profile.nickname) !== normalizeNickname(activePlayer.nickname)).concat(activePlayer));
+      replaceUsedNickname("", activePlayer.nickname);
+    }
+
+    if (onlinePurchases.length > 0 && activePlayer) {
+      activePlayer = ensureFriendProfile({
+        ...activePlayer,
+        purchasedRewards: [...new Set([...(activePlayer.purchasedRewards || []), ...onlinePurchases])],
+        diaryAccess: [...new Set([...(activePlayer.purchasedRewards || []), ...onlinePurchases])].includes("daily-diary"),
+      });
+      savePlayerProfiles(getPlayerProfiles().map((profile) => normalizeNickname(profile.nickname) === normalizeNickname(activePlayer.nickname) ? activePlayer : profile));
+    }
+
+    const mergedDiaryEntries = mergeDiaryEntryLists(getDiaryEntries(), onlineDiaryEntries);
+    localStorage.setItem(diaryEntriesKey, JSON.stringify(mergedDiaryEntries));
+
+    const mergedQuizzes = mergeSavedQuizLists(getSavedQuizzes(), onlineQuizzes);
+    localStorage.setItem(savedQuizzesKey, JSON.stringify(mergedQuizzes));
+
+    if (onlineProfile?.activeTheme) {
+      localStorage.setItem(activeThemeKey, onlineProfile.activeTheme);
+    }
+
+    return activePlayer;
+  } finally {
+    onlineAccountSyncInProgress = false;
+  }
+}
+
+async function openSupabaseAccount(session, preferredNickname = "") {
+  if (session?.access_token) {
+    saveSupabaseAuthSession(session);
+  }
+
+  const user = session?.user || getSupabaseAuthUser();
+  const existingOnlineProfile = await onlineAccountStorage.loadProfile().catch(() => null);
+  const profile = existingOnlineProfile || buildProfileForAuth(user, preferredNickname);
+
+  setActivePlayer(profile);
+  await saveLocalAccountDataToSupabase();
+  await loadSupabaseAccountDataToLocal();
+  updateProfileBar();
+  applyPurchasedEffects();
+  updateGamePackStatuses();
+  authMessage.textContent = "Online login is ready. Your player data can sync across devices.";
+  showStart();
+}
+
+async function restoreSupabaseAccount() {
+  const session = getSupabaseAuthSession();
+
+  if (!session?.access_token) {
+    return false;
+  }
+
+  const expiresSoon = session.expires_at && session.expires_at * 1000 < Date.now() + 60000;
+
+  if (expiresSoon) {
+    try {
+      await onlineAccountStorage.refreshSession();
+    } catch (error) {
+      console.error("Supabase session refresh error:", error);
+      clearSupabaseAuthSession();
+      return false;
+    }
+  }
+
+  try {
+    await openSupabaseAccount(getSupabaseAuthSession());
+    return true;
+  } catch (error) {
+    console.error("Supabase account restore error:", error);
+    return false;
+  }
+}
+
+async function handleAuthSignup(event) {
+  event.preventDefault();
+
+  const email = getAuthDisplayEmail(authSignupEmail.value);
+  const password = authSignupPassword.value;
+  const nicknameCheck = validateNickname(authSignupNickname.value, { currentNickname: activePlayer?.nickname || "" });
+
+  if (nicknameCheck.message) {
+    authMessage.textContent = nicknameCheck.message;
+    return;
+  }
+
+  if (password.length < 6) {
+    authMessage.textContent = "Please choose a password with at least 6 characters.";
+    return;
+  }
+
+  authMessage.textContent = "Creating the parent/guardian online account...";
+
+  try {
+    const session = await onlineAccountStorage.signUp({
+      email,
+      password,
+      nickname: nicknameCheck.displayName,
+    });
+
+    if (!session?.access_token) {
+      authMessage.textContent = "Account created. Check the parent/guardian email if Supabase asks for confirmation, then log in here.";
+      return;
+    }
+
+    await openSupabaseAccount(session, nicknameCheck.displayName);
+    authSignupForm.reset();
+  } catch (error) {
+    console.error("Supabase signup error:", error);
+    authMessage.textContent = "Sign up did not work yet. Check the parent/guardian email, password, and Supabase settings.";
+  }
+}
+
+async function handleAuthLogin(event) {
+  event.preventDefault();
+
+  const email = getAuthDisplayEmail(authLoginEmail.value);
+  const password = authLoginPassword.value;
+
+  if (!email || !password) {
+    authMessage.textContent = "Please enter the parent/guardian login email and password.";
+    return;
+  }
+
+  authMessage.textContent = "Logging in online...";
+
+  try {
+    const session = await onlineAccountStorage.signIn({ email, password });
+    await openSupabaseAccount(session);
+    authLoginForm.reset();
+  } catch (error) {
+    console.error("Supabase login error:", error);
+    authMessage.textContent = "Online login did not open. Check the parent/guardian email and password.";
+  }
+}
+
+async function logoutSupabaseAccount() {
+  await onlineAccountStorage.signOut();
+  activePlayer = null;
+  guestMode = false;
+  localStorage.removeItem(currentPlayerKey);
+  updateProfileBar();
+  showPlayerGate();
+}
+
 function createPlayer(event) {
   event.preventDefault();
 
@@ -4676,7 +5301,6 @@ function createPlayer(event) {
     nickname,
     friendCode: activePlayer?.friendCode || existingProfile?.friendCode || generateFriendCode(nickname, profiles),
     friends: activePlayer?.friends || existingProfile?.friends || [],
-    password: activePlayer?.password || existingProfile?.password || "",
     avatar,
   };
 
@@ -4702,11 +5326,10 @@ function loginPlayer(event) {
   event.preventDefault();
 
   const nickname = cleanPlayerNickname(loginPlayerNickname.value);
-  const password = loginPlayerPassword.value;
-  const profile = getPlayerProfiles().find((savedProfile) => normalizeNickname(savedProfile.nickname) === normalizeNickname(nickname) && (!savedProfile.password || savedProfile.password === password));
+  const profile = getPlayerProfiles().find((savedProfile) => normalizeNickname(savedProfile.nickname) === normalizeNickname(nickname));
 
   if (!profile) {
-    loginPlayerMessage.textContent = "That player did not open. Check the nickname and password.";
+    loginPlayerMessage.textContent = "That player did not open. Check the nickname.";
     return;
   }
 
@@ -5196,11 +5819,15 @@ playSharedQuizButton.addEventListener("click", showSharedQuiz);
 createPlayerChoice.addEventListener("click", showCreatePlayer);
 createAvatarHomeButton.addEventListener("click", showCreatePlayer);
 editAvatarButton.addEventListener("click", showCreatePlayer);
+onlineAuthChoice.addEventListener("click", showOnlineAuth);
 loginPlayerChoice.addEventListener("click", showLoginPlayer);
 guestPlayerChoice.addEventListener("click", useGuestMode);
 createPlayerForm.addEventListener("submit", createPlayer);
 loginPlayerForm.addEventListener("submit", loginPlayer);
+authSignupForm.addEventListener("submit", handleAuthSignup);
+authLoginForm.addEventListener("submit", handleAuthLogin);
 profileHomeButtons.forEach((button) => button.addEventListener("click", showPlayerGate));
+authLogoutButton.addEventListener("click", logoutSupabaseAccount);
 switchPlayerButton.addEventListener("click", switchPlayer);
 homeButtons.forEach((button) => button.addEventListener("click", goHome));
 gamesButtons.forEach((button) => button.addEventListener("click", showStart));
@@ -5247,28 +5874,42 @@ editCurrentQuizButton.addEventListener("click", showSavedQuizEditor);
 editQuizButton.addEventListener("click", showSavedQuizEditor);
 resetEverythingButton.addEventListener("click", resetEverything);
 
-let savedQuizzes = getSavedQuizzes();
-let savedQuiz = savedQuizzes[0]?.questions || getSavedQuiz();
+async function initializeApp() {
+  const savedQuizzes = getSavedQuizzes();
+  const savedQuiz = savedQuizzes[0]?.questions || getSavedQuiz();
 
-renderCreatorFields(savedQuiz.length || minQuestions, savedQuiz);
-quizTitleInput.value = savedQuizzes[0]?.title || "";
-quizThemeInput.value = savedQuizzes[0]?.theme || "Best Friend";
-renderSafeQuizzes();
-seedUsedNicknamesFromSavedData();
-const savedPlayer = loadCurrentPlayer();
+  renderCreatorFields(savedQuiz.length || minQuestions, savedQuiz);
+  quizTitleInput.value = savedQuizzes[0]?.title || "";
+  quizThemeInput.value = savedQuizzes[0]?.theme || "Best Friend";
+  renderSafeQuizzes();
+  seedUsedNicknamesFromSavedData();
 
-if (savedPlayer) {
-  setActivePlayer(savedPlayer);
-}
+  const restoredOnlineAccount = await restoreSupabaseAccount();
 
-guestMode = false;
-updateAvatarPreview();
-updateProfileBar();
-applyPurchasedEffects();
-updateGamePackStatuses();
-loadSharedQuizFromUrl().then((openedSharedQuiz) => {
+  if (!restoredOnlineAccount) {
+    const savedPlayer = loadCurrentPlayer();
+
+    if (savedPlayer) {
+      setActivePlayer(savedPlayer);
+    }
+  }
+
+  guestMode = false;
+  updateAvatarPreview();
+  updateProfileBar();
+  applyPurchasedEffects();
+  updateGamePackStatuses();
+  const openedSharedQuiz = await loadSharedQuizFromUrl();
+
   if (!openedSharedQuiz) {
     showStart();
   }
+
+  renderLeaderboard();
+}
+
+initializeApp().catch((error) => {
+  console.error("App startup error:", error);
+  updateProfileBar();
+  showPlayerGate();
 });
-renderLeaderboard();

@@ -354,6 +354,25 @@ h2 {
   gap: 12px;
 }
 
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.auth-panel {
+  padding: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.72);
+}
+
+.auth-panel h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
 .profile-form label,
 .avatar-grid label {
   display: grid;
@@ -2533,6 +2552,10 @@ body.theme-secret-garden .danger-zone {
   }
 
   .choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-grid {
     grid-template-columns: 1fr;
   }
 

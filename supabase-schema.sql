@@ -112,9 +112,50 @@ create table if not exists public.messages (
   read_at timestamptz
 );
 
+-- Auth-backed cross-device account columns.
+-- These keep the older local/friend-code MVP working while adding real
+-- Supabase Auth ownership.
+alter table public.profiles
+add column if not exists user_id uuid references auth.users(id) on delete cascade,
+add column if not exists active_theme text not null default 'default';
+
+alter table public.quizzes
+add column if not exists owner_id uuid references auth.users(id) on delete cascade,
+add column if not exists local_quiz_id text,
+add column if not exists updated_at timestamptz not null default now();
+
+alter table public.friends
+add column if not exists owner_user_id uuid references auth.users(id) on delete cascade,
+add column if not exists friend_user_id uuid references auth.users(id) on delete cascade;
+
+alter table public.messages
+add column if not exists sender_user_id uuid references auth.users(id) on delete cascade,
+add column if not exists receiver_user_id uuid references auth.users(id) on delete cascade;
+
+create table if not exists public.purchases (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  item_id text not null,
+  purchased_at timestamptz not null default now(),
+  unique (user_id, item_id)
+);
+
+create table if not exists public.diary_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  local_entry_id text not null,
+  text text not null,
+  mood text,
+  sticker text,
+  created_at timestamptz not null default now(),
+  unique (user_id, local_entry_id)
+);
+
 alter table public.profiles enable row level security;
 alter table public.friends enable row level security;
 alter table public.messages enable row level security;
+alter table public.purchases enable row level security;
+alter table public.diary_entries enable row level security;
 
 drop policy if exists "Anyone can find profiles by friend code" on public.profiles;
 create policy "Anyone can find profiles by friend code"
@@ -148,6 +189,40 @@ with check (
   and stars >= 0
 );
 
+drop policy if exists "Logged-in users can create their own profile" on public.profiles;
+create policy "Logged-in users can create their own profile"
+on public.profiles
+for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and char_length(nickname) between 1 and 20
+  and char_length(normalized_nickname) between 1 and 20
+  and friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and stars >= 0
+);
+
+drop policy if exists "Logged-in users can update their own profile" on public.profiles;
+create policy "Logged-in users can update their own profile"
+on public.profiles
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (
+  user_id = auth.uid()
+  and char_length(nickname) between 1 and 20
+  and char_length(normalized_nickname) between 1 and 20
+  and friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and stars >= 0
+);
+
+drop policy if exists "Logged-in users can read their own profile" on public.profiles;
+create policy "Logged-in users can read their own profile"
+on public.profiles
+for select
+to authenticated
+using (user_id = auth.uid());
+
 drop policy if exists "Anyone can view temporary friend links" on public.friends;
 create policy "Anyone can view temporary friend links"
 on public.friends
@@ -180,6 +255,14 @@ with check (
   and char_length(friend_nickname) between 1 and 20
 );
 
+drop policy if exists "Logged-in users can manage their own friend rows" on public.friends;
+create policy "Logged-in users can manage their own friend rows"
+on public.friends
+for all
+to authenticated
+using (owner_user_id = auth.uid() or friend_user_id = auth.uid())
+with check (owner_user_id = auth.uid() or friend_user_id = auth.uid());
+
 drop policy if exists "Anyone can add a safe temporary friend message" on public.messages;
 create policy "Anyone can add a safe temporary friend message"
 on public.messages
@@ -202,6 +285,32 @@ with check (
   )
 );
 
+drop policy if exists "Logged-in friends can add private messages" on public.messages;
+create policy "Logged-in friends can add private messages"
+on public.messages
+for insert
+to authenticated
+with check (
+  sender_user_id = auth.uid()
+  and sender_user_id <> receiver_user_id
+  and char_length(message_text) between 1 and 150
+  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite')
+  and (
+    exists (
+      select 1
+      from public.friends approved_friend
+      where approved_friend.owner_user_id = sender_user_id
+        and approved_friend.friend_user_id = receiver_user_id
+    )
+    or exists (
+      select 1
+      from public.friends approved_friend
+      where approved_friend.owner_friend_code = sender_friend_code
+        and approved_friend.friend_friend_code = receiver_friend_code
+    )
+  )
+);
+
 drop policy if exists "Anyone can view safe temporary friend conversations" on public.messages;
 create policy "Anyone can view safe temporary friend conversations"
 on public.messages
@@ -217,11 +326,88 @@ using (
   )
 );
 
+drop policy if exists "Logged-in users can read their private messages" on public.messages;
+create policy "Logged-in users can read their private messages"
+on public.messages
+for select
+to authenticated
+using (sender_user_id = auth.uid() or receiver_user_id = auth.uid());
+
+drop policy if exists "Users can read their purchases" on public.purchases;
+create policy "Users can read their purchases"
+on public.purchases
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "Users can save their purchases" on public.purchases;
+create policy "Users can save their purchases"
+on public.purchases
+for insert
+to authenticated
+with check (user_id = auth.uid() and char_length(item_id) between 1 and 80);
+
+drop policy if exists "Users can refresh their purchases" on public.purchases;
+create policy "Users can refresh their purchases"
+on public.purchases
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid() and char_length(item_id) between 1 and 80);
+
+drop policy if exists "Users can read their diary entries" on public.diary_entries;
+create policy "Users can read their diary entries"
+on public.diary_entries
+for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "Users can save their diary entries" on public.diary_entries;
+create policy "Users can save their diary entries"
+on public.diary_entries
+for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and char_length(text) between 1 and 500
+  and char_length(local_entry_id) between 1 and 120
+);
+
+drop policy if exists "Users can refresh their diary entries" on public.diary_entries;
+create policy "Users can refresh their diary entries"
+on public.diary_entries
+for update
+to authenticated
+using (user_id = auth.uid())
+with check (
+  user_id = auth.uid()
+  and char_length(text) between 1 and 500
+  and char_length(local_entry_id) between 1 and 120
+);
+
+drop policy if exists "Users can manage their own saved quizzes" on public.quizzes;
+create policy "Users can manage their own saved quizzes"
+on public.quizzes
+for all
+to authenticated
+using (owner_id = auth.uid())
+with check (
+  owner_id = auth.uid()
+  and char_length(quiz_id) between 4 and 40
+  and jsonb_typeof(questions_json) = 'array'
+);
+
 create index if not exists profiles_friend_code_idx on public.profiles (friend_code);
+create index if not exists profiles_user_id_idx on public.profiles (user_id);
 create index if not exists friends_owner_friend_code_idx on public.friends (owner_friend_code);
 create index if not exists friends_friend_friend_code_idx on public.friends (friend_friend_code);
+create index if not exists friends_owner_user_id_idx on public.friends (owner_user_id);
+create index if not exists friends_friend_user_id_idx on public.friends (friend_user_id);
 create index if not exists messages_conversation_created_idx on public.messages (conversation_id, created_at asc);
 create index if not exists messages_sender_receiver_idx on public.messages (sender_friend_code, receiver_friend_code);
+create index if not exists messages_sender_receiver_user_idx on public.messages (sender_user_id, receiver_user_id);
+create index if not exists purchases_user_id_idx on public.purchases (user_id);
+create index if not exists diary_entries_user_created_idx on public.diary_entries (user_id, created_at desc);
 
 do $$
 begin
@@ -234,6 +420,31 @@ begin
     alter table public.friends
     add constraint friends_owner_friend_code_friend_friend_code_key
     unique (owner_friend_code, friend_friend_code);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'profiles_user_id_key'
+      and conrelid = 'public.profiles'::regclass
+  ) then
+    alter table public.profiles
+    add constraint profiles_user_id_key
+    unique (user_id);
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'quizzes_owner_id_local_quiz_id_key'
+      and conrelid = 'public.quizzes'::regclass
+  ) then
+    alter table public.quizzes
+    add constraint quizzes_owner_id_local_quiz_id_key
+    unique (owner_id, local_quiz_id);
   end if;
 end $$;
 
