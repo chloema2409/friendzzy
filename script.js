@@ -839,6 +839,8 @@ let activeQuizMode = "scored";
 let activeQuizId = "";
 let activeOnlineQuizId = "";
 let onlineLeaderboardEntries = [];
+let sharedQuizMode = "manual";
+let currentSharedQuiz = null;
 let editingQuizId = "";
 let activePlayer = null;
 let guestMode = false;
@@ -910,6 +912,7 @@ const sharedQuizCard = document.querySelector("#shared-quiz-card");
 const sharedQuizCode = document.querySelector("#shared-quiz-code");
 const sharedQuizMessage = document.querySelector("#shared-quiz-message");
 const loadSharedQuizButton = document.querySelector("#load-shared-quiz");
+const manualSharedQuizPanel = document.querySelector("#manual-shared-quiz-panel");
 const sharedLinkPanel = document.querySelector("#shared-link-panel");
 const startSharedLinkQuizButton = document.querySelector("#start-shared-link-quiz");
 const creatorCard = document.querySelector("#creator-card");
@@ -2442,9 +2445,13 @@ function showMyQuizzes() {
 
 function showSharedQuiz() {
   hideMainSections();
+  sharedQuizMode = "manual";
+  currentSharedQuiz = null;
+  sharedLinkQuestions = [];
   sharedQuizMessage.textContent = "";
   activeOnlineQuizId = "";
   onlineLeaderboardEntries = [];
+  manualSharedQuizPanel.classList.remove("hidden");
   sharedLinkPanel.classList.add("hidden");
   startSharedLinkQuizButton.classList.add("hidden");
   sharedQuizCard.classList.remove("hidden");
@@ -2452,7 +2459,7 @@ function showSharedQuiz() {
 
 function showQuiz() {
   hideMainSections();
-  editCurrentQuizButton.classList.toggle("hidden", activeQuizSource === "shared");
+  editCurrentQuizButton.classList.toggle("hidden", ["shared", "online"].includes(activeQuizSource));
   quizCard.classList.remove("hidden");
 }
 
@@ -2703,7 +2710,7 @@ function showResult() {
   resultMessage.textContent = message;
   nicknameInput.value = activePlayer ? activePlayer.nickname : "";
   nicknameInput.disabled = Boolean(activePlayer);
-  editQuizButton.classList.toggle("hidden", activeQuizSource === "shared");
+  editQuizButton.classList.toggle("hidden", ["shared", "online"].includes(activeQuizSource));
   quizCard.classList.add("hidden");
   resultCard.classList.remove("hidden");
 
@@ -4519,11 +4526,16 @@ function parseSharedQuizCode(code) {
 
 async function openOnlineQuizFromLink(quizId) {
   hideMainSections();
+  sharedQuizMode = "online-link";
+  currentSharedQuiz = null;
+  sharedLinkQuestions = [];
   sharedQuizCard.classList.remove("hidden");
   sharedQuizCode.value = "";
+  sharedQuizMessage.textContent = "Loading shared quiz...";
   activeOnlineQuizId = quizId;
   onlineLeaderboardEntries = [];
-  sharedLinkPanel.classList.add("hidden");
+  manualSharedQuizPanel.classList.add("hidden");
+  sharedLinkPanel.classList.remove("hidden");
   startSharedLinkQuizButton.classList.add("hidden");
 
   if (!onlineQuizSharing.isConfigured) {
@@ -4533,24 +4545,26 @@ async function openOnlineQuizFromLink(quizId) {
 
   try {
     const onlineQuiz = await onlineQuizSharing.loadQuiz(quizId);
-    sharedLinkQuestions = normalizeQuizQuestions(onlineQuiz?.questions || []);
+    currentSharedQuiz = onlineQuiz;
+    sharedLinkQuestions = normalizeQuizQuestions(currentSharedQuiz?.questions || []);
     onlineLeaderboardEntries = sortLeaderboard(await onlineQuizSharing.loadScores(quizId));
   } catch (error) {
     console.error("Supabase shared quiz load error:", error);
+    currentSharedQuiz = null;
     sharedLinkQuestions = [];
     onlineLeaderboardEntries = [];
-    sharedQuizMessage.textContent = "Supabase is connected, but this quiz could not load. Check the browser console and Supabase table policies.";
+    sharedQuizMessage.textContent = "This quiz link could not be loaded. Please ask your friend to send it again.";
     return true;
   }
 
   if (sharedLinkQuestions.length === 0) {
-    sharedQuizMessage.textContent = "This quiz link was not found. Please ask your friend to send it again.";
+    currentSharedQuiz = null;
+    sharedQuizMessage.textContent = "This quiz link could not be loaded. Please ask your friend to send it again.";
     return true;
   }
 
-  sharedLinkPanel.classList.remove("hidden");
   startSharedLinkQuizButton.classList.remove("hidden");
-  sharedQuizMessage.textContent = "Someone sent you a quiz! This shared quiz is play-only, so it will not edit your saved quiz.";
+  sharedQuizMessage.textContent = "";
   return true;
 }
 
@@ -4565,6 +4579,10 @@ async function loadSharedQuizFromUrl() {
 }
 
 function loadSharedQuiz() {
+  if (sharedQuizMode === "online-link") {
+    return;
+  }
+
   let sharedQuestions = [];
 
   try {
@@ -4581,17 +4599,24 @@ function loadSharedQuiz() {
 
   activeOnlineQuizId = "";
   onlineLeaderboardEntries = [];
+  currentSharedQuiz = null;
   sharedQuizMessage.textContent = "Shared quiz loaded.";
   startQuiz(sharedQuestions, "shared");
 }
 
 function startSharedLinkQuiz() {
-  if (sharedLinkQuestions.length === 0) {
-    sharedQuizMessage.textContent = "This quiz link does not look right. Please ask your friend to send it again.";
+  const quizQuestions = sharedQuizMode === "online-link"
+    ? normalizeQuizQuestions(currentSharedQuiz?.questions || sharedLinkQuestions)
+    : sharedLinkQuestions;
+
+  if (quizQuestions.length === 0) {
+    sharedQuizMessage.textContent = sharedQuizMode === "online-link"
+      ? "This quiz link could not be loaded. Please ask your friend to send it again."
+      : "This quiz link does not look right. Please ask your friend to send it again.";
     return;
   }
 
-  startQuiz(sharedLinkQuestions, activeOnlineQuizId ? "online" : "shared", "scored", activeOnlineQuizId);
+  startQuiz(quizQuestions, sharedQuizMode === "online-link" ? "online" : "shared", "scored", activeOnlineQuizId);
 }
 
 function replayCurrentQuiz() {

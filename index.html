@@ -228,14 +228,16 @@
           <p class="safety-note">Use a nickname, not your real full name.</p>
           <button id="start-shared-link-quiz" class="save-quiz-button" type="button">Start Quiz</button>
         </div>
+        <div id="manual-shared-quiz-panel">
         <label for="shared-quiz-code">Quiz code</label>
         <textarea
           id="shared-quiz-code"
           rows="8"
           placeholder='Paste a code like {"questions":[{"text":"Pick one","answers":["A","B","C","D"],"correct":0}]}'
         ></textarea>
-        <p id="shared-quiz-message" class="friendly-message" aria-live="polite"></p>
         <button id="load-shared-quiz" class="save-quiz-button" type="button">Load Quiz</button>
+        </div>
+        <p id="shared-quiz-message" class="friendly-message" aria-live="polite"></p>
       </section>
 
       <section id="creator-card" class="creator-card hidden" aria-labelledby="creator-title">
