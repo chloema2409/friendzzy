@@ -272,6 +272,69 @@ const onlineFriendCodes = {
 };
 window.bestieOnlineFriendCodes = onlineFriendCodes;
 
+function normalizeOnlineMessage(message) {
+  if (!message) {
+    return null;
+  }
+
+  return {
+    id: message.id || crypto.randomUUID(),
+    chatId: message.conversation_id || message.chatId || "",
+    senderCode: normalizeFriendCode(message.sender_friend_code || message.senderCode || ""),
+    receiverCode: normalizeFriendCode(message.receiver_friend_code || message.receiverCode || ""),
+    senderNickname: message.sender_nickname || message.senderNickname || "Friend",
+    receiverNickname: message.receiver_nickname || message.receiverNickname || "Friend",
+    text: message.message_text || message.text || "",
+    type: message.message_type || message.type || "typed",
+    sticker: message.sticker || "",
+    createdAt: message.created_at ? new Date(message.created_at).getTime() : message.createdAt || Date.now(),
+    readAt: message.read_at || message.readAt || null,
+  };
+}
+
+const onlineFriendMessages = {
+  get isConfigured() {
+    return isSupabaseConfigured();
+  },
+  async saveMessage(message) {
+    const safeMessage = normalizeOnlineMessage(message);
+
+    if (!safeMessage?.chatId || !safeMessage.senderCode || !safeMessage.receiverCode || !safeMessage.text) {
+      throw new Error("Message is missing required chat fields.");
+    }
+
+    const data = await supabaseRequest("messages", {
+      method: "POST",
+      prefer: "return=representation",
+      body: {
+        conversation_id: safeMessage.chatId,
+        sender_friend_code: safeMessage.senderCode,
+        receiver_friend_code: safeMessage.receiverCode,
+        sender_nickname: safeMessage.senderNickname,
+        sender_emoji_avatar: activePlayer?.avatar?.emojiAvatar || defaultEmojiAvatar,
+        receiver_nickname: safeMessage.receiverNickname,
+        receiver_emoji_avatar: getFriendProfileSnapshot(safeMessage.receiverCode).avatar?.emojiAvatar || defaultEmojiAvatar,
+        message_text: safeMessage.text,
+        message_type: safeMessage.type,
+        sticker: safeMessage.sticker,
+      },
+    });
+
+    return normalizeOnlineMessage(Array.isArray(data) ? data[0] : null) || safeMessage;
+  },
+  async loadMessages(conversationId) {
+    const query = new URLSearchParams({
+      select: "id,conversation_id,sender_friend_code,receiver_friend_code,sender_nickname,sender_emoji_avatar,receiver_nickname,receiver_emoji_avatar,message_text,message_type,sticker,created_at,read_at",
+      conversation_id: `eq.${conversationId}`,
+      order: "created_at.asc",
+    });
+    const data = await supabaseRequest(`messages?${query.toString()}`);
+
+    return (data || []).map(normalizeOnlineMessage).filter(Boolean);
+  },
+};
+window.bestieOnlineFriendMessages = onlineFriendMessages;
+
 const themeRewards = {
   "secret-notebook-theme": {
     name: "Secret Notebook Theme",
@@ -995,6 +1058,8 @@ let miniGameAwarded = false;
 let miniGameRoundQuestions = [];
 let sharedLinkQuestions = [];
 let selectedChatFriendCode = "";
+let activeOnlineChatMessages = [];
+let chatLoadedFromSupabase = false;
 let selectedFriendActionCode = "";
 
 const playerGate = document.querySelector("#player-gate");
@@ -2459,6 +2524,8 @@ function showChat() {
   hideMainSections();
   updateProfileBar();
   selectedChatFriendCode = "";
+  activeOnlineChatMessages = [];
+  chatLoadedFromSupabase = false;
   chatMessage.textContent = "";
   chatMessageInput.value = "";
   renderQuickChatControls();
@@ -3629,23 +3696,54 @@ function renderFriendActivity() {
   });
 }
 
-function saveSafeFriendMessage(friendCode, messageText, messageType = "quick", sticker = "") {
+async function saveFriendMessage(friendCode, messageText, messageType = "typed", sticker = "") {
   const friendProfile = getFriendProfileSnapshot(friendCode);
-  const messages = getChatMessages();
-  messages.push({
+  const safeFriendCode = normalizeFriendCode(friendProfile.friendCode);
+
+  if (!activePlayer || !isApprovedFriendCode(safeFriendCode)) {
+    throw new Error("Only added friends can message each other.");
+  }
+
+  const message = {
     id: crypto.randomUUID(),
-    chatId: [activePlayer.friendCode, friendProfile.friendCode].sort().join("__"),
-    senderCode: activePlayer.friendCode,
-    receiverCode: friendProfile.friendCode,
+    chatId: getChatId(safeFriendCode),
+    senderCode: normalizeFriendCode(activePlayer.friendCode),
+    receiverCode: safeFriendCode,
     senderNickname: activePlayer.nickname,
     receiverNickname: friendProfile.nickname,
     text: messageText,
     type: messageType,
     sticker,
     createdAt: Date.now(),
-  });
+  };
 
-  saveChatMessages(messages);
+  if (onlineFriendMessages.isConfigured) {
+    try {
+      const savedMessage = await onlineFriendMessages.saveMessage(message);
+      if (savedMessage.chatId === getChatId(selectedChatFriendCode)) {
+        activeOnlineChatMessages = [...activeOnlineChatMessages, savedMessage]
+          .filter((chatMessageEntry, index, messages) => messages.findIndex((entry) => entry.id === chatMessageEntry.id) === index)
+          .sort((firstMessage, secondMessage) => firstMessage.createdAt - secondMessage.createdAt);
+        chatLoadedFromSupabase = true;
+      }
+      saveLocalChatMessage(savedMessage);
+      return { message: savedMessage, online: true };
+    } catch (error) {
+      console.error("Supabase friend chat send error:", error);
+    }
+  }
+
+  saveLocalChatMessage(message);
+  if (message.chatId === getChatId(selectedChatFriendCode)) {
+    activeOnlineChatMessages = [];
+    chatLoadedFromSupabase = false;
+  }
+  return { message, online: false };
+}
+
+async function saveSafeFriendMessage(friendCode, messageText, messageType = "quick", sticker = "") {
+  const result = await saveFriendMessage(friendCode, messageText, messageType, sticker);
+  const friendProfile = getFriendProfileSnapshot(friendCode);
   addFriendActivity({
     type: messageType === "sticker" ? "sticker" : "message",
     friendCode: friendProfile.friendCode,
@@ -3653,6 +3751,7 @@ function saveSafeFriendMessage(friendCode, messageText, messageType = "quick", s
     text: messageText,
     sticker,
   });
+  return result;
 }
 
 function renderFriendQuizSelect() {
@@ -3778,27 +3877,40 @@ async function createFriendChallenge() {
   }
 }
 
-function sendPresetMessageToSelectedFriend(messageText) {
+async function sendPresetMessageToSelectedFriend(messageText) {
   if (!selectedFriendActionCode) {
     friendActionMessage.textContent = "Choose a friend first.";
     return;
   }
 
-  saveSafeFriendMessage(selectedFriendActionCode, messageText, "quick");
-  friendActionMessage.textContent = "Preset message saved in Friend Chat.";
+  try {
+    const result = await saveSafeFriendMessage(selectedFriendActionCode, messageText, "quick");
+    friendActionMessage.textContent = result.online
+      ? "Preset message sent online and saved in Friend Chat."
+      : "Preset message saved on this browser because online chat could not connect.";
+  } catch (error) {
+    console.error("Friend preset message error:", error);
+    friendActionMessage.textContent = "Choose an added friend first.";
+  }
 }
 
-function sendStickerToSelectedFriend(sticker) {
+async function sendStickerToSelectedFriend(sticker) {
   if (!selectedFriendActionCode) {
     friendActionMessage.textContent = "Choose a friend first.";
     return;
   }
 
-  saveSafeFriendMessage(selectedFriendActionCode, sticker.text, "sticker", sticker.label);
-  const earnedStar = awardFriendActionStars(`sticker:${selectedFriendActionCode}:${sticker.label}`, 1);
-  friendActionMessage.textContent = earnedStar
-    ? "Sticker reaction sent. You earned 1 star for a safe reaction today."
-    : "Sticker reaction sent. You already earned today's star for this sticker.";
+  try {
+    const result = await saveSafeFriendMessage(selectedFriendActionCode, sticker.text, "sticker", sticker.label);
+    const earnedStar = awardFriendActionStars(`sticker:${selectedFriendActionCode}:${sticker.label}`, 1);
+    const savedWhere = result.online ? "sent online" : "saved on this browser";
+    friendActionMessage.textContent = earnedStar
+      ? `Sticker reaction ${savedWhere}. You earned 1 star for a safe reaction today.`
+      : `Sticker reaction ${savedWhere}. You already earned today's star for this sticker.`;
+  } catch (error) {
+    console.error("Friend sticker message error:", error);
+    friendActionMessage.textContent = "Choose an added friend first.";
+  }
 }
 
 function getChatMessages() {
@@ -3825,14 +3937,83 @@ function getChatId(friendCode) {
     return "";
   }
 
-  return [activePlayer.friendCode, friendCode].sort().join("__");
+  return [normalizeFriendCode(activePlayer.friendCode), normalizeFriendCode(friendCode)].sort().join("__");
 }
 
-function getActiveChatMessages() {
+function getLocalActiveChatMessages() {
   const chatId = getChatId(selectedChatFriendCode);
   return getChatMessages()
     .filter((message) => message.chatId === chatId)
     .sort((firstMessage, secondMessage) => firstMessage.createdAt - secondMessage.createdAt);
+}
+
+function getActiveChatMessages() {
+  return chatLoadedFromSupabase
+    ? activeOnlineChatMessages
+    : getLocalActiveChatMessages();
+}
+
+function isApprovedFriendCode(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  return Boolean(
+    safeFriendCode
+    && !isFriendBlocked(safeFriendCode)
+    && Array.isArray(activePlayer?.friends)
+    && activePlayer.friends.map(normalizeFriendCode).includes(safeFriendCode)
+  );
+}
+
+function saveLocalChatMessage(message) {
+  const safeMessage = normalizeOnlineMessage(message);
+
+  if (!safeMessage) {
+    return;
+  }
+
+  const messages = getChatMessages();
+  const updatedMessages = [
+    ...messages.filter((savedMessage) => savedMessage.id !== safeMessage.id),
+    safeMessage,
+  ].sort((firstMessage, secondMessage) => firstMessage.createdAt - secondMessage.createdAt);
+  saveChatMessages(updatedMessages);
+}
+
+async function loadActiveChatMessages() {
+  const chatId = getChatId(selectedChatFriendCode);
+
+  if (!chatId) {
+    activeOnlineChatMessages = [];
+    chatLoadedFromSupabase = false;
+    renderChatHistory();
+    return;
+  }
+
+  if (!onlineFriendMessages.isConfigured) {
+    activeOnlineChatMessages = [];
+    chatLoadedFromSupabase = false;
+    renderChatHistory();
+    return;
+  }
+
+  chatHistory.innerHTML = '<p class="empty-leaderboard">Loading safe messages...</p>';
+
+  try {
+    const messages = await onlineFriendMessages.loadMessages(chatId);
+
+    if (chatId !== getChatId(selectedChatFriendCode)) {
+      return;
+    }
+
+    activeOnlineChatMessages = messages;
+    chatLoadedFromSupabase = true;
+    renderChatHistory();
+  } catch (error) {
+    console.error("Supabase friend chat load error:", error);
+    activeOnlineChatMessages = [];
+    chatLoadedFromSupabase = false;
+    chatMessage.textContent = "Online chat could not load right now. Showing saved messages on this browser.";
+    renderChatHistory();
+  }
 }
 
 function hasUnsafeChatContent(messageText) {
@@ -3945,7 +4126,7 @@ function renderChatHistory() {
 
   messages.forEach((message) => {
     const bubble = document.createElement("article");
-    bubble.className = message.senderCode === activePlayer.friendCode ? "chat-bubble mine" : "chat-bubble";
+    bubble.className = normalizeFriendCode(message.senderCode) === normalizeFriendCode(activePlayer.friendCode) ? "chat-bubble mine" : "chat-bubble";
 
     const meta = document.createElement("p");
     meta.className = "chat-meta";
@@ -3963,21 +4144,30 @@ function renderChatHistory() {
   chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
-function updateChatControls() {
+async function updateChatControls() {
   const selectedProfile = findProfileByFriendCode(selectedChatFriendCode);
   chatSelectedFriend.textContent = selectedProfile ? selectedProfile.nickname : "Choose a friend to chat with.";
-  sendChatMessageButton.disabled = !selectedProfile;
-  clearChatButton.disabled = !selectedProfile;
-  chatBlockFriendButton.disabled = !selectedProfile;
-  chatRemoveFriendButton.disabled = !selectedProfile;
-  chatMessageInput.disabled = !selectedProfile;
-  renderChatHistory();
+  const canChat = Boolean(selectedProfile && isApprovedFriendCode(selectedChatFriendCode));
+  sendChatMessageButton.disabled = !canChat;
+  clearChatButton.disabled = !canChat;
+  chatBlockFriendButton.disabled = !canChat;
+  chatRemoveFriendButton.disabled = !canChat;
+  chatMessageInput.disabled = !canChat;
+
+  if (!canChat) {
+    activeOnlineChatMessages = [];
+    chatLoadedFromSupabase = false;
+    renderChatHistory();
+    return;
+  }
+
+  await loadActiveChatMessages();
 }
 
-function sendChatMessage(messageText, messageType = "typed", sticker = "") {
+async function sendChatMessage(messageText, messageType = "typed", sticker = "") {
   const selectedProfile = findProfileByFriendCode(selectedChatFriendCode);
 
-  if (!activePlayer || !selectedProfile) {
+  if (!activePlayer || !selectedProfile || !isApprovedFriendCode(selectedChatFriendCode)) {
     chatMessage.textContent = "Choose a friend first.";
     return;
   }
@@ -3989,24 +4179,17 @@ function sendChatMessage(messageText, messageType = "typed", sticker = "") {
     return;
   }
 
-  const messages = getChatMessages();
-  messages.push({
-    id: crypto.randomUUID(),
-    chatId: getChatId(selectedChatFriendCode),
-    senderCode: activePlayer.friendCode,
-    receiverCode: selectedChatFriendCode,
-    senderNickname: activePlayer.nickname,
-    receiverNickname: selectedProfile.nickname,
-    text: validation.text,
-    type: messageType,
-    sticker,
-    createdAt: Date.now(),
-  });
-
-  saveChatMessages(messages);
-  chatMessageInput.value = "";
-  chatMessage.textContent = "Message sent.";
-  renderChatHistory();
+  try {
+    const result = await saveFriendMessage(selectedChatFriendCode, validation.text, messageType, sticker);
+    chatMessageInput.value = "";
+    chatMessage.textContent = result.online
+      ? "Message sent online."
+      : "Message saved on this browser because online chat could not connect.";
+    renderChatHistory();
+  } catch (error) {
+    console.error("Friend chat message error:", error);
+    chatMessage.textContent = "Please choose an added friend first.";
+  }
 }
 
 function sendTypedChatMessage() {

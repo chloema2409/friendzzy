@@ -96,8 +96,25 @@ create table if not exists public.friends (
   check (owner_friend_code <> friend_friend_code)
 );
 
+create table if not exists public.messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id text not null,
+  sender_friend_code text not null,
+  receiver_friend_code text not null,
+  sender_nickname text not null,
+  sender_emoji_avatar text not null default '🌙',
+  receiver_nickname text not null,
+  receiver_emoji_avatar text not null default '🌙',
+  message_text text not null,
+  message_type text not null default 'typed',
+  sticker text,
+  created_at timestamptz not null default now(),
+  read_at timestamptz
+);
+
 alter table public.profiles enable row level security;
 alter table public.friends enable row level security;
+alter table public.messages enable row level security;
 
 drop policy if exists "Anyone can find profiles by friend code" on public.profiles;
 create policy "Anyone can find profiles by friend code"
@@ -163,9 +180,48 @@ with check (
   and char_length(friend_nickname) between 1 and 20
 );
 
+drop policy if exists "Anyone can add a safe temporary friend message" on public.messages;
+create policy "Anyone can add a safe temporary friend message"
+on public.messages
+for insert
+to anon
+with check (
+  sender_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and receiver_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and sender_friend_code <> receiver_friend_code
+  and conversation_id = least(sender_friend_code, receiver_friend_code) || '__' || greatest(sender_friend_code, receiver_friend_code)
+  and char_length(sender_nickname) between 1 and 20
+  and char_length(receiver_nickname) between 1 and 20
+  and char_length(message_text) between 1 and 150
+  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite')
+  and exists (
+    select 1
+    from public.friends approved_friend
+    where approved_friend.owner_friend_code = sender_friend_code
+      and approved_friend.friend_friend_code = receiver_friend_code
+  )
+);
+
+drop policy if exists "Anyone can view safe temporary friend conversations" on public.messages;
+create policy "Anyone can view safe temporary friend conversations"
+on public.messages
+for select
+to anon
+using (
+  conversation_id = least(sender_friend_code, receiver_friend_code) || '__' || greatest(sender_friend_code, receiver_friend_code)
+  and exists (
+    select 1
+    from public.friends approved_friend
+    where approved_friend.owner_friend_code = sender_friend_code
+      and approved_friend.friend_friend_code = receiver_friend_code
+  )
+);
+
 create index if not exists profiles_friend_code_idx on public.profiles (friend_code);
 create index if not exists friends_owner_friend_code_idx on public.friends (owner_friend_code);
 create index if not exists friends_friend_friend_code_idx on public.friends (friend_friend_code);
+create index if not exists messages_conversation_created_idx on public.messages (conversation_id, created_at asc);
+create index if not exists messages_sender_receiver_idx on public.messages (sender_friend_code, receiver_friend_code);
 
 do $$
 begin
