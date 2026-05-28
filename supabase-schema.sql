@@ -5,6 +5,8 @@
 -- This uses the publishable key from the app, so Row Level Security policies
 -- allow safe public quiz play without storing real names, emails, or passwords.
 
+create extension if not exists pgcrypto;
+
 create table if not exists public.quizzes (
   id uuid primary key default gen_random_uuid(),
   quiz_id text not null unique,
@@ -151,11 +153,31 @@ create table if not exists public.diary_entries (
   unique (user_id, local_entry_id)
 );
 
+create table if not exists public.players (
+  id uuid primary key default gen_random_uuid(),
+  username text not null,
+  normalized_username text not null unique,
+  pin_hash text not null,
+  friend_code text not null unique,
+  emoji_avatar text not null default '🌙',
+  stars integer not null default 0,
+  active_theme text not null default 'default',
+  purchases_json jsonb not null default '[]'::jsonb,
+  saved_quizzes_json jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (char_length(username) between 1 and 20),
+  check (char_length(normalized_username) between 1 and 20),
+  check (friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'),
+  check (stars >= 0)
+);
+
 alter table public.profiles enable row level security;
 alter table public.friends enable row level security;
 alter table public.messages enable row level security;
 alter table public.purchases enable row level security;
 alter table public.diary_entries enable row level security;
+alter table public.players enable row level security;
 
 drop policy if exists "Anyone can find profiles by friend code" on public.profiles;
 create policy "Anyone can find profiles by friend code"
@@ -397,8 +419,222 @@ with check (
   and jsonb_typeof(questions_json) = 'array'
 );
 
+-- Username + PIN MVP functions.
+-- This is MVP-only and should be replaced with Supabase Auth or server-side
+-- parent accounts before storing private/sensitive data. PINs are not stored
+-- in plaintext; pgcrypto hashes and checks them inside Supabase.
+
+create or replace function public.create_player_account(
+  player_username text,
+  player_pin text,
+  player_emoji_avatar text default '🌙'
+)
+returns table (
+  id uuid,
+  username text,
+  normalized_username text,
+  friend_code text,
+  emoji_avatar text,
+  stars integer,
+  active_theme text,
+  purchases_json jsonb,
+  saved_quizzes_json jsonb,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  clean_username text := trim(player_username);
+  normalized text := lower(trim(player_username));
+  code_prefix text := upper(substring(regexp_replace(trim(player_username), '[^a-zA-Z0-9]', '', 'g') from 1 for 4));
+  generated_code text;
+begin
+  if normalized = '' or char_length(clean_username) > 20 then
+    raise exception 'INVALID_USERNAME';
+  end if;
+
+  if clean_username ~* '^[a-z]+[[:space:]]+[a-z]+' then
+    raise exception 'INVALID_USERNAME';
+  end if;
+
+  if player_pin !~ '^[0-9]{4,6}$' then
+    raise exception 'INVALID_PIN';
+  end if;
+
+  if exists (select 1 from public.players existing where existing.normalized_username = normalized) then
+    raise exception 'USERNAME_TAKEN';
+  end if;
+
+  if char_length(code_prefix) < 3 then
+    code_prefix := 'CASE';
+  end if;
+
+  loop
+    generated_code := code_prefix || '-' || floor(1000 + random() * 9000)::int::text;
+    exit when not exists (select 1 from public.players existing where existing.friend_code = generated_code);
+  end loop;
+
+  return query
+  insert into public.players (
+    username,
+    normalized_username,
+    pin_hash,
+    friend_code,
+    emoji_avatar
+  )
+  values (
+    clean_username,
+    normalized,
+    crypt(player_pin, gen_salt('bf')),
+    generated_code,
+    coalesce(nullif(player_emoji_avatar, ''), '🌙')
+  )
+  returning
+    players.id,
+    players.username,
+    players.normalized_username,
+    players.friend_code,
+    players.emoji_avatar,
+    players.stars,
+    players.active_theme,
+    players.purchases_json,
+    players.saved_quizzes_json,
+    players.created_at,
+    players.updated_at;
+end;
+$$;
+
+create or replace function public.login_player_with_pin(
+  player_username text,
+  player_pin text
+)
+returns table (
+  id uuid,
+  username text,
+  normalized_username text,
+  friend_code text,
+  emoji_avatar text,
+  stars integer,
+  active_theme text,
+  purchases_json jsonb,
+  saved_quizzes_json jsonb,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized text := lower(trim(player_username));
+begin
+  if normalized = '' or player_pin !~ '^[0-9]{4,6}$' then
+    raise exception 'INVALID_LOGIN';
+  end if;
+
+  return query
+  select
+    p.id,
+    p.username,
+    p.normalized_username,
+    p.friend_code,
+    p.emoji_avatar,
+    p.stars,
+    p.active_theme,
+    p.purchases_json,
+    p.saved_quizzes_json,
+    p.created_at,
+    p.updated_at
+  from public.players p
+  where p.normalized_username = normalized
+    and p.pin_hash = crypt(player_pin, p.pin_hash)
+  limit 1;
+end;
+$$;
+
+create or replace function public.save_player_progress(
+  player_username text,
+  player_pin text,
+  player_emoji_avatar text,
+  player_stars integer,
+  player_active_theme text,
+  player_purchases_json jsonb,
+  player_saved_quizzes_json jsonb
+)
+returns table (
+  id uuid,
+  username text,
+  normalized_username text,
+  friend_code text,
+  emoji_avatar text,
+  stars integer,
+  active_theme text,
+  purchases_json jsonb,
+  saved_quizzes_json jsonb,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized text := lower(trim(player_username));
+begin
+  if normalized = '' or player_pin !~ '^[0-9]{4,6}$' then
+    raise exception 'INVALID_LOGIN';
+  end if;
+
+  if jsonb_typeof(coalesce(player_purchases_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_PURCHASES';
+  end if;
+
+  if jsonb_typeof(coalesce(player_saved_quizzes_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_QUIZZES';
+  end if;
+
+  update public.players p
+  set
+    emoji_avatar = coalesce(nullif(player_emoji_avatar, ''), p.emoji_avatar),
+    stars = greatest(0, coalesce(player_stars, p.stars)),
+    active_theme = coalesce(nullif(player_active_theme, ''), 'default'),
+    purchases_json = coalesce(player_purchases_json, '[]'::jsonb),
+    saved_quizzes_json = coalesce(player_saved_quizzes_json, '[]'::jsonb),
+    updated_at = now()
+  where p.normalized_username = normalized
+    and p.pin_hash = crypt(player_pin, p.pin_hash);
+
+  return query
+  select
+    p.id,
+    p.username,
+    p.normalized_username,
+    p.friend_code,
+    p.emoji_avatar,
+    p.stars,
+    p.active_theme,
+    p.purchases_json,
+    p.saved_quizzes_json,
+    p.created_at,
+    p.updated_at
+  from public.players p
+  where p.normalized_username = normalized
+    and p.pin_hash = crypt(player_pin, p.pin_hash)
+  limit 1;
+end;
+$$;
+
+grant execute on function public.create_player_account(text, text, text) to anon, authenticated;
+grant execute on function public.login_player_with_pin(text, text) to anon, authenticated;
+grant execute on function public.save_player_progress(text, text, text, integer, text, jsonb, jsonb) to anon, authenticated;
+
 create index if not exists profiles_friend_code_idx on public.profiles (friend_code);
 create index if not exists profiles_user_id_idx on public.profiles (user_id);
+create index if not exists players_normalized_username_idx on public.players (normalized_username);
+create index if not exists players_friend_code_idx on public.players (friend_code);
 create index if not exists friends_owner_friend_code_idx on public.friends (owner_friend_code);
 create index if not exists friends_friend_friend_code_idx on public.friends (friend_friend_code);
 create index if not exists friends_owner_user_id_idx on public.friends (owner_user_id);

@@ -646,6 +646,130 @@ const onlineAccountStorage = {
 };
 window.bestieOnlineAccountStorage = onlineAccountStorage;
 
+function normalizeUsernameAccount(account) {
+  if (!account) {
+    return null;
+  }
+
+  const username = cleanPlayerNickname(account.username || account.nickname || "");
+  const friendCode = normalizeFriendCode(account.friend_code || account.friendCode || "");
+
+  if (!username || !friendCode) {
+    return null;
+  }
+
+  let purchases = account.purchases_json || account.purchasesJson || [];
+  let savedQuizzes = account.saved_quizzes_json || account.savedQuizzesJson || [];
+
+  if (!Array.isArray(purchases)) {
+    purchases = [];
+  }
+
+  if (!Array.isArray(savedQuizzes)) {
+    savedQuizzes = [];
+  }
+
+  return {
+    playerId: account.id || account.player_id || account.playerId || "",
+    username,
+    normalizedUsername: account.normalized_username || normalizeNickname(username),
+    friendCode,
+    emojiAvatar: account.emoji_avatar || account.emojiAvatar || defaultEmojiAvatar,
+    stars: Number.parseInt(account.stars || "0", 10) || 0,
+    activeTheme: account.active_theme || account.activeTheme || "default",
+    purchases,
+    savedQuizzes,
+    createdAt: account.created_at || account.createdAt || "",
+    updatedAt: account.updated_at || account.updatedAt || "",
+  };
+}
+
+function profileFromUsernameAccount(account) {
+  const safeAccount = normalizeUsernameAccount(account);
+
+  if (!safeAccount) {
+    return null;
+  }
+
+  return ensureFriendProfile({
+    playerId: safeAccount.playerId,
+    nickname: safeAccount.username,
+    friendCode: safeAccount.friendCode,
+    stars: safeAccount.stars,
+    purchasedRewards: safeAccount.purchases,
+    diaryAccess: safeAccount.purchases.includes("daily-diary"),
+    diaryNotes: {},
+    settings: {},
+    avatar: {
+      ...createDefaultAvatar(),
+      emojiAvatar: safeAccount.emojiAvatar,
+    },
+    createdAt: safeAccount.createdAt ? new Date(safeAccount.createdAt).getTime() : Date.now(),
+  });
+}
+
+const onlineUsernameAccounts = {
+  get isConfigured() {
+    return isSupabaseConfigured();
+  },
+  async createAccount({ username, pin, emojiAvatar }) {
+    const data = await supabaseRequest("rpc/create_player_account", {
+      method: "POST",
+      body: {
+        player_username: username,
+        player_pin: pin,
+        player_emoji_avatar: emojiAvatar || defaultEmojiAvatar,
+      },
+    });
+    return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+  },
+  async login({ username, pin }) {
+    const data = await supabaseRequest("rpc/login_player_with_pin", {
+      method: "POST",
+      body: {
+        player_username: username,
+        player_pin: pin,
+      },
+    });
+    return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+  },
+  async saveProgress({ username, pin, profile = activePlayer, purchases = getPurchasedRewards(), quizzes = getSavedQuizzes() }) {
+    if (!username || !pin || !profile) {
+      return null;
+    }
+
+    const avatar = getUnlockedAvatar(profile.avatar || createDefaultAvatar());
+    const data = await supabaseRequest("rpc/save_player_progress", {
+      method: "POST",
+      body: {
+        player_username: username,
+        player_pin: pin,
+        player_emoji_avatar: avatar.emojiAvatar || defaultEmojiAvatar,
+        player_stars: profile.stars || 0,
+        player_active_theme: getActiveTheme(),
+        player_purchases_json: purchases,
+        player_saved_quizzes_json: quizzes,
+      },
+    });
+
+    return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+  },
+  async saveCurrentProgress() {
+    if (!usernamePinSession || !activePlayer) {
+      return null;
+    }
+
+    return this.saveProgress({
+      username: usernamePinSession.username,
+      pin: usernamePinSession.pin,
+      profile: activePlayer,
+      purchases: getPurchasedRewards(),
+      quizzes: getSavedQuizzes(),
+    });
+  },
+};
+window.bestieOnlineUsernameAccounts = onlineUsernameAccounts;
+
 const themeRewards = {
   "secret-notebook-theme": {
     name: "Secret Notebook Theme",
@@ -1373,17 +1497,21 @@ let activeOnlineChatMessages = [];
 let chatLoadedFromSupabase = false;
 let selectedFriendActionCode = "";
 let onlineAccountSyncInProgress = false;
+let usernamePinSession = null;
 
 const playerGate = document.querySelector("#player-gate");
 const createPlayerChoice = document.querySelector("#create-player-choice");
+const usernameLoginChoice = document.querySelector("#username-login-choice");
 const onlineAuthChoice = document.querySelector("#online-auth-choice");
 const loginPlayerChoice = document.querySelector("#login-player-choice");
 const guestPlayerChoice = document.querySelector("#guest-player-choice");
 const createPlayerCard = document.querySelector("#create-player-card");
 const loginPlayerCard = document.querySelector("#login-player-card");
+const usernameLoginCard = document.querySelector("#username-login-card");
 const onlineAuthCard = document.querySelector("#online-auth-card");
 const createPlayerForm = document.querySelector("#create-player-form");
 const loginPlayerForm = document.querySelector("#login-player-form");
+const usernameLoginForm = document.querySelector("#username-login-form");
 const authSignupForm = document.querySelector("#auth-signup-form");
 const authLoginForm = document.querySelector("#auth-login-form");
 const profileHomeButtons = document.querySelectorAll(".profile-home-button");
@@ -1404,6 +1532,11 @@ const authMessage = document.querySelector("#auth-message");
 const newPlayerNickname = document.querySelector("#new-player-nickname");
 const avatarNameInput = document.querySelector("#avatar-name");
 const loginPlayerNickname = document.querySelector("#login-player-nickname");
+const usernameLoginName = document.querySelector("#username-login-name");
+const usernameLoginPin = document.querySelector("#username-login-pin");
+const usernameCreateAccountButton = document.querySelector("#username-create-account");
+const usernameLoginAccountButton = document.querySelector("#username-login-account");
+const usernameLoginMessage = document.querySelector("#username-login-message");
 const authSignupEmail = document.querySelector("#auth-signup-email");
 const authSignupPassword = document.querySelector("#auth-signup-password");
 const authSignupNickname = document.querySelector("#auth-signup-nickname");
@@ -1593,6 +1726,10 @@ function saveSavedQuizzes(quizzes) {
     onlineAccountStorage.saveQuizzes(quizzes).catch((error) => {
       console.error("Supabase saved quizzes sync error:", error);
     });
+  }
+
+  if (usernamePinSession && activePlayer && !onlineAccountSyncInProgress) {
+    syncActiveProfileOnline();
   }
 }
 
@@ -1926,6 +2063,15 @@ function syncActiveProfileOnline() {
     onlineFriendCodes.saveProfile(activePlayer).catch((error) => {
       console.error("Supabase profile sync error:", error);
     });
+  }
+
+  if (usernamePinSession && onlineUsernameAccounts.isConfigured) {
+    onlineAccountSyncInProgress = true;
+    onlineUsernameAccounts.saveCurrentProgress()
+      .catch((error) => console.error("Supabase username player sync error:", error))
+      .finally(() => {
+        onlineAccountSyncInProgress = false;
+      });
   }
 }
 
@@ -2761,6 +2907,7 @@ function hideMainSections() {
   playerGate.classList.add("hidden");
   createPlayerCard.classList.add("hidden");
   loginPlayerCard.classList.add("hidden");
+  usernameLoginCard.classList.add("hidden");
   onlineAuthCard.classList.add("hidden");
   gameMenuCard.classList.add("hidden");
   startCard.classList.add("hidden");
@@ -2802,6 +2949,12 @@ function showLoginPlayer() {
   hideMainSections();
   loginPlayerMessage.textContent = "";
   loginPlayerCard.classList.remove("hidden");
+}
+
+function showUsernameLogin() {
+  hideMainSections();
+  usernameLoginMessage.textContent = "";
+  usernameLoginCard.classList.remove("hidden");
 }
 
 function showOnlineAuth() {
@@ -5261,11 +5414,184 @@ async function handleAuthLogin(event) {
 
 async function logoutSupabaseAccount() {
   await onlineAccountStorage.signOut();
+  usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
   localStorage.removeItem(currentPlayerKey);
   updateProfileBar();
   showPlayerGate();
+}
+
+function validateUsernamePin(username, pin) {
+  const originalUsername = String(username || "");
+  const displayName = cleanPlayerNickname(originalUsername);
+  const normalizedName = normalizeNickname(displayName);
+
+  if (!normalizedName) {
+    return { ok: false, message: "Please enter a nickname." };
+  }
+
+  if (originalUsername.trim().length > 20) {
+    return { ok: false, message: "Please choose a nickname under 20 characters." };
+  }
+
+  if (looksLikeFullName(displayName)) {
+    return { ok: false, message: "Use a nickname, not your real full name." };
+  }
+
+  if (!/^\d{4,6}$/.test(pin)) {
+    return { ok: false, message: "Please enter a 4 to 6 digit PIN." };
+  }
+
+  return {
+    ok: true,
+    username: displayName,
+    normalizedUsername: normalizedName,
+    pin,
+  };
+}
+
+function collectLocalProgressSnapshot() {
+  return {
+    hasActivePlayer: Boolean(activePlayer),
+    stars: activePlayer?.stars || Number.parseInt(localStorage.getItem(guestStarsKey) || "0", 10) || 0,
+    purchases: getPurchasedRewards(),
+    quizzes: getSavedQuizzes(),
+    avatar: activePlayer?.avatar || createDefaultAvatar(),
+    activeTheme: getActiveTheme(),
+  };
+}
+
+function hasLocalProgressSnapshot(snapshot) {
+  return Boolean(
+    snapshot.hasActivePlayer
+    || snapshot.stars > 0
+    || snapshot.purchases.length > 0
+    || snapshot.quizzes.length > 0
+    || snapshot.activeTheme !== "default"
+  );
+}
+
+function getUsernameAccountErrorMessage(error) {
+  const message = String(error?.message || "");
+
+  if (message.includes("USERNAME_TAKEN") || message.includes("duplicate key")) {
+    return "I’m sorry, but someone else has this name. Please choose something else.";
+  }
+
+  if (message.includes("INVALID_LOGIN")) {
+    return "Username or PIN is incorrect. Please try again.";
+  }
+
+  if (message.includes("INVALID_PIN")) {
+    return "Please enter a 4 to 6 digit PIN.";
+  }
+
+  return "Username login is not ready yet. Check Supabase setup and try again.";
+}
+
+async function openUsernameAccount(account, pin, { askImport = true } = {}) {
+  const safeAccount = normalizeUsernameAccount(account);
+
+  if (!safeAccount) {
+    usernameLoginMessage.textContent = "Username or PIN is incorrect. Please try again.";
+    return;
+  }
+
+  const localSnapshot = collectLocalProgressSnapshot();
+  const shouldImport = askImport && hasLocalProgressSnapshot(localSnapshot)
+    ? confirm("Do you want to save this local progress to this player account?")
+    : false;
+  const onlineProfile = profileFromUsernameAccount(safeAccount);
+  const profile = shouldImport
+    ? ensureFriendProfile({
+        ...onlineProfile,
+        stars: Math.max(onlineProfile.stars || 0, localSnapshot.stars || 0),
+        purchasedRewards: [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])],
+        diaryAccess: [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])].includes("daily-diary"),
+        avatar: localSnapshot.avatar || onlineProfile.avatar,
+      })
+    : onlineProfile;
+  const localQuizzes = getSavedQuizzes();
+  const onlineQuizzes = mergeSavedQuizLists([], safeAccount.savedQuizzes || []);
+  const visibleQuizzes = shouldImport
+    ? mergeSavedQuizLists(onlineQuizzes, localSnapshot.quizzes)
+    : mergeSavedQuizLists(localQuizzes, onlineQuizzes);
+
+  onlineAccountSyncInProgress = true;
+  setActivePlayer(profile);
+  localStorage.setItem(savedQuizzesKey, JSON.stringify(visibleQuizzes));
+  localStorage.setItem(activeThemeKey, shouldImport ? localSnapshot.activeTheme : safeAccount.activeTheme);
+  usernamePinSession = {
+    username: safeAccount.username,
+    pin,
+  };
+  onlineAccountSyncInProgress = false;
+
+  if (shouldImport) {
+    await onlineUsernameAccounts.saveCurrentProgress().catch((error) => {
+      console.error("Supabase username import error:", error);
+      usernameLoginMessage.textContent = "Logged in, but local progress could not be saved online yet.";
+    });
+  }
+
+  usernameLoginForm.reset();
+  usernameLoginMessage.textContent = "Player account opened.";
+  updateProfileBar();
+  applyPurchasedEffects();
+  updateGamePackStatuses();
+  showStart();
+}
+
+async function createUsernamePlayerAccount() {
+  const validation = validateUsernamePin(usernameLoginName.value, usernameLoginPin.value);
+
+  if (!validation.ok) {
+    usernameLoginMessage.textContent = validation.message;
+    return;
+  }
+
+  usernameLoginMessage.textContent = "Creating player account...";
+
+  try {
+    const account = await onlineUsernameAccounts.createAccount({
+      username: validation.username,
+      pin: validation.pin,
+      emojiAvatar: activePlayer?.avatar?.emojiAvatar || selectedAvatar?.emojiAvatar || defaultEmojiAvatar,
+    });
+    await openUsernameAccount(account, validation.pin, { askImport: true });
+  } catch (error) {
+    console.error("Username account create error:", error);
+    usernameLoginMessage.textContent = getUsernameAccountErrorMessage(error);
+  }
+}
+
+async function loginUsernamePlayerAccount() {
+  const validation = validateUsernamePin(usernameLoginName.value, usernameLoginPin.value);
+
+  if (!validation.ok) {
+    usernameLoginMessage.textContent = validation.message;
+    return;
+  }
+
+  usernameLoginMessage.textContent = "Checking username and PIN...";
+
+  try {
+    const account = await onlineUsernameAccounts.login({
+      username: validation.username,
+      pin: validation.pin,
+    });
+
+    if (!account) {
+      usernameLoginMessage.textContent = "Username or PIN is incorrect. Please try again.";
+      return;
+    }
+
+    await openUsernameAccount(account, validation.pin, { askImport: true });
+  } catch (error) {
+    console.error("Username login error:", error);
+    usernameLoginMessage.textContent = getUsernameAccountErrorMessage(error);
+  }
 }
 
 function createPlayer(event) {
@@ -5339,6 +5665,7 @@ function loginPlayer(event) {
 }
 
 function switchPlayer() {
+  usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
   localStorage.removeItem(currentPlayerKey);
@@ -5819,11 +6146,18 @@ playSharedQuizButton.addEventListener("click", showSharedQuiz);
 createPlayerChoice.addEventListener("click", showCreatePlayer);
 createAvatarHomeButton.addEventListener("click", showCreatePlayer);
 editAvatarButton.addEventListener("click", showCreatePlayer);
+usernameLoginChoice.addEventListener("click", showUsernameLogin);
 onlineAuthChoice.addEventListener("click", showOnlineAuth);
 loginPlayerChoice.addEventListener("click", showLoginPlayer);
 guestPlayerChoice.addEventListener("click", useGuestMode);
 createPlayerForm.addEventListener("submit", createPlayer);
 loginPlayerForm.addEventListener("submit", loginPlayer);
+usernameCreateAccountButton.addEventListener("click", createUsernamePlayerAccount);
+usernameLoginAccountButton.addEventListener("click", loginUsernamePlayerAccount);
+usernameLoginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  loginUsernamePlayerAccount();
+});
 authSignupForm.addEventListener("submit", handleAuthSignup);
 authLoginForm.addEventListener("submit", handleAuthLogin);
 profileHomeButtons.forEach((button) => button.addEventListener("click", showPlayerGate));

@@ -42,6 +42,11 @@
             <span class="choice-title">Create New Player</span>
             <span class="choice-description">Make a local profile with a nickname and avatar.</span>
           </button>
+          <button class="choice-card" id="username-login-choice" type="button">
+            <span class="choice-icon" aria-hidden="true">🔢</span>
+            <span class="choice-title">Log In With Username</span>
+            <span class="choice-description">Use a nickname, PIN, and friend code for simple cross-device play.</span>
+          </button>
           <button class="choice-card hidden" id="online-auth-choice" type="button">
             <span class="choice-icon" aria-hidden="true">🔑</span>
             <span class="choice-title">Parent Online Login</span>
@@ -132,6 +137,29 @@
           </form>
         </div>
         <p id="auth-message" class="friendly-message" aria-live="polite"></p>
+      </section>
+
+      <section id="username-login-card" class="player-card hidden" aria-labelledby="username-login-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Simple Online Login</p>
+            <h2 id="username-login-title">Log In With Username</h2>
+          </div>
+          <button class="profile-home-button secondary-button" type="button">Back to Home</button>
+        </div>
+        <p class="safety-note">Use a nickname, not your real full name. Do not share your PIN with others. Do not enter school, address, phone number, email, or photos.</p>
+        <p class="friendly-message">MVP note: this is a simple kid-friendly login, not high security. Do not use it for private sensitive information.</p>
+        <form id="username-login-form" class="profile-form">
+          <label for="username-login-name">Username</label>
+          <input id="username-login-name" type="text" maxlength="20" autocomplete="username" placeholder="MysteryAce" required />
+          <label for="username-login-pin">PIN</label>
+          <input id="username-login-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="off" placeholder="4 to 6 digits" required />
+          <div class="result-actions">
+            <button id="username-create-account" class="save-quiz-button" type="button">Create Player Account</button>
+            <button id="username-login-account" class="secondary-button" type="button">Log In</button>
+          </div>
+          <p id="username-login-message" class="friendly-message" aria-live="polite"></p>
+        </form>
       </section>
 
       <section id="game-menu-card" class="start-card hidden" aria-labelledby="game-menu-title">
