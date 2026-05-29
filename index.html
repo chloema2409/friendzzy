@@ -578,28 +578,28 @@
         <div id="friend-action-panel" class="friend-action-panel hidden">
           <div class="section-heading compact-heading">
             <div>
-              <p class="eyebrow">Friend Actions</p>
+              <p class="eyebrow">Send Quiz</p>
               <h3 id="friend-action-title">Choose a friend</h3>
             </div>
           </div>
-          <p class="safety-note">Use preset messages and quiz links only. No public feeds or stranger chat.</p>
+          <p class="safety-note">Choose one of your saved quizzes. The quiz is sent only to this friend as a safe chat invite.</p>
           <div class="friend-challenge-box">
             <label for="friend-quiz-select">Choose a quiz to send</label>
             <div class="save-row">
               <select id="friend-quiz-select"></select>
-              <button id="send-friend-challenge" class="save-quiz-button" type="button">Create Challenge Link</button>
+              <button id="send-friend-challenge" class="save-quiz-button" type="button">Send Quiz</button>
             </div>
             <div id="friend-challenge-output-wrap" class="friend-link-output-wrap hidden">
-              <label for="friend-challenge-output">Copyable challenge link</label>
+              <label for="friend-challenge-output">Quiz invite link</label>
               <textarea id="friend-challenge-output" rows="4" readonly></textarea>
               <button id="copy-friend-challenge" class="secondary-button" type="button">Copy Challenge Link</button>
             </div>
           </div>
-          <div class="quick-chat-wrap">
+          <div class="quick-chat-wrap hidden">
             <h3>Preset messages</h3>
             <div id="friend-preset-message-list" class="quick-message-list"></div>
           </div>
-          <div class="quick-chat-wrap">
+          <div class="quick-chat-wrap hidden">
             <h3>Sticker reactions</h3>
             <div id="friend-sticker-list" class="quick-message-list"></div>
           </div>
@@ -633,9 +633,19 @@
                 <h3 id="chat-selected-friend">Choose a friend to chat with.</h3>
               </div>
               <div class="result-actions">
+                <button id="chat-send-quiz" class="save-quiz-button" type="button">Send Quiz</button>
                 <button id="chat-block-friend" class="secondary-button" type="button">Block Friend</button>
                 <button id="chat-remove-friend" class="secondary-button" type="button">Remove Friend</button>
               </div>
+            </div>
+            <div id="chat-quiz-panel" class="friend-action-panel chat-quiz-panel hidden">
+              <h3>Send a quiz</h3>
+              <p class="safety-note">Pick one of your saved quizzes. It will appear as a safe quiz invite card in this chat.</p>
+              <div class="save-row">
+                <select id="chat-quiz-select"></select>
+                <button id="chat-send-quiz-confirm" class="save-quiz-button" type="button">Send Quiz Invite</button>
+              </div>
+              <p id="chat-quiz-message" class="friendly-message" aria-live="polite"></p>
             </div>
             <div id="chat-history" class="chat-history" aria-live="polite"></div>
             <div class="quick-chat-wrap">

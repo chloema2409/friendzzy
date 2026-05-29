@@ -2159,6 +2159,58 @@ h2 {
   overflow-wrap: anywhere;
 }
 
+.quiz-invite-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid rgba(183, 156, 255, 0.3);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.chat-bubble .quiz-invite-card {
+  min-width: min(420px, 100%);
+}
+
+.quiz-invite-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--pink), var(--lavender));
+  font-size: 1.25rem;
+}
+
+.quiz-invite-card h4,
+.quiz-invite-card p {
+  margin: 0;
+}
+
+.quiz-invite-card h4 {
+  color: var(--ink);
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.quiz-invite-card p {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.quiz-invite-card .quiz-invite-message {
+  color: #7555a2;
+  font-size: 0.9rem;
+}
+
+.quiz-invite-card .save-quiz-button {
+  white-space: nowrap;
+}
+
 .quick-chat-wrap {
   margin: 12px 0;
 }
@@ -2573,6 +2625,10 @@ body.theme-secret-garden .danger-zone {
 
   .chat-bubble {
     max-width: 100%;
+  }
+
+  .quiz-invite-card {
+    grid-template-columns: 1fr;
   }
 
   .choice-card {

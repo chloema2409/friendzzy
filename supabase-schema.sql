@@ -132,7 +132,11 @@ add column if not exists friend_user_id uuid references auth.users(id) on delete
 
 alter table public.messages
 add column if not exists sender_user_id uuid references auth.users(id) on delete cascade,
-add column if not exists receiver_user_id uuid references auth.users(id) on delete cascade;
+add column if not exists receiver_user_id uuid references auth.users(id) on delete cascade,
+add column if not exists quiz_id text,
+add column if not exists quiz_title text,
+add column if not exists quiz_link text,
+add column if not exists quiz_question_count integer;
 
 create table if not exists public.purchases (
   id uuid primary key default gen_random_uuid(),
@@ -298,7 +302,17 @@ with check (
   and char_length(sender_nickname) between 1 and 20
   and char_length(receiver_nickname) between 1 and 20
   and char_length(message_text) between 1 and 150
-  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite')
+  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite', 'quiz_invite')
+  and (
+    message_type <> 'quiz_invite'
+    or (
+      quiz_id is not null
+      and quiz_link is not null
+      and quiz_link like '%?quiz=%'
+      and char_length(coalesce(quiz_title, '')) between 1 and 80
+      and quiz_question_count between 1 and 30
+    )
+  )
   and exists (
     select 1
     from public.friends approved_friend
@@ -316,7 +330,17 @@ with check (
   sender_user_id = auth.uid()
   and sender_user_id <> receiver_user_id
   and char_length(message_text) between 1 and 150
-  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite')
+  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite', 'quiz_invite')
+  and (
+    message_type <> 'quiz_invite'
+    or (
+      quiz_id is not null
+      and quiz_link is not null
+      and quiz_link like '%?quiz=%'
+      and char_length(coalesce(quiz_title, '')) between 1 and 80
+      and quiz_question_count between 1 and 30
+    )
+  )
   and (
     exists (
       select 1

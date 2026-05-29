@@ -360,6 +360,12 @@ function normalizeOnlineMessage(message) {
     text: message.message_text || message.text || "",
     type: message.message_type || message.type || "typed",
     sticker: message.sticker || "",
+    quizInvite: {
+      quizId: message.quiz_id || message.quizId || message.quizInvite?.quizId || "",
+      quizTitle: message.quiz_title || message.quizTitle || message.quizInvite?.quizTitle || "",
+      quizLink: message.quiz_link || message.quizLink || message.quizInvite?.quizLink || "",
+      questionCount: Number.parseInt(message.quiz_question_count || message.quizQuestionCount || message.quizInvite?.questionCount || "0", 10) || 0,
+    },
     createdAt: message.created_at ? new Date(message.created_at).getTime() : message.createdAt || Date.now(),
     readAt: message.read_at || message.readAt || null,
   };
@@ -393,6 +399,12 @@ const onlineFriendMessages = {
         message_text: safeMessage.text,
         message_type: safeMessage.type,
         sticker: safeMessage.sticker,
+        ...(safeMessage.type === "quiz_invite" ? {
+          quiz_id: safeMessage.quizInvite?.quizId || null,
+          quiz_title: safeMessage.quizInvite?.quizTitle || null,
+          quiz_link: safeMessage.quizInvite?.quizLink || null,
+          quiz_question_count: safeMessage.quizInvite?.questionCount || null,
+        } : {}),
       },
     });
 
@@ -400,7 +412,7 @@ const onlineFriendMessages = {
   },
   async loadMessages(conversationId) {
     const query = new URLSearchParams({
-      select: "id,conversation_id,sender_user_id,receiver_user_id,sender_friend_code,receiver_friend_code,sender_nickname,sender_emoji_avatar,receiver_nickname,receiver_emoji_avatar,message_text,message_type,sticker,created_at,read_at",
+      select: "*",
       conversation_id: `eq.${conversationId}`,
       order: "created_at.asc",
     });
@@ -1662,8 +1674,13 @@ const friendActivityList = document.querySelector("#friend-activity-list");
 const chatCard = document.querySelector("#chat-card");
 const chatFriendList = document.querySelector("#chat-friend-list");
 const chatSelectedFriend = document.querySelector("#chat-selected-friend");
+const chatSendQuizButton = document.querySelector("#chat-send-quiz");
 const chatBlockFriendButton = document.querySelector("#chat-block-friend");
 const chatRemoveFriendButton = document.querySelector("#chat-remove-friend");
+const chatQuizPanel = document.querySelector("#chat-quiz-panel");
+const chatQuizSelect = document.querySelector("#chat-quiz-select");
+const chatSendQuizConfirmButton = document.querySelector("#chat-send-quiz-confirm");
+const chatQuizMessage = document.querySelector("#chat-quiz-message");
 const chatHistory = document.querySelector("#chat-history");
 const quickMessageList = document.querySelector("#quick-message-list");
 const stickerReactionList = document.querySelector("#sticker-reaction-list");
@@ -3163,7 +3180,9 @@ function showChat(friendCode = "") {
   activeOnlineChatMessages = [];
   chatLoadedFromSupabase = false;
   chatMessage.textContent = "";
+  chatQuizMessage.textContent = "";
   chatMessageInput.value = "";
+  chatQuizPanel.classList.add("hidden");
   renderQuickChatControls();
   renderChatFriends();
   updateChatControls();
@@ -4348,7 +4367,7 @@ function renderFriendActivity() {
   });
 }
 
-async function saveFriendMessage(friendCode, messageText, messageType = "typed", sticker = "") {
+async function saveFriendMessage(friendCode, messageText, messageType = "typed", sticker = "", extraData = {}) {
   const friendProfile = getFriendProfileSnapshot(friendCode);
   const safeFriendCode = normalizeFriendCode(friendProfile.friendCode);
 
@@ -4368,6 +4387,7 @@ async function saveFriendMessage(friendCode, messageText, messageType = "typed",
     text: messageText,
     type: messageType,
     sticker,
+    quizInvite: extraData.quizInvite || {},
     createdAt: Date.now(),
   };
 
@@ -4408,27 +4428,36 @@ async function saveSafeFriendMessage(friendCode, messageText, messageType = "qui
   return result;
 }
 
-function renderFriendQuizSelect() {
+function renderQuizPicker(selectElement, sendButton) {
   const quizzes = getSavedQuizzes();
-  friendQuizSelect.innerHTML = "";
+  selectElement.innerHTML = "";
 
   if (quizzes.length === 0) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "No saved quizzes yet";
-    friendQuizSelect.append(option);
-    sendFriendChallengeButton.disabled = true;
-    return;
+    selectElement.append(option);
+    sendButton.disabled = true;
+    return false;
   }
 
   quizzes.forEach((quiz) => {
     const option = document.createElement("option");
     option.value = quiz.id;
     option.textContent = `${quiz.title} (${quiz.questions.length} clues)`;
-    friendQuizSelect.append(option);
+    selectElement.append(option);
   });
 
-  sendFriendChallengeButton.disabled = false;
+  sendButton.disabled = false;
+  return true;
+}
+
+function renderFriendQuizSelect() {
+  return renderQuizPicker(friendQuizSelect, sendFriendChallengeButton);
+}
+
+function renderChatQuizSelect() {
+  return renderQuizPicker(chatQuizSelect, chatSendQuizConfirmButton);
 }
 
 function renderFriendActionButtons() {
@@ -4457,12 +4486,14 @@ function renderFriendActionButtons() {
 function openFriendActionPanel(friendCode) {
   const friendProfile = getFriendProfileSnapshot(friendCode);
   selectedFriendActionCode = friendProfile.friendCode;
-  friendActionTitle.textContent = `Send something to ${friendProfile.nickname}`;
+  friendActionTitle.textContent = `Send a quiz to ${friendProfile.nickname}`;
   friendActionMessage.textContent = "";
   friendChallengeOutput.value = "";
   friendChallengeOutputWrap.classList.add("hidden");
-  renderFriendQuizSelect();
-  renderFriendActionButtons();
+  const hasQuizzes = renderFriendQuizSelect();
+  if (!hasQuizzes) {
+    friendActionMessage.textContent = "You do not have any quizzes yet. Create a quiz first.";
+  }
   friendActionPanel.classList.remove("hidden");
 }
 
@@ -4482,6 +4513,50 @@ async function copyFriendChallengeLink() {
   }
 }
 
+async function sendQuizInviteToFriend(friendCode, quiz) {
+  const friendProfile = getFriendProfileSnapshot(friendCode);
+
+  if (!quiz) {
+    throw new Error("No quiz selected.");
+  }
+
+  if (!onlineQuizSharing.isConfigured) {
+    throw new Error(getOnlineSharingSetupMessage());
+  }
+
+  const link = await createOnlineFriendLink(quiz);
+  const challengeUrl = new URL(link);
+  const challengeId = crypto.randomUUID();
+  challengeUrl.searchParams.set("challenge", challengeId);
+  challengeUrl.searchParams.set("from", activePlayer.friendCode);
+  const quizLink = challengeUrl.toString();
+  const quizInvite = {
+    quizId: challengeUrl.searchParams.get("quiz") || "",
+    quizTitle: quiz.title,
+    quizLink,
+    questionCount: quiz.questions.length,
+  };
+  const messageText = `Quiz invite: ${quiz.title}`.slice(0, 150);
+  const result = await saveFriendMessage(friendProfile.friendCode, messageText, "quiz_invite", "", { quizInvite });
+  const earnedStar = awardFriendActionStars(`challenge:${friendProfile.friendCode}:${quiz.id}`, 1);
+
+  addFriendActivity({
+    id: challengeId,
+    type: "challenge",
+    friendCode: friendProfile.friendCode,
+    friendNickname: friendProfile.nickname,
+    quizId: quiz.id,
+    quizTitle: quiz.title,
+    link: quizLink,
+  });
+
+  return {
+    ...quizInvite,
+    online: result.online,
+    earnedStar,
+  };
+}
+
 async function createFriendChallenge() {
   if (!selectedFriendActionCode) {
     friendActionMessage.textContent = "Choose a friend first.";
@@ -4492,42 +4567,23 @@ async function createFriendChallenge() {
   const friendProfile = getFriendProfileSnapshot(selectedFriendActionCode);
 
   if (!quiz) {
-    friendActionMessage.textContent = "Create or save a quiz first, then send a challenge.";
+    friendActionMessage.textContent = "You do not have any quizzes yet. Create a quiz first.";
     return;
   }
-
-  if (!onlineQuizSharing.isConfigured) {
-    friendActionMessage.textContent = getOnlineSharingSetupMessage();
-    return;
-  }
-
-  friendActionMessage.textContent = `Creating a safe challenge for ${friendProfile.nickname}...`;
 
   try {
-    const link = await createOnlineFriendLink(quiz);
-    const challengeUrl = new URL(link);
-    const challengeId = crypto.randomUUID();
-    challengeUrl.searchParams.set("challenge", challengeId);
-    challengeUrl.searchParams.set("from", activePlayer.friendCode);
-    const challengeLink = challengeUrl.toString();
-    const earnedStar = awardFriendActionStars(`challenge:${friendProfile.friendCode}:${quiz.id}`, 1);
-
-    friendChallengeOutput.value = `I challenge you to take my quiz!\nCan you score ${quiz.questions.length}/${quiz.questions.length}?\n${challengeLink}`;
+    friendActionMessage.textContent = `Sending quiz to ${friendProfile.nickname}...`;
+    const invite = await sendQuizInviteToFriend(selectedFriendActionCode, quiz);
+    friendChallengeOutput.value = invite.quizLink;
     friendChallengeOutputWrap.classList.remove("hidden");
-    addFriendActivity({
-      id: challengeId,
-      type: "challenge",
-      friendCode: friendProfile.friendCode,
-      friendNickname: friendProfile.nickname,
-      quizId: quiz.id,
-      quizTitle: quiz.title,
-      link: challengeLink,
-    });
-    friendActionMessage.textContent = earnedStar
-      ? "Challenge ready. You earned 1 star for sending a quiz challenge today."
-      : "Challenge ready. You already earned today's star for this friend and quiz.";
+    friendActionMessage.textContent = `Quiz sent to ${friendProfile.nickname}!`;
   } catch (error) {
-    showOnlineSharingRequestError(friendActionMessage, error, friendChallengeOutputWrap);
+    if (String(error?.message || "").includes("Short friend links need")) {
+      friendChallengeOutputWrap.classList.add("hidden");
+      friendActionMessage.textContent = getOnlineSharingSetupMessage();
+    } else {
+      showOnlineSharingRequestError(friendActionMessage, error, friendChallengeOutputWrap);
+    }
   }
 }
 
@@ -4764,6 +4820,8 @@ function renderChatFriends() {
     chooseButton.addEventListener("click", () => {
       selectedChatFriendCode = normalizeFriendCode(friendCode);
       chatMessage.textContent = "";
+      chatQuizMessage.textContent = "";
+      chatQuizPanel.classList.add("hidden");
       updateChatControls();
       renderChatFriends();
     });
@@ -4771,6 +4829,58 @@ function renderChatFriends() {
     row.append(avatar, details, chooseButton);
     chatFriendList.append(row);
   });
+}
+
+function getQuizIdFromInvite(quizInvite) {
+  if (quizInvite?.quizId) {
+    return quizInvite.quizId;
+  }
+
+  if (!quizInvite?.quizLink) {
+    return "";
+  }
+
+  try {
+    return new URL(quizInvite.quizLink, window.location.href).searchParams.get("quiz") || "";
+  } catch {
+    return "";
+  }
+}
+
+async function playQuizInvite(message) {
+  const quizInvite = message.quizInvite || {};
+  const quizId = getQuizIdFromInvite(quizInvite);
+
+  if (!quizId) {
+    if (quizInvite.quizLink) {
+      window.location.href = quizInvite.quizLink;
+      return;
+    }
+
+    chatMessage.textContent = "This quiz could not be opened. Please ask your friend to send it again.";
+    return;
+  }
+
+  chatMessage.textContent = "Opening quiz invite...";
+
+  try {
+    const onlineQuiz = await onlineQuizSharing.loadQuiz(quizId);
+    const inviteQuestions = normalizeQuizQuestions(onlineQuiz?.questions || []);
+
+    if (inviteQuestions.length === 0) {
+      throw new Error("Quiz invite did not load questions.");
+    }
+
+    sharedQuizMode = "online-link";
+    currentSharedQuiz = onlineQuiz;
+    sharedLinkQuestions = inviteQuestions;
+    activeOnlineQuizId = quizId;
+    onlineLeaderboardEntries = sortLeaderboard(await onlineQuizSharing.loadScores(quizId));
+    startQuiz(inviteQuestions, "online", "scored", quizId);
+  } catch (error) {
+    console.error("Quiz invite open error:", error);
+    chatMessage.textContent = "This quiz could not be opened. Please ask your friend to send it again.";
+  }
 }
 
 function renderChatHistory() {
@@ -4801,7 +4911,37 @@ function renderChatHistory() {
     text.className = "chat-text";
     text.textContent = message.text;
 
-    bubble.append(meta, text);
+    if (message.type === "quiz_invite" && (message.quizInvite?.quizLink || message.quizInvite?.quizId)) {
+      const inviteCard = document.createElement("div");
+      inviteCard.className = "quiz-invite-card";
+
+      const inviteIcon = document.createElement("span");
+      inviteIcon.className = "quiz-invite-icon";
+      inviteIcon.textContent = "💌";
+
+      const inviteDetails = document.createElement("div");
+      const inviteMessage = document.createElement("p");
+      inviteMessage.className = "quiz-invite-message";
+      inviteMessage.textContent = `${message.senderNickname} sent you a quiz!`;
+      const inviteTitle = document.createElement("h4");
+      inviteTitle.textContent = message.quizInvite.quizTitle || "Friend quiz";
+      const inviteMeta = document.createElement("p");
+      inviteMeta.textContent = `${message.quizInvite.questionCount || "?"} questions`;
+      const senderLine = document.createElement("p");
+      senderLine.textContent = `Sender: ${message.senderNickname}`;
+      inviteDetails.append(inviteMessage, inviteTitle, inviteMeta, senderLine);
+
+      const playButton = document.createElement("button");
+      playButton.className = "save-quiz-button";
+      playButton.type = "button";
+      playButton.textContent = "Play Quiz";
+      playButton.addEventListener("click", () => playQuizInvite(message));
+
+      inviteCard.append(inviteIcon, inviteDetails, playButton);
+      bubble.append(meta, inviteCard);
+    } else {
+      bubble.append(meta, text);
+    }
     chatHistory.append(bubble);
   });
 
@@ -4812,6 +4952,7 @@ async function updateChatControls() {
   const selectedProfile = findProfileByFriendCode(selectedChatFriendCode);
   chatSelectedFriend.textContent = selectedProfile ? selectedProfile.nickname : "Choose a friend to chat with.";
   const canChat = Boolean(selectedProfile && isApprovedFriendCode(selectedChatFriendCode));
+  chatSendQuizButton.disabled = !canChat;
   sendChatMessageButton.disabled = !canChat;
   clearChatButton.disabled = !canChat;
   chatBlockFriendButton.disabled = !canChat;
@@ -4819,6 +4960,7 @@ async function updateChatControls() {
   chatMessageInput.disabled = !canChat;
 
   if (!canChat) {
+    chatQuizPanel.classList.add("hidden");
     activeOnlineChatMessages = [];
     chatLoadedFromSupabase = false;
     renderChatHistory();
@@ -4826,6 +4968,50 @@ async function updateChatControls() {
   }
 
   await loadActiveChatMessages();
+}
+
+function openChatQuizPanel() {
+  if (!selectedChatFriendCode || !isApprovedFriendCode(selectedChatFriendCode)) {
+    chatMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  chatQuizMessage.textContent = "";
+  const hasQuizzes = renderChatQuizSelect();
+  if (!hasQuizzes) {
+    chatQuizMessage.textContent = "You do not have any quizzes yet. Create a quiz first.";
+  }
+  chatQuizPanel.classList.remove("hidden");
+}
+
+async function sendQuizFromChat() {
+  if (!selectedChatFriendCode || !isApprovedFriendCode(selectedChatFriendCode)) {
+    chatQuizMessage.textContent = "Choose a friend first.";
+    return;
+  }
+
+  const quiz = findSavedQuizById(chatQuizSelect.value);
+  const friendProfile = getFriendProfileSnapshot(selectedChatFriendCode);
+
+  if (!quiz) {
+    chatQuizMessage.textContent = "You do not have any quizzes yet. Create a quiz first.";
+    return;
+  }
+
+  chatQuizMessage.textContent = `Sending quiz to ${friendProfile.nickname}...`;
+
+  try {
+    const invite = await sendQuizInviteToFriend(selectedChatFriendCode, quiz);
+    chatQuizMessage.textContent = invite.online
+      ? `Quiz sent to ${friendProfile.nickname}!`
+      : "Quiz invite saved here, but online chat needs the updated messages table.";
+    renderChatHistory();
+  } catch (error) {
+    console.error("Friend quiz invite error:", error);
+    chatQuizMessage.textContent = String(error?.message || "").includes("Short friend links need")
+      ? getOnlineSharingSetupMessage()
+      : "Quiz could not be sent yet. Check Supabase setup and try again.";
+  }
 }
 
 async function sendChatMessage(messageText, messageType = "typed", sticker = "") {
@@ -4948,6 +5134,12 @@ function renderFriends() {
     chatButton.textContent = "Open Chat";
     chatButton.addEventListener("click", () => openChatWithFriend(friendCode));
 
+    const sendQuizButton = document.createElement("button");
+    sendQuizButton.className = "secondary-button";
+    sendQuizButton.type = "button";
+    sendQuizButton.textContent = "Send Quiz";
+    sendQuizButton.addEventListener("click", () => openFriendActionPanel(friendCode));
+
     const removeButton = document.createElement("button");
     removeButton.className = "secondary-button";
     removeButton.type = "button";
@@ -4960,7 +5152,7 @@ function renderFriends() {
     blockButton.textContent = "Block Friend";
     blockButton.addEventListener("click", () => blockFriend(friendCode));
 
-    row.append(avatar, details, chatButton, removeButton, blockButton);
+    row.append(avatar, details, chatButton, sendQuizButton, removeButton, blockButton);
     friendsList.append(row);
   });
 
@@ -6330,6 +6522,8 @@ copyFriendCodeButton.addEventListener("click", copyFriendCode);
 addFriendButton.addEventListener("click", addFriendByCode);
 sendFriendChallengeButton.addEventListener("click", createFriendChallenge);
 copyFriendChallengeButton.addEventListener("click", copyFriendChallengeLink);
+chatSendQuizButton.addEventListener("click", openChatQuizPanel);
+chatSendQuizConfirmButton.addEventListener("click", sendQuizFromChat);
 sendChatMessageButton.addEventListener("click", sendTypedChatMessage);
 chatMessageInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
