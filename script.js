@@ -823,6 +823,12 @@ const quickChatMessages = [
   "Check my score!",
   "I unlocked something in the shop!",
 ];
+const safeGameInvites = [
+  "Want to play Bestie Quiz?",
+  "Want to play This or That?",
+  "Want to play Would You Rather?",
+  "Want to try Mystery Personality Quiz?",
+];
 const stickerReactions = [
   { label: "Amazing", text: "🌟 Amazing!" },
   { label: "Funny", text: "😂 Funny!" },
@@ -1498,6 +1504,7 @@ let chatLoadedFromSupabase = false;
 let selectedFriendActionCode = "";
 let onlineAccountSyncInProgress = false;
 let usernamePinSession = null;
+let usernameAccountMode = "login";
 
 const playerGate = document.querySelector("#player-gate");
 const createPlayerChoice = document.querySelector("#create-player-choice");
@@ -1512,6 +1519,11 @@ const onlineAuthCard = document.querySelector("#online-auth-card");
 const createPlayerForm = document.querySelector("#create-player-form");
 const loginPlayerForm = document.querySelector("#login-player-form");
 const usernameLoginForm = document.querySelector("#username-login-form");
+const usernameCreateForm = document.querySelector("#username-create-form");
+const accountLoginTab = document.querySelector("#account-login-tab");
+const accountCreateTab = document.querySelector("#account-create-tab");
+const usernameOpenCreateButton = document.querySelector("#username-open-create");
+const usernameBackLoginButton = document.querySelector("#username-back-login");
 const authSignupForm = document.querySelector("#auth-signup-form");
 const authLoginForm = document.querySelector("#auth-login-form");
 const profileHomeButtons = document.querySelectorAll(".profile-home-button");
@@ -1538,9 +1550,13 @@ const avatarNameInput = document.querySelector("#avatar-name");
 const loginPlayerNickname = document.querySelector("#login-player-nickname");
 const usernameLoginName = document.querySelector("#username-login-name");
 const usernameLoginPin = document.querySelector("#username-login-pin");
+const usernameCreateName = document.querySelector("#username-create-name");
+const usernameCreatePin = document.querySelector("#username-create-pin");
+const usernameCreateConfirmPin = document.querySelector("#username-create-confirm-pin");
 const usernameCreateAccountButton = document.querySelector("#username-create-account");
 const usernameLoginAccountButton = document.querySelector("#username-login-account");
 const usernameLoginMessage = document.querySelector("#username-login-message");
+const usernameCreateMessage = document.querySelector("#username-create-message");
 const usernameAvatarPreview = document.querySelector("#username-avatar-preview");
 const usernameAvatarOptionPanels = document.querySelector("#username-avatar-option-panels");
 const authSignupEmail = document.querySelector("#auth-signup-email");
@@ -1551,6 +1567,7 @@ const authLoginPassword = document.querySelector("#auth-login-password");
 const avatarPreview = document.querySelector("#avatar-preview");
 const avatarOptionPanels = document.querySelector("#avatar-option-panels");
 const gameMenuCard = document.querySelector("#game-menu-card");
+const gamesCard = document.querySelector("#games-card");
 const playBestieGameButton = document.querySelector("#play-bestie-game");
 const playWouldYouRatherGameButton = document.querySelector("#play-would-you-rather-game");
 const playThisOrThatGameButton = document.querySelector("#play-this-or-that-game");
@@ -1650,6 +1667,7 @@ const chatRemoveFriendButton = document.querySelector("#chat-remove-friend");
 const chatHistory = document.querySelector("#chat-history");
 const quickMessageList = document.querySelector("#quick-message-list");
 const stickerReactionList = document.querySelector("#sticker-reaction-list");
+const gameInviteList = document.querySelector("#game-invite-list");
 const chatMessageInput = document.querySelector("#chat-message-input");
 const sendChatMessageButton = document.querySelector("#send-chat-message");
 const clearChatButton = document.querySelector("#clear-chat");
@@ -2729,6 +2747,29 @@ function updateUsernameAvatarPreview() {
   });
 }
 
+function setUsernameAccountMode(mode) {
+  usernameAccountMode = mode === "create" ? "create" : "login";
+  const isCreateMode = usernameAccountMode === "create";
+
+  usernameLoginForm.classList.toggle("hidden", isCreateMode);
+  usernameCreateForm.classList.toggle("hidden", !isCreateMode);
+  accountLoginTab.classList.toggle("active", !isCreateMode);
+  accountCreateTab.classList.toggle("active", isCreateMode);
+  accountLoginTab.setAttribute("aria-selected", String(!isCreateMode));
+  accountCreateTab.setAttribute("aria-selected", String(isCreateMode));
+  usernameLoginMessage.textContent = "";
+  usernameCreateMessage.textContent = "";
+
+  if (isCreateMode) {
+    selectedAvatar = {
+      ...createDefaultAvatar(),
+      ...selectedAvatar,
+      emojiAvatar: selectedAvatar.emojiAvatar || defaultEmojiAvatar,
+    };
+    updateUsernameAvatarPreview();
+  }
+}
+
 function updateProfileBar() {
   if (!activePlayer && !guestMode) {
     profileBar.classList.add("hidden");
@@ -2952,6 +2993,7 @@ function hideMainSections() {
   usernameLoginCard.classList.add("hidden");
   onlineAuthCard.classList.add("hidden");
   gameMenuCard.classList.add("hidden");
+  gamesCard.classList.add("hidden");
   startCard.classList.add("hidden");
   safeQuizCard.classList.add("hidden");
   myQuizzesCard.classList.add("hidden");
@@ -3004,8 +3046,9 @@ function showLoginPlayer() {
 function showUsernameLogin() {
   hideMainSections();
   usernameLoginMessage.textContent = "";
+  usernameCreateMessage.textContent = "";
   selectedAvatar = createDefaultAvatar();
-  updateUsernameAvatarPreview();
+  setUsernameAccountMode("login");
   usernameLoginCard.classList.remove("hidden");
 }
 
@@ -3033,6 +3076,19 @@ function showStart() {
   applyPurchasedEffects();
   updateGamePackStatuses();
   gameMenuCard.classList.remove("hidden");
+}
+
+function showGames() {
+  if (!activePlayer && !guestMode) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  applyPurchasedEffects();
+  updateGamePackStatuses();
+  gamesCard.classList.remove("hidden");
 }
 
 function showBestieQuizHome() {
@@ -3094,15 +3150,16 @@ async function showFriends() {
   friendsCard.classList.remove("hidden");
 }
 
-function showChat() {
+function showChat(friendCode = "") {
   if (!activePlayer) {
     showPlayerGate();
     return;
   }
 
+  const requestedFriendCode = typeof friendCode === "string" ? friendCode : "";
   hideMainSections();
   updateProfileBar();
-  selectedChatFriendCode = "";
+  selectedChatFriendCode = normalizeFriendCode(requestedFriendCode);
   activeOnlineChatMessages = [];
   chatLoadedFromSupabase = false;
   chatMessage.textContent = "";
@@ -3111,6 +3168,10 @@ function showChat() {
   renderChatFriends();
   updateChatControls();
   chatCard.classList.remove("hidden");
+}
+
+function openChatWithFriend(friendCode) {
+  showChat(friendCode);
 }
 
 function showDiary() {
@@ -4635,6 +4696,7 @@ function validateChatMessage(messageText) {
 function renderQuickChatControls() {
   quickMessageList.innerHTML = "";
   stickerReactionList.innerHTML = "";
+  gameInviteList.innerHTML = "";
 
   quickChatMessages.forEach((messageText) => {
     const button = document.createElement("button");
@@ -4652,6 +4714,15 @@ function renderQuickChatControls() {
     button.textContent = sticker.text;
     button.addEventListener("click", () => sendChatMessage(sticker.text, "sticker", sticker.label));
     stickerReactionList.append(button);
+  });
+
+  safeGameInvites.forEach((messageText) => {
+    const button = document.createElement("button");
+    button.className = "secondary-button quick-chat-button";
+    button.type = "button";
+    button.textContent = messageText;
+    button.addEventListener("click", () => sendChatMessage(messageText, "game_invite"));
+    gameInviteList.append(button);
   });
 }
 
@@ -4673,7 +4744,7 @@ function renderChatFriends() {
   availableFriends.forEach((friendCode) => {
     const friendProfile = getFriendProfileSnapshot(friendCode);
     const row = document.createElement("article");
-    row.className = selectedChatFriendCode === friendCode ? "friend-entry selected-friend" : "friend-entry";
+    row.className = normalizeFriendCode(selectedChatFriendCode) === normalizeFriendCode(friendCode) ? "friend-entry selected-friend" : "friend-entry";
 
     const avatar = document.createElement("div");
     renderAvatar(avatar, friendProfile?.avatar || null);
@@ -4691,7 +4762,7 @@ function renderChatFriends() {
     chooseButton.type = "button";
     chooseButton.textContent = "Choose Chat";
     chooseButton.addEventListener("click", () => {
-      selectedChatFriendCode = friendCode;
+      selectedChatFriendCode = normalizeFriendCode(friendCode);
       chatMessage.textContent = "";
       updateChatControls();
       renderChatFriends();
@@ -4871,29 +4942,11 @@ function renderFriends() {
 
     details.append(name, code, stars);
 
-    const challengeButton = document.createElement("button");
-    challengeButton.className = "secondary-button";
-    challengeButton.type = "button";
-    challengeButton.textContent = "Send Quiz";
-    challengeButton.addEventListener("click", () => openFriendActionPanel(friendCode));
-
-    const messageButton = document.createElement("button");
-    messageButton.className = "secondary-button";
-    messageButton.type = "button";
-    messageButton.textContent = "Send Message";
-    messageButton.addEventListener("click", () => {
-      openFriendActionPanel(friendCode);
-      friendActionMessage.textContent = "Choose a preset message below.";
-    });
-
-    const stickerButton = document.createElement("button");
-    stickerButton.className = "secondary-button";
-    stickerButton.type = "button";
-    stickerButton.textContent = "Send Sticker";
-    stickerButton.addEventListener("click", () => {
-      openFriendActionPanel(friendCode);
-      friendActionMessage.textContent = "Choose a sticker reaction below.";
-    });
+    const chatButton = document.createElement("button");
+    chatButton.className = "save-quiz-button";
+    chatButton.type = "button";
+    chatButton.textContent = "Open Chat";
+    chatButton.addEventListener("click", () => openChatWithFriend(friendCode));
 
     const removeButton = document.createElement("button");
     removeButton.className = "secondary-button";
@@ -4907,7 +4960,7 @@ function renderFriends() {
     blockButton.textContent = "Block Friend";
     blockButton.addEventListener("click", () => blockFriend(friendCode));
 
-    row.append(avatar, details, challengeButton, messageButton, stickerButton, removeButton, blockButton);
+    row.append(avatar, details, chatButton, removeButton, blockButton);
     friendsList.append(row);
   });
 
@@ -5605,7 +5658,9 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   }
 
   usernameLoginForm.reset();
+  usernameCreateForm.reset();
   usernameLoginMessage.textContent = "Player account opened.";
+  usernameCreateMessage.textContent = "";
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
@@ -5613,25 +5668,30 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
 }
 
 async function createUsernamePlayerAccount() {
-  const validation = validateUsernamePin(usernameLoginName.value, usernameLoginPin.value);
+  const validation = validateUsernamePin(usernameCreateName.value, usernameCreatePin.value);
 
   if (!validation.ok) {
-    usernameLoginMessage.textContent = validation.message;
+    usernameCreateMessage.textContent = validation.message;
     return;
   }
 
-  usernameLoginMessage.textContent = "Creating player account...";
+  if (usernameCreatePin.value !== usernameCreateConfirmPin.value) {
+    usernameCreateMessage.textContent = "Please make sure both PIN boxes match.";
+    return;
+  }
+
+  usernameCreateMessage.textContent = "Creating player account...";
 
   try {
     const account = await onlineUsernameAccounts.createAccount({
       username: validation.username,
       pin: validation.pin,
-      emojiAvatar: activePlayer?.avatar?.emojiAvatar || selectedAvatar?.emojiAvatar || defaultEmojiAvatar,
+      emojiAvatar: selectedAvatar?.emojiAvatar || activePlayer?.avatar?.emojiAvatar || defaultEmojiAvatar,
     });
     await openUsernameAccount(account, validation.pin, { askImport: true });
   } catch (error) {
     console.error("Username account create error:", error);
-    usernameLoginMessage.textContent = getUsernameAccountErrorMessage(error);
+    usernameCreateMessage.textContent = getUsernameAccountErrorMessage(error);
   }
 }
 
@@ -6218,7 +6278,7 @@ playThisOrThatGameButton.addEventListener("click", () => startMiniGame("thisOrTh
 playMysteryGameButton.addEventListener("click", () => startMiniGame("mysteryPersonality"));
 playFavouriteGameButton.addEventListener("click", () => startMiniGame("guessFavourite"));
 featureBestieQuizButton.addEventListener("click", showBestieQuizHome);
-featureGamesButton.addEventListener("click", showStart);
+featureGamesButton.addEventListener("click", showGames);
 featureMyQuizzesButton.addEventListener("click", showMyQuizzes);
 featureFriendLinksButton.addEventListener("click", showSharedQuiz);
 featureFriendsButton.addEventListener("click", showFriends);
@@ -6241,11 +6301,19 @@ loginPlayerChoice.addEventListener("click", showLoginPlayer);
 guestPlayerChoice.addEventListener("click", useGuestMode);
 createPlayerForm.addEventListener("submit", createPlayer);
 loginPlayerForm.addEventListener("submit", loginPlayer);
+accountLoginTab.addEventListener("click", () => setUsernameAccountMode("login"));
+accountCreateTab.addEventListener("click", () => setUsernameAccountMode("create"));
+usernameOpenCreateButton.addEventListener("click", () => setUsernameAccountMode("create"));
+usernameBackLoginButton.addEventListener("click", () => setUsernameAccountMode("login"));
 usernameCreateAccountButton.addEventListener("click", createUsernamePlayerAccount);
 usernameLoginAccountButton.addEventListener("click", loginUsernamePlayerAccount);
 usernameLoginForm.addEventListener("submit", (event) => {
   event.preventDefault();
   loginUsernamePlayerAccount();
+});
+usernameCreateForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  createUsernamePlayerAccount();
 });
 authSignupForm.addEventListener("submit", handleAuthSignup);
 authLoginForm.addEventListener("submit", handleAuthLogin);
@@ -6253,7 +6321,7 @@ profileHomeButtons.forEach((button) => button.addEventListener("click", showPlay
 authLogoutButton.addEventListener("click", logoutSupabaseAccount);
 switchPlayerButton.addEventListener("click", switchPlayer);
 homeButtons.forEach((button) => button.addEventListener("click", goHome));
-gamesButtons.forEach((button) => button.addEventListener("click", showStart));
+gamesButtons.forEach((button) => button.addEventListener("click", showGames));
 openShopButton.addEventListener("click", showShop);
 openStarLeaderboardButton.addEventListener("click", showStarLeaderboard);
 openFriendsButton.addEventListener("click", showFriends);

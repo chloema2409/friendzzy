@@ -161,22 +161,43 @@
         </div>
         <p class="safety-note">Use a nickname, not your real full name. Do not share your PIN with others. Do not enter school, address, phone number, email, or photos.</p>
         <p class="friendly-message">MVP note: this is a simple kid-friendly login, not high security. Do not use it for private sensitive information.</p>
-        <form id="username-login-form" class="profile-form">
-          <label for="username-login-name">Username / nickname</label>
+        <div class="account-tabs" role="tablist" aria-label="Player account options">
+          <button id="account-login-tab" class="account-tab active" type="button" role="tab" aria-selected="true" aria-controls="username-login-form">Log In</button>
+          <button id="account-create-tab" class="account-tab" type="button" role="tab" aria-selected="false" aria-controls="username-create-form">Create Account</button>
+        </div>
+        <form id="username-login-form" class="profile-form account-panel">
+          <h3>Log In</h3>
+          <label for="username-login-name">Username</label>
           <input id="username-login-name" type="text" maxlength="20" autocomplete="username" placeholder="MysteryAce" required />
           <label for="username-login-pin">PIN</label>
           <input id="username-login-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="off" placeholder="4 to 6 digits" required />
+          <div class="result-actions">
+            <button id="username-login-account" class="save-quiz-button" type="button">Log In</button>
+            <button id="username-open-create" class="secondary-button" type="button">Create a new account</button>
+            <button class="profile-home-button secondary-button" type="button">Back to Home</button>
+          </div>
+          <p id="username-login-message" class="friendly-message" aria-live="polite"></p>
+        </form>
+        <form id="username-create-form" class="profile-form account-panel hidden">
+          <h3>Create Account</h3>
+          <label for="username-create-name">Username / nickname</label>
+          <input id="username-create-name" type="text" maxlength="20" autocomplete="username" placeholder="MysteryAce" required />
+          <label for="username-create-pin">PIN</label>
+          <input id="username-create-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="off" placeholder="4 to 6 digits" required />
+          <label for="username-create-confirm-pin">Confirm PIN</label>
+          <input id="username-create-confirm-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" minlength="4" maxlength="6" autocomplete="off" placeholder="Type the PIN again" required />
           <div class="username-avatar-picker">
-            <label>Emoji avatar for new account</label>
-            <p class="friendly-message">Choose one for a new account. You can edit it after logging in.</p>
+            <label>Emoji avatar</label>
+            <p class="friendly-message">Choose one for your new player account. You can edit it later.</p>
             <div id="username-avatar-preview" class="avatar-preview" aria-hidden="true"></div>
             <div id="username-avatar-option-panels" class="avatar-option-panels"></div>
           </div>
           <div class="result-actions">
             <button id="username-create-account" class="save-quiz-button" type="button">Create Player Account</button>
-            <button id="username-login-account" class="secondary-button" type="button">Log In</button>
+            <button id="username-back-login" class="secondary-button" type="button">Back to Log In</button>
+            <button class="profile-home-button secondary-button" type="button">Back to Home</button>
           </div>
-          <p id="username-login-message" class="friendly-message" aria-live="polite"></p>
+          <p id="username-create-message" class="friendly-message" aria-live="polite"></p>
         </form>
       </section>
 
@@ -199,7 +220,7 @@
             <span class="feature-icon" aria-hidden="true">🎮</span>
             <span class="feature-title">Games</span>
             <span class="feature-description">Play quick friendship and mystery games for stars.</span>
-            <span class="feature-action">See Games</span>
+            <span class="feature-action">Open Games</span>
           </button>
           <button class="feature-card" id="feature-my-quizzes" type="button">
             <span class="feature-icon" aria-hidden="true">📓</span>
@@ -250,23 +271,28 @@
             <span class="feature-action">View Stars</span>
           </button>
         </div>
+      </section>
+
+      <section id="games-card" class="start-card games-card hidden" aria-labelledby="games-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Friendzzy Games</p>
+            <h2 id="games-title">Games</h2>
+            <p class="section-subtitle">Choose a game to play.</p>
+          </div>
+          <button class="home-button secondary-button" type="button">Back to Home</button>
+        </div>
         <div class="games-section-heading">
-          <p class="eyebrow">Games Section</p>
-          <h3>Pick a game</h3>
+          <p class="eyebrow">Pick a Game</p>
+          <h3>Play for stars and fun results</h3>
         </div>
         <div class="game-grid">
-          <button class="choice-card game-card" id="play-bestie-game" type="button">
-            <span class="choice-icon" aria-hidden="true">♡</span>
-            <span class="choice-title">Bestie Quiz</span>
-            <span class="choice-description">Create or play a quiz to see who knows you best.</span>
-            <span class="game-card-action">Play Bestie Quiz</span>
-          </button>
-          <button class="choice-card game-card" id="play-would-you-rather-game" type="button">
-            <span class="choice-icon" aria-hidden="true">?</span>
-            <span class="choice-title">Would You Rather?</span>
-            <span class="choice-description">Pick between two fun choices.</span>
-            <span class="pack-status" data-pack-id="would-you-rather-pack">Extra pack locked - buy it in the shop</span>
-            <span class="game-card-action">Play Would You Rather</span>
+          <button class="choice-card game-card" id="play-mystery-game" type="button">
+            <span class="choice-icon" aria-hidden="true">✦</span>
+            <span class="choice-title">Mystery Personality Quiz</span>
+            <span class="choice-description">Answer questions and reveal your mystery style.</span>
+            <span class="pack-status" data-pack-id="mystery-personality-pack">Extra pack locked - buy it in the shop</span>
+            <span class="game-card-action">Play Mystery Quiz</span>
           </button>
           <button class="choice-card game-card" id="play-this-or-that-game" type="button">
             <span class="choice-icon" aria-hidden="true">↔</span>
@@ -275,12 +301,12 @@
             <span class="pack-status" data-pack-id="this-or-that-pack">Extra pack locked - buy it in the shop</span>
             <span class="game-card-action">Play This or That</span>
           </button>
-          <button class="choice-card game-card" id="play-mystery-game" type="button">
-            <span class="choice-icon" aria-hidden="true">✦</span>
-            <span class="choice-title">Mystery Personality Quiz</span>
-            <span class="choice-description">Answer questions and reveal your mystery style.</span>
-            <span class="pack-status" data-pack-id="mystery-personality-pack">Extra pack locked - buy it in the shop</span>
-            <span class="game-card-action">Play Mystery Quiz</span>
+          <button class="choice-card game-card" id="play-would-you-rather-game" type="button">
+            <span class="choice-icon" aria-hidden="true">?</span>
+            <span class="choice-title">Would You Rather?</span>
+            <span class="choice-description">Pick between two fun choices.</span>
+            <span class="pack-status" data-pack-id="would-you-rather-pack">Extra pack locked - buy it in the shop</span>
+            <span class="game-card-action">Play Would You Rather</span>
           </button>
           <button class="choice-card game-card" id="play-favourite-game" type="button">
             <span class="choice-icon" aria-hidden="true">★</span>
@@ -288,6 +314,12 @@
             <span class="choice-description">Let friends guess your favourite things.</span>
             <span class="pack-status" data-pack-id="extra-quiz-theme-pack">Extra pack locked - buy it in the shop</span>
             <span class="game-card-action">Play Guess My Favourite</span>
+          </button>
+          <button class="choice-card game-card" id="play-bestie-game" type="button">
+            <span class="choice-icon" aria-hidden="true">♡</span>
+            <span class="choice-title">Bestie Quiz Challenge</span>
+            <span class="choice-description">Open Bestie Quiz tools and play custom quiz cases.</span>
+            <span class="game-card-action">Open Bestie Quiz</span>
           </button>
         </div>
       </section>
@@ -613,6 +645,10 @@
             <div class="quick-chat-wrap">
               <h3>Sticker reactions</h3>
               <div id="sticker-reaction-list" class="quick-message-list"></div>
+            </div>
+            <div class="quick-chat-wrap">
+              <h3>Game invites</h3>
+              <div id="game-invite-list" class="quick-message-list"></div>
             </div>
             <label for="chat-message-input">Type a short message</label>
             <div class="save-row">
