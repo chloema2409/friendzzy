@@ -315,6 +315,18 @@
             <span class="pack-status" data-pack-id="extra-quiz-theme-pack">Extra pack locked - buy it in the shop</span>
             <span class="game-card-action">Play Guess My Favourite</span>
           </button>
+          <button class="choice-card game-card" id="play-box-of-lies-game" type="button">
+            <span class="choice-icon" aria-hidden="true">▣</span>
+            <span class="choice-title">Box of Lies</span>
+            <span class="choice-description">Send a safe truth-or-lie box challenge to a friend.</span>
+            <span class="game-card-action">Play Box of Lies</span>
+          </button>
+          <button class="choice-card game-card" id="play-trading-game" type="button">
+            <span class="choice-icon" aria-hidden="true">💎</span>
+            <span class="choice-title">Trading Game</span>
+            <span class="choice-description">Trade cute preset collectibles with approved friends.</span>
+            <span class="game-card-action">Open Trading Game</span>
+          </button>
           <button class="choice-card game-card" id="play-bestie-game" type="button">
             <span class="choice-icon" aria-hidden="true">♡</span>
             <span class="choice-title">Bestie Quiz Challenge</span>
@@ -388,6 +400,40 @@
             <button class="games-button secondary-button" type="button">Back to Games</button>
           </div>
         </div>
+      </section>
+
+      <section id="box-of-lies-card" class="quiz-card box-of-lies-card hidden" aria-labelledby="box-of-lies-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Friend Game</p>
+            <h2 id="box-of-lies-title">Box of Lies</h2>
+            <p class="section-subtitle">Send a safe truth-or-lie challenge to a friend.</p>
+          </div>
+          <div class="quiz-actions">
+            <button class="games-button secondary-button" type="button">Back to Games</button>
+            <button class="home-button secondary-button" type="button">Back to Home</button>
+          </div>
+        </div>
+        <p class="safety-note">Preset messages only. No photos, uploads, camera, microphone, or open chat.</p>
+        <div id="box-of-lies-content" class="box-of-lies-content"></div>
+        <p id="box-of-lies-message" class="friendly-message" aria-live="polite"></p>
+      </section>
+
+      <section id="trading-game-card" class="quiz-card trading-game-card hidden" aria-labelledby="trading-game-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Friend Game</p>
+            <h2 id="trading-game-title">Trading Game</h2>
+            <p class="section-subtitle">Trade preset collectible items with friends you already added.</p>
+          </div>
+          <div class="quiz-actions">
+            <button class="games-button secondary-button" type="button">Back to Games</button>
+            <button class="home-button secondary-button" type="button">Back to Home</button>
+          </div>
+        </div>
+        <p class="safety-note">Preset game items only. No real money, no strangers, no uploads, and no open marketplace.</p>
+        <div id="trading-game-content" class="trading-game-content"></div>
+        <p id="trading-game-message" class="friendly-message" aria-live="polite"></p>
       </section>
 
       <section id="safe-quiz-card" class="safe-quiz-card hidden" aria-labelledby="safe-quiz-title">

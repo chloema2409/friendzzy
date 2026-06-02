@@ -19,10 +19,18 @@ const activeThemeKey = "bestieQuizActiveTheme";
 const friendChatKey = "bestieFriendChatMessages";
 const friendActivityKey = "bestieFriendActivity";
 const friendRewardLogKey = "bestieFriendRewardLog";
+const boxOfLiesRoundsKey = "friendzzyBoxOfLiesRounds";
+const tradingInventoryKey = "friendzzyTradingInventory";
+const tradingTradesKey = "friendzzyTradingTrades";
+const tradingAppliedTradesKey = "friendzzyTradingAppliedTrades";
 const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
 const minQuestions = 5;
 const maxQuestions = 30;
 const maxLeaderboardEntries = 10;
+const friendOnlineWindowMs = 5 * 60 * 1000;
+const presenceUpdateIntervalMs = 60 * 1000;
+const boxOfLiesInviteExpiryMs = 24 * 60 * 60 * 1000;
+const tradingOfferExpiryMs = 72 * 60 * 60 * 1000;
 
 const shopCategories = ["Diary", "Themes", "Games", "Profile"];
 let activeShopCategory = shopCategories[0];
@@ -227,6 +235,9 @@ function normalizeOnlineFriendProfile(profile) {
     nickname: profile.nickname || "Friend",
     friendCode,
     stars: Number.parseInt(profile.stars || "0", 10) || 0,
+    lastSeenAt: profile.last_seen_at
+      ? new Date(profile.last_seen_at).getTime()
+      : profile.lastSeenAt || (profile.updated_at ? new Date(profile.updated_at).getTime() : 0),
     avatar: {
       ...createDefaultAvatar(),
       ...(profile.avatar || {}),
@@ -366,6 +377,7 @@ function normalizeOnlineMessage(message) {
       quizLink: message.quiz_link || message.quizLink || message.quizInvite?.quizLink || "",
       questionCount: Number.parseInt(message.quiz_question_count || message.quizQuestionCount || message.quizInvite?.questionCount || "0", 10) || 0,
     },
+    gameData: message.game_data || message.gameData || {},
     createdAt: message.created_at ? new Date(message.created_at).getTime() : message.createdAt || Date.now(),
     readAt: message.read_at || message.readAt || null,
   };
@@ -405,6 +417,9 @@ const onlineFriendMessages = {
           quiz_link: safeMessage.quizInvite?.quizLink || null,
           quiz_question_count: safeMessage.quizInvite?.questionCount || null,
         } : {}),
+        ...(["box_of_lies_invite", "trading_game_offer"].includes(safeMessage.type) && Object.keys(safeMessage.gameData || {}).length > 0 ? {
+          game_data: safeMessage.gameData,
+        } : {}),
       },
     });
 
@@ -423,6 +438,134 @@ const onlineFriendMessages = {
 };
 window.bestieOnlineFriendMessages = onlineFriendMessages;
 
+function normalizeOnlineGamePayload(record) {
+  if (!record) {
+    return null;
+  }
+
+  const payload = record.payload || record.gamePayload || {};
+  const inviteId = record.invite_id || record.inviteId || payload.id || "";
+  const gameType = record.game_type || record.gameType || payload.gameType || "";
+
+  if (!inviteId || !gameType) {
+    return null;
+  }
+
+  return {
+    ...payload,
+    id: inviteId,
+    gameType,
+    fromFriendCode: normalizeFriendCode(record.from_friend_code || record.fromFriendCode || payload.fromFriendCode || ""),
+    toFriendCode: normalizeFriendCode(record.to_friend_code || record.toFriendCode || payload.toFriendCode || ""),
+    status: record.status || payload.status || "pending",
+    createdAt: record.created_at ? new Date(record.created_at).getTime() : payload.createdAt || Date.now(),
+    updatedAt: record.updated_at ? new Date(record.updated_at).getTime() : payload.updatedAt || Date.now(),
+    completedAt: record.completed_at ? new Date(record.completed_at).getTime() : payload.completedAt || null,
+  };
+}
+
+function normalizeOnlineInventoryRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    friendCode: normalizeFriendCode(row.friend_code || row.friendCode || ""),
+    items: normalizeTradingItems(row.inventory_json || row.inventoryJson || row.items || []),
+    updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : row.updatedAt || Date.now(),
+  };
+}
+
+const onlineFriendGames = {
+  get isConfigured() {
+    return isSupabaseConfigured();
+  },
+  async saveGame(gameRecord) {
+    const payload = normalizeOnlineGamePayload(gameRecord);
+
+    if (!payload?.id || !payload.gameType || !payload.fromFriendCode || !payload.toFriendCode) {
+      throw new Error("Game record is missing required fields.");
+    }
+
+    await supabaseRequest("game_invites?on_conflict=invite_id", {
+      method: "POST",
+      auth: onlineAccountStorage.isLoggedIn,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        invite_id: payload.id,
+        game_type: payload.gameType,
+        from_friend_code: payload.fromFriendCode,
+        to_friend_code: payload.toFriendCode,
+        status: payload.status || "pending",
+        payload,
+        updated_at: new Date(payload.updatedAt || Date.now()).toISOString(),
+        completed_at: payload.completedAt ? new Date(payload.completedAt).toISOString() : null,
+      },
+    });
+
+    return payload;
+  },
+  async loadGame(inviteId) {
+    const query = new URLSearchParams({
+      select: "invite_id,game_type,from_friend_code,to_friend_code,status,payload,created_at,updated_at,completed_at",
+      invite_id: `eq.${inviteId}`,
+      limit: "1",
+    });
+    const data = await supabaseRequest(`game_invites?${query.toString()}`, { auth: onlineAccountStorage.isLoggedIn });
+    return normalizeOnlineGamePayload(Array.isArray(data) ? data[0] : null);
+  },
+  async loadGamesForPlayer(friendCode) {
+    const safeFriendCode = normalizeFriendCode(friendCode);
+
+    if (!safeFriendCode) {
+      return [];
+    }
+
+    const query = new URLSearchParams({
+      select: "invite_id,game_type,from_friend_code,to_friend_code,status,payload,created_at,updated_at,completed_at",
+      order: "updated_at.desc",
+      limit: "80",
+    });
+    query.set("or", `(from_friend_code.eq.${safeFriendCode},to_friend_code.eq.${safeFriendCode})`);
+    const data = await supabaseRequest(`game_invites?${query.toString()}`, { auth: onlineAccountStorage.isLoggedIn });
+    return (data || []).map(normalizeOnlineGamePayload).filter(Boolean);
+  },
+  async saveInventory(friendCode, items) {
+    const safeFriendCode = normalizeFriendCode(friendCode);
+
+    if (!safeFriendCode) {
+      throw new Error("Inventory needs a friend code.");
+    }
+
+    await supabaseRequest("player_inventories?on_conflict=friend_code", {
+      method: "POST",
+      auth: onlineAccountStorage.isLoggedIn,
+      prefer: "resolution=merge-duplicates,return=minimal",
+      body: {
+        friend_code: safeFriendCode,
+        inventory_json: normalizeTradingItems(items),
+        updated_at: new Date().toISOString(),
+      },
+    });
+  },
+  async loadInventory(friendCode) {
+    const safeFriendCode = normalizeFriendCode(friendCode);
+
+    if (!safeFriendCode) {
+      return null;
+    }
+
+    const query = new URLSearchParams({
+      select: "friend_code,inventory_json,updated_at",
+      friend_code: `eq.${safeFriendCode}`,
+      limit: "1",
+    });
+    const data = await supabaseRequest(`player_inventories?${query.toString()}`, { auth: onlineAccountStorage.isLoggedIn });
+    return normalizeOnlineInventoryRow(Array.isArray(data) ? data[0] : null);
+  },
+};
+window.bestieOnlineFriendGames = onlineFriendGames;
+
 function normalizeAuthProfile(profile) {
   if (!profile) {
     return null;
@@ -440,6 +583,9 @@ function normalizeAuthProfile(profile) {
     avatar,
     friendCode: normalizeFriendCode(profile.friend_code || profile.friendCode || ""),
     stars: Number.parseInt(profile.stars || "0", 10) || 0,
+    lastSeenAt: profile.last_seen_at
+      ? new Date(profile.last_seen_at).getTime()
+      : profile.lastSeenAt || (profile.updated_at ? new Date(profile.updated_at).getTime() : 0),
     activeTheme: profile.active_theme || "default",
     purchasedRewards: [],
     diaryAccess: false,
@@ -840,6 +986,8 @@ const safeGameInvites = [
   "Want to play This or That?",
   "Want to play Would You Rather?",
   "Want to try Mystery Personality Quiz?",
+  "Want to play Box of Lies?",
+  "Want to trade collectibles?",
 ];
 const stickerReactions = [
   { label: "Amazing", text: "🌟 Amazing!" },
@@ -858,6 +1006,38 @@ const stickerReactions = [
   { label: "Game", text: "🎮 Game" },
 ];
 const blockedChatWords = ["stupid", "idiot", "hate", "shut up", "dumb", "kill"];
+const boxOfLiesItems = [
+  { emoji: "🐱", text: "A cat wearing a wizard hat" },
+  { emoji: "🦄", text: "A tiny unicorn on a skateboard" },
+  { emoji: "🐸", text: "A frog wearing sunglasses" },
+  { emoji: "🍕", text: "A pizza with wings" },
+  { emoji: "🐶", text: "A dog wearing a crown" },
+  { emoji: "🐼", text: "A panda eating noodles" },
+  { emoji: "🐧", text: "A penguin holding a cupcake" },
+  { emoji: "🦖", text: "A dinosaur in pajamas" },
+  { emoji: "🍩", text: "A donut spaceship" },
+  { emoji: "🐰", text: "A bunny with roller skates" },
+];
+const tradingCollectibles = [
+  { itemId: "star-sticker", emoji: "🌟", name: "Star Sticker", rarity: "Common", source: "starter" },
+  { itemId: "blue-gem", emoji: "💎", name: "Blue Gem", rarity: "Rare", source: "trade" },
+  { itemId: "cat-card", emoji: "🐱", name: "Cat Card", rarity: "Common", source: "starter" },
+  { itemId: "unicorn-card", emoji: "🦄", name: "Unicorn Card", rarity: "Rare", source: "trade" },
+  { itemId: "rainbow-sticker", emoji: "🌈", name: "Rainbow Sticker", rarity: "Common", source: "starter" },
+  { itemId: "frog-sticker", emoji: "🐸", name: "Frog Sticker", rarity: "Common", source: "trade" },
+  { itemId: "puppy-card", emoji: "🐶", name: "Puppy Card", rarity: "Common", source: "trade" },
+  { itemId: "pizza-badge", emoji: "🍕", name: "Pizza Badge", rarity: "Fun", source: "trade" },
+  { itemId: "panda-sticker", emoji: "🐼", name: "Panda Sticker", rarity: "Common", source: "trade" },
+  { itemId: "tiny-crown", emoji: "👑", name: "Tiny Crown", rarity: "Rare", source: "trade" },
+  { itemId: "pink-bow", emoji: "🎀", name: "Pink Bow", rarity: "Cute", source: "trade" },
+  { itemId: "cupcake-charm", emoji: "🧁", name: "Cupcake Charm", rarity: "Common", source: "starter" },
+];
+const tradingStarterInventory = [
+  { itemId: "star-sticker", quantity: 2 },
+  { itemId: "cat-card", quantity: 1 },
+  { itemId: "rainbow-sticker", quantity: 1 },
+  { itemId: "cupcake-charm", quantity: 1 },
+];
 const defaultEmojiAvatar = "🌙";
 
 const emojiAvatarCategories = {
@@ -1514,9 +1694,14 @@ let selectedChatFriendCode = "";
 let activeOnlineChatMessages = [];
 let chatLoadedFromSupabase = false;
 let selectedFriendActionCode = "";
+let activeBoxOfLiesRound = null;
+let activeTradingFriendCode = "";
+let activeTradingDraft = { offered: {}, requested: {} };
+let pendingGameInviteId = "";
 let onlineAccountSyncInProgress = false;
 let usernamePinSession = null;
 let usernameAccountMode = "login";
+let presenceUpdateTimer = null;
 
 const playerGate = document.querySelector("#player-gate");
 const createPlayerChoice = document.querySelector("#create-player-choice");
@@ -1585,6 +1770,8 @@ const playWouldYouRatherGameButton = document.querySelector("#play-would-you-rat
 const playThisOrThatGameButton = document.querySelector("#play-this-or-that-game");
 const playMysteryGameButton = document.querySelector("#play-mystery-game");
 const playFavouriteGameButton = document.querySelector("#play-favourite-game");
+const playBoxOfLiesGameButton = document.querySelector("#play-box-of-lies-game");
+const playTradingGameButton = document.querySelector("#play-trading-game");
 const featureBestieQuizButton = document.querySelector("#feature-bestie-quiz");
 const featureGamesButton = document.querySelector("#feature-games");
 const featureMyQuizzesButton = document.querySelector("#feature-my-quizzes");
@@ -1711,6 +1898,12 @@ const miniGameStars = document.querySelector("#mini-game-stars");
 const miniGameLeaderboardTitle = document.querySelector("#mini-game-leaderboard-title");
 const miniGameLeaderboardList = document.querySelector("#mini-game-leaderboard-list");
 const miniGameAgainButton = document.querySelector("#mini-game-again");
+const boxOfLiesCard = document.querySelector("#box-of-lies-card");
+const boxOfLiesContent = document.querySelector("#box-of-lies-content");
+const boxOfLiesMessage = document.querySelector("#box-of-lies-message");
+const tradingGameCard = document.querySelector("#trading-game-card");
+const tradingGameContent = document.querySelector("#trading-game-content");
+const tradingGameMessage = document.querySelector("#trading-game-message");
 
 function clampQuestionCount(value) {
   const questionCountValue = Number.parseInt(value, 10);
@@ -2125,6 +2318,51 @@ function syncActiveProfileOnline() {
         onlineAccountSyncInProgress = false;
       });
   }
+}
+
+function updateOwnPresence() {
+  if (!activePlayer || !onlineFriendCodes.isConfigured) {
+    return;
+  }
+
+  activePlayer.lastSeenAt = Date.now();
+  onlineFriendCodes.saveProfile(activePlayer).catch((error) => {
+    console.error("Supabase presence update error:", error);
+  });
+}
+
+function startPresenceUpdates() {
+  if (presenceUpdateTimer) {
+    clearInterval(presenceUpdateTimer);
+  }
+
+  updateOwnPresence();
+  presenceUpdateTimer = window.setInterval(updateOwnPresence, presenceUpdateIntervalMs);
+}
+
+function stopPresenceUpdates() {
+  if (presenceUpdateTimer) {
+    clearInterval(presenceUpdateTimer);
+    presenceUpdateTimer = null;
+  }
+}
+
+function isFriendOnline(friendProfile) {
+  const lastSeenAt = Number.parseInt(friendProfile?.lastSeenAt || "0", 10) || 0;
+  return lastSeenAt > 0 && Date.now() - lastSeenAt <= friendOnlineWindowMs;
+}
+
+function makeFriendPresenceBadge(friendProfile) {
+  const isOnline = isFriendOnline(friendProfile);
+  const badge = document.createElement("p");
+  badge.className = isOnline ? "friend-presence online" : "friend-presence offline";
+  const dot = document.createElement("span");
+  dot.className = "presence-dot";
+  dot.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.textContent = isOnline ? "Online" : "Offline";
+  badge.append(dot, label);
+  return badge;
 }
 
 function saveActivePlayerProfile() {
@@ -2852,9 +3090,19 @@ function setActivePlayer(profile) {
   saveActivePlayerProfile();
   updateProfileBar();
   applyPurchasedEffects();
+  startPresenceUpdates();
+
+  if (pendingGameInviteId) {
+    const inviteId = pendingGameInviteId;
+    pendingGameInviteId = "";
+    window.setTimeout(() => {
+      openGameInviteFromLink(inviteId).catch((error) => console.error("Pending game invite open error:", error));
+    }, 0);
+  }
 }
 
 function useGuestMode() {
+  stopPresenceUpdates();
   activePlayer = null;
   guestMode = true;
   localStorage.removeItem(currentPlayerKey);
@@ -3021,6 +3269,8 @@ function hideMainSections() {
   leaderboardSection.classList.add("hidden");
   starLeaderboardCard.classList.add("hidden");
   miniGameCard.classList.add("hidden");
+  boxOfLiesCard.classList.add("hidden");
+  tradingGameCard.classList.add("hidden");
   shopCard.classList.add("hidden");
   friendsCard.classList.add("hidden");
   chatCard.classList.add("hidden");
@@ -3162,6 +3412,7 @@ async function showFriends() {
   selectedFriendActionCode = "";
   friendActionPanel.classList.add("hidden");
   await syncOnlineFriendsToLocal();
+  await syncFriendGameStateFromOnline();
   renderFriends();
   renderFriendActivity();
   friendsCard.classList.remove("hidden");
@@ -4109,6 +4360,39 @@ async function syncOnlineFriendsToLocal() {
   }
 }
 
+async function syncFriendGameStateFromOnline() {
+  if (!activePlayer || (!onlineFriendMessages.isConfigured && !onlineFriendGames.isConfigured)) {
+    return;
+  }
+
+  if (onlineFriendGames.isConfigured) {
+    try {
+      const records = await onlineFriendGames.loadGamesForPlayer(activePlayer.friendCode);
+      cacheFriendGameStateFromOnlineRecords(records);
+    } catch (error) {
+      console.error("Supabase friend game record sync error:", error);
+    }
+  }
+
+  if (!onlineFriendMessages.isConfigured) {
+    return;
+  }
+
+  const friendCodes = (Array.isArray(activePlayer.friends) ? activePlayer.friends : [])
+    .map(normalizeFriendCode)
+    .filter((friendCode) => friendCode && !isFriendBlocked(friendCode))
+    .slice(0, 30);
+
+  await Promise.all(friendCodes.map(async (friendCode) => {
+    try {
+      const messages = await onlineFriendMessages.loadMessages(getChatId(friendCode));
+      cacheFriendGameStateFromMessages(messages);
+    } catch (error) {
+      console.error("Friend game sync error:", error);
+    }
+  }));
+}
+
 async function copyFriendCode() {
   if (!activePlayer?.friendCode) {
     return;
@@ -4331,6 +4615,46 @@ function getFriendActivityText(entry) {
     return `You sent ${entry.friendNickname} a sticker: ${entry.text}`;
   }
 
+  if (entry.type === "box_invite_sent") {
+    return `You invited ${entry.friendNickname} to play Box of Lies.`;
+  }
+
+  if (entry.type === "box_invite_accepted") {
+    return `You accepted ${entry.friendNickname}'s Box of Lies invite.`;
+  }
+
+  if (entry.type === "box_invite_declined") {
+    return `You declined ${entry.friendNickname}'s Box of Lies invite.`;
+  }
+
+  if (entry.type === "box_invite_cancelled") {
+    return `You cancelled the Box of Lies invite for ${entry.friendNickname}.`;
+  }
+
+  if (entry.type === "box_sent" || entry.type === "box_message_sent") {
+    return `You sent ${entry.friendNickname} a Box of Lies challenge.`;
+  }
+
+  if (entry.type === "box_correct") {
+    return `You guessed ${entry.friendNickname}'s Box of Lies correctly.`;
+  }
+
+  if (entry.type === "box_played") {
+    return `You played ${entry.friendNickname}'s Box of Lies game.`;
+  }
+
+  if (entry.type === "trade_offer_sent") {
+    return `You sent ${entry.friendNickname} a trade offer.`;
+  }
+
+  if (entry.type === "trade_completed") {
+    return `You completed a trade with ${entry.friendNickname}.`;
+  }
+
+  if (entry.type === "trade_declined") {
+    return `You declined ${entry.friendNickname}'s trade.`;
+  }
+
   return entry.text || "Friend activity saved.";
 }
 
@@ -4388,6 +4712,7 @@ async function saveFriendMessage(friendCode, messageText, messageType = "typed",
     type: messageType,
     sticker,
     quizInvite: extraData.quizInvite || {},
+    gameData: extraData.gameData || {},
     createdAt: Date.now(),
   };
 
@@ -4400,6 +4725,7 @@ async function saveFriendMessage(friendCode, messageText, messageType = "typed",
           .sort((firstMessage, secondMessage) => firstMessage.createdAt - secondMessage.createdAt);
         chatLoadedFromSupabase = true;
       }
+      cacheFriendGameStateFromMessages([savedMessage]);
       saveLocalChatMessage(savedMessage);
       return { message: savedMessage, online: true };
     } catch (error) {
@@ -4686,6 +5012,7 @@ function saveLocalChatMessage(message) {
     safeMessage,
   ].sort((firstMessage, secondMessage) => firstMessage.createdAt - secondMessage.createdAt);
   saveChatMessages(updatedMessages);
+  cacheFriendGameStateFromMessages([safeMessage]);
 }
 
 async function loadActiveChatMessages() {
@@ -4716,6 +5043,7 @@ async function loadActiveChatMessages() {
 
     activeOnlineChatMessages = messages;
     chatLoadedFromSupabase = true;
+    cacheFriendGameStateFromMessages(messages);
     renderChatHistory();
   } catch (error) {
     console.error("Supabase friend chat load error:", error);
@@ -4811,7 +5139,7 @@ function renderChatFriends() {
     name.textContent = friendProfile.nickname;
     const code = document.createElement("p");
     code.textContent = friendCode;
-    details.append(name, code);
+    details.append(name, code, makeFriendPresenceBadge(friendProfile));
 
     const chooseButton = document.createElement("button");
     chooseButton.className = "secondary-button";
@@ -4829,6 +5157,2744 @@ function renderChatFriends() {
     row.append(avatar, details, chooseButton);
     chatFriendList.append(row);
   });
+}
+
+function getBoxOfLiesRounds() {
+  const savedRounds = localStorage.getItem(boxOfLiesRoundsKey);
+
+  if (!savedRounds) {
+    return [];
+  }
+
+  try {
+    const rounds = JSON.parse(savedRounds);
+    return Array.isArray(rounds) ? rounds : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveBoxOfLiesRounds(rounds) {
+  localStorage.setItem(boxOfLiesRoundsKey, JSON.stringify(rounds.slice(0, 60)));
+}
+
+function saveBoxOfLiesRound(round) {
+  const rounds = getBoxOfLiesRounds();
+  saveBoxOfLiesRounds([
+    round,
+    ...rounds.filter((savedRound) => savedRound.id !== round.id),
+  ]);
+
+  if (round?.gameType === "box_of_lies" && round.fromFriendCode && round.toFriendCode) {
+    saveSharedFriendGameState(round).catch((error) => {
+      console.error("Box of Lies shared save error:", error);
+    });
+  }
+}
+
+function getBoxOfLiesRound(roundId) {
+  return getBoxOfLiesRounds().find((round) => round.id === roundId) || null;
+}
+
+function getBoxOfLiesRoundTime(round) {
+  return Number.parseInt(round?.updatedAt || round?.completedAt || round?.acceptedAt || round?.declinedAt || round?.createdAt || "0", 10) || 0;
+}
+
+function mergeBoxOfLiesRounds(rounds = []) {
+  const roundsById = new Map(
+    getBoxOfLiesRounds()
+      .filter((round) => round?.id)
+      .map((round) => [round.id, round]),
+  );
+
+  rounds
+    .filter((round) => round?.gameType === "box_of_lies" && round.id)
+    .forEach((round) => {
+      const currentRound = roundsById.get(round.id);
+
+      if (!currentRound || getBoxOfLiesRoundTime(round) >= getBoxOfLiesRoundTime(currentRound)) {
+        roundsById.set(round.id, round);
+      }
+    });
+
+  saveBoxOfLiesRounds([...roundsById.values()].sort((firstRound, secondRound) => getBoxOfLiesRoundTime(secondRound) - getBoxOfLiesRoundTime(firstRound)));
+}
+
+function cacheBoxOfLiesRoundsFromMessages(messages = []) {
+  const rounds = messages
+    .map((message) => message?.gameData?.boxOfLies || null)
+    .filter((round) => round?.gameType === "box_of_lies" && round.id);
+
+  if (rounds.length > 0) {
+    mergeBoxOfLiesRounds(rounds);
+  }
+}
+
+function cacheFriendGameStateFromMessages(messages = []) {
+  cacheBoxOfLiesRoundsFromMessages(messages);
+  cacheTradingTradesFromMessages(messages);
+}
+
+function getGameInviteLink(inviteId) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("gameInvite", inviteId);
+  return url.toString();
+}
+
+function cacheFriendGameStateFromOnlineRecords(records = []) {
+  const boxRounds = records.filter((record) => record?.gameType === "box_of_lies");
+  const trades = records.filter((record) => record?.gameType === "trading_game");
+
+  if (boxRounds.length > 0) {
+    mergeBoxOfLiesRounds(boxRounds);
+  }
+
+  if (trades.length > 0) {
+    mergeTradingTrades(trades);
+  }
+}
+
+async function saveSharedFriendGameState(gameRecord) {
+  if (!onlineFriendGames.isConfigured) {
+    return false;
+  }
+
+  try {
+    await onlineFriendGames.saveGame(gameRecord);
+    return true;
+  } catch (error) {
+    console.error("Supabase game save error:", error);
+    return false;
+  }
+}
+
+function getBoxOfLiesDisplayRound(round) {
+  if (round?.status === "pending" && Date.now() - (Number.parseInt(round.createdAt || "0", 10) || 0) > boxOfLiesInviteExpiryMs) {
+    return {
+      ...round,
+      status: "expired",
+    };
+  }
+
+  return round;
+}
+
+function getBoxOfLiesRoundMessages(messages = getActiveChatMessages()) {
+  return messages
+    .map((message) => ({
+      message,
+      round: message?.gameData?.boxOfLies || null,
+    }))
+    .filter((entry) => entry.round?.gameType === "box_of_lies" && entry.round.id);
+}
+
+function getLatestBoxOfLiesRound(roundId, messages = getActiveChatMessages()) {
+  const candidates = [
+    getBoxOfLiesRound(roundId),
+    ...getBoxOfLiesRoundMessages(messages)
+      .filter((entry) => entry.round.id === roundId)
+      .map((entry) => entry.round),
+  ].filter(Boolean);
+
+  const latestRound = candidates.sort((firstRound, secondRound) => getBoxOfLiesRoundTime(secondRound) - getBoxOfLiesRoundTime(firstRound))[0] || null;
+  return getBoxOfLiesDisplayRound(latestRound);
+}
+
+function getLatestBoxOfLiesMessageIds(messages = getActiveChatMessages()) {
+  const latestByRound = new Map();
+
+  getBoxOfLiesRoundMessages(messages).forEach((entry) => {
+    const current = latestByRound.get(entry.round.id);
+    if (!current || getBoxOfLiesRoundTime(entry.round) >= getBoxOfLiesRoundTime(current.round)) {
+      latestByRound.set(entry.round.id, entry);
+    }
+  });
+
+  return new Set([...latestByRound.values()].map((entry) => entry.message.id));
+}
+
+function isActiveBoxOfLiesStatus(status) {
+  return ["pending", "accepted", "in_progress"].includes(status);
+}
+
+function getBoxOfLiesPairCodes(round) {
+  return [round?.fromFriendCode || "", round?.toFriendCode || ""].map(normalizeFriendCode).filter(Boolean);
+}
+
+function isBoxOfLiesRoundForFriendPair(round, friendCode) {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const friendPairCode = normalizeFriendCode(friendCode);
+  const pairCodes = getBoxOfLiesPairCodes(round);
+  return Boolean(ownerCode && friendPairCode && pairCodes.includes(ownerCode) && pairCodes.includes(friendPairCode));
+}
+
+function isBoxOfLiesInviter(round) {
+  return normalizeFriendCode(activePlayer?.friendCode || "") === normalizeFriendCode(round?.fromFriendCode || "");
+}
+
+function isBoxOfLiesInvitedFriend(round) {
+  return normalizeFriendCode(activePlayer?.friendCode || "") === normalizeFriendCode(round?.toFriendCode || "");
+}
+
+function makeBoxOfLiesStatusRound(round, status, extraFields = {}) {
+  return {
+    ...round,
+    ...extraFields,
+    status,
+    updatedAt: Date.now(),
+  };
+}
+
+function createBoxOfLiesOptions(secretItem) {
+  const lieItems = shuffleArray(boxOfLiesItems.filter((item) => item.text !== secretItem.text)).slice(0, 2);
+  return shuffleArray([
+    { text: `${secretItem.emoji} ${secretItem.text}`, isTruth: true },
+    ...lieItems.map((item) => ({ text: `${item.emoji} ${item.text}`, isTruth: false })),
+  ]);
+}
+
+function makeBoxOfLiesRound(friendCode) {
+  const friendProfile = getFriendProfileSnapshot(friendCode);
+  const roundId = crypto.randomUUID();
+
+  return {
+    id: roundId,
+    gameType: "box_of_lies",
+    inviteLink: getGameInviteLink(roundId),
+    fromFriendCode: normalizeFriendCode(activePlayer.friendCode),
+    fromNickname: activePlayer.nickname,
+    toFriendCode: normalizeFriendCode(friendProfile.friendCode),
+    toNickname: friendProfile.nickname,
+    secretItem: "",
+    secretEmoji: "▣",
+    messageOptions: [],
+    selectedMessage: "",
+    selectedMessageIsTruth: false,
+    guess: "",
+    isCorrect: null,
+    winnerCode: "",
+    winnerNickname: "",
+    status: "pending",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    acceptedAt: null,
+    declinedAt: null,
+    completedAt: null,
+  };
+}
+
+function renderBoxOfLiesHistory() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const rounds = getBoxOfLiesRounds()
+    .map(getBoxOfLiesDisplayRound)
+    .filter((round) => !ownerCode || round.fromFriendCode === ownerCode || round.toFriendCode === ownerCode)
+    .slice(0, 6);
+
+  const history = document.createElement("div");
+  history.className = "box-history-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Box of Lies History";
+  history.append(title);
+
+  if (rounds.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "No Box of Lies rounds yet. Send a safe challenge to start.";
+    history.append(empty);
+    return history;
+  }
+
+  rounds.forEach((round) => {
+    const item = document.createElement("article");
+    item.className = "friend-activity-item";
+    const text = document.createElement("p");
+    const friendName = round.fromFriendCode === ownerCode ? round.toNickname : round.fromNickname;
+    if (round.status === "completed") {
+      text.textContent = `${friendName}: ${round.winnerNickname || (round.isCorrect ? round.toNickname : round.fromNickname)} won. The box had ${round.secretEmoji} ${round.secretItem}.`;
+    } else if (round.status === "cancelled") {
+      text.textContent = `${friendName}: Box invite cancelled.`;
+    } else if (round.status === "declined") {
+      text.textContent = `${friendName}: Box invite declined.`;
+    } else if (round.status === "expired") {
+      text.textContent = `${friendName}: Box invite expired.`;
+    } else if (round.status === "accepted") {
+      text.textContent = `${friendName}: Box invite accepted.`;
+    } else if (round.status === "in_progress") {
+      text.textContent = `${friendName}: Box round waiting for a Truth or Lie guess.`;
+    } else {
+      text.textContent = `${friendName}: Box invite pending.`;
+    }
+    const time = document.createElement("span");
+    const createdAt = new Date(round.completedAt || round.createdAt);
+    time.textContent = `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    item.append(text, time);
+    history.append(item);
+  });
+
+  return history;
+}
+
+function getActiveBoxOfLiesRoundForFriendFromCache(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  return getBoxOfLiesRounds()
+    .map(getBoxOfLiesDisplayRound)
+    .filter((round) => isBoxOfLiesRoundForFriendPair(round, safeFriendCode) && isActiveBoxOfLiesStatus(round.status))
+    .sort((firstRound, secondRound) => getBoxOfLiesRoundTime(secondRound) - getBoxOfLiesRoundTime(firstRound))[0] || null;
+}
+
+function renderBoxOfLiesPendingInvites() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const pendingRounds = getBoxOfLiesRounds()
+    .map(getBoxOfLiesDisplayRound)
+    .filter((round) => isActiveBoxOfLiesStatus(round.status) && getBoxOfLiesPairCodes(round).includes(ownerCode))
+    .sort((firstRound, secondRound) => getBoxOfLiesRoundTime(secondRound) - getBoxOfLiesRoundTime(firstRound));
+  const panel = document.createElement("div");
+  panel.className = "box-history-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Pending Invites";
+  panel.append(title);
+
+  if (pendingRounds.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "No active Box of Lies invites right now.";
+    panel.append(empty);
+    return panel;
+  }
+
+  pendingRounds.forEach((round) => {
+    const friendName = round.fromFriendCode === ownerCode ? round.toNickname : round.fromNickname;
+    const item = document.createElement("article");
+    item.className = "friend-activity-item";
+    const text = document.createElement("p");
+    text.textContent = `${friendName}: ${round.status === "pending" ? "Pending" : round.status === "accepted" ? "Accepted" : "In progress"}`;
+    const actions = document.createElement("div");
+    actions.className = "result-actions";
+    const openButton = document.createElement("button");
+    openButton.className = "secondary-button";
+    openButton.type = "button";
+    openButton.textContent = "Open Round";
+    openButton.addEventListener("click", () => {
+      activeBoxOfLiesRound = round;
+      renderBoxOfLiesByStatus(round);
+    });
+    actions.append(openButton);
+
+    if (round.status === "pending" && isBoxOfLiesInviter(round)) {
+      const cancelButton = document.createElement("button");
+      cancelButton.className = "secondary-button";
+      cancelButton.type = "button";
+      cancelButton.textContent = "Cancel Invite";
+      cancelButton.addEventListener("click", () => cancelBoxOfLiesInvite(round));
+      actions.append(cancelButton);
+    }
+
+    item.append(text, actions);
+    panel.append(item);
+  });
+
+  return panel;
+}
+
+function renderBoxOfLiesFriendChooser() {
+  boxOfLiesContent.innerHTML = "";
+
+  const intro = document.createElement("div");
+  intro.className = "box-of-lies-intro";
+  intro.innerHTML = `
+    <div class="box-secret-visual" aria-hidden="true">▣</div>
+    <div>
+      <h3>Choose a friend</h3>
+      <p>Send a safe invite first. The game starts only after your friend accepts.</p>
+    </div>
+  `;
+  boxOfLiesContent.append(intro);
+
+  const friendCodes = Array.isArray(activePlayer?.friends) ? activePlayer.friends : [];
+  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
+
+  if (availableFriends.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "Add a friend code first, then you can send Box of Lies challenges.";
+    boxOfLiesContent.append(empty, renderBoxOfLiesHistory());
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "friends-list box-friend-list";
+
+  availableFriends.forEach((friendCode) => {
+    const friendProfile = getFriendProfileSnapshot(friendCode);
+    const row = document.createElement("article");
+    row.className = "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, friendProfile.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const name = document.createElement("h3");
+    name.textContent = friendProfile.nickname;
+    const code = document.createElement("p");
+    code.textContent = friendProfile.friendCode;
+    details.append(name, code, makeFriendPresenceBadge(friendProfile));
+
+    const actions = document.createElement("div");
+    actions.className = "result-actions";
+    const activeRound = getActiveBoxOfLiesRoundForFriendFromCache(friendProfile.friendCode);
+
+    if (activeRound) {
+      const statusLabel = document.createElement("button");
+      statusLabel.className = "purchased-label";
+      statusLabel.type = "button";
+      statusLabel.textContent = activeRound.status === "pending" ? "Pending" : activeRound.status === "accepted" ? "Accepted" : "In Progress";
+      statusLabel.disabled = true;
+      const openButton = document.createElement("button");
+      openButton.className = "secondary-button";
+      openButton.type = "button";
+      openButton.textContent = "Open Round";
+      openButton.addEventListener("click", () => {
+        activeBoxOfLiesRound = activeRound;
+        renderBoxOfLiesByStatus(activeRound);
+      });
+      actions.append(statusLabel, openButton);
+
+      if (activeRound.status === "pending" && isBoxOfLiesInviter(activeRound)) {
+        const cancelButton = document.createElement("button");
+        cancelButton.className = "secondary-button";
+        cancelButton.type = "button";
+        cancelButton.textContent = "Cancel Invite";
+        cancelButton.addEventListener("click", () => cancelBoxOfLiesInvite(activeRound));
+        actions.append(cancelButton);
+      }
+    } else {
+      const startButton = document.createElement("button");
+      startButton.className = "save-quiz-button";
+      startButton.type = "button";
+      startButton.textContent = "Invite";
+      startButton.addEventListener("click", () => startBoxOfLiesForFriend(friendProfile.friendCode));
+      actions.append(startButton);
+    }
+
+    row.append(avatar, details, actions);
+    list.append(row);
+  });
+
+  boxOfLiesContent.append(list, renderBoxOfLiesPendingInvites(), renderBoxOfLiesHistory());
+}
+
+function showBoxOfLies(friendCode = "") {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  activeBoxOfLiesRound = null;
+  boxOfLiesMessage.textContent = "";
+  boxOfLiesCard.classList.remove("hidden");
+
+  if (friendCode && isApprovedFriendCode(friendCode)) {
+    startBoxOfLiesForFriend(friendCode);
+    return;
+  }
+
+  renderBoxOfLiesFriendChooser();
+  syncFriendGameStateFromOnline().then(() => {
+    if (!boxOfLiesCard.classList.contains("hidden") && !activeBoxOfLiesRound) {
+      renderBoxOfLiesFriendChooser();
+    }
+  }).catch((error) => console.error("Box of Lies refresh sync error:", error));
+}
+
+async function findActiveBoxOfLiesRoundForFriend(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  let messages = getChatMessages().filter((message) => message.chatId === getChatId(safeFriendCode));
+
+  if (onlineFriendGames.isConfigured) {
+    try {
+      const records = await onlineFriendGames.loadGamesForPlayer(activePlayer.friendCode);
+      cacheFriendGameStateFromOnlineRecords(records);
+    } catch (error) {
+      console.error("Box of Lies active game lookup error:", error);
+    }
+  }
+
+  if (onlineFriendMessages.isConfigured) {
+    try {
+      messages = await onlineFriendMessages.loadMessages(getChatId(safeFriendCode));
+    } catch (error) {
+      console.error("Box of Lies active invite lookup error:", error);
+    }
+  }
+
+  cacheFriendGameStateFromMessages(messages);
+  const localRounds = getBoxOfLiesRounds();
+
+  return [
+    ...localRounds,
+    ...getBoxOfLiesRoundMessages(messages).map((entry) => entry.round),
+  ]
+    .map(getBoxOfLiesDisplayRound)
+    .filter((round) => isBoxOfLiesRoundForFriendPair(round, safeFriendCode) && isActiveBoxOfLiesStatus(round.status))
+    .sort((firstRound, secondRound) => getBoxOfLiesRoundTime(secondRound) - getBoxOfLiesRoundTime(firstRound))[0] || null;
+}
+
+async function startBoxOfLiesForFriend(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!isApprovedFriendCode(safeFriendCode)) {
+    boxOfLiesMessage.textContent = "Choose an added friend first.";
+    renderBoxOfLiesFriendChooser();
+    return;
+  }
+
+  boxOfLiesMessage.textContent = "Checking Box of Lies invites...";
+  const activeRound = await findActiveBoxOfLiesRoundForFriend(safeFriendCode);
+
+  if (activeRound) {
+    activeBoxOfLiesRound = activeRound;
+    boxOfLiesMessage.textContent = "There is already an active Box of Lies invite with this friend.";
+    renderBoxOfLiesByStatus(activeRound);
+    return;
+  }
+
+  activeBoxOfLiesRound = makeBoxOfLiesRound(safeFriendCode);
+  renderBoxOfLiesInvitePreview(activeBoxOfLiesRound);
+}
+
+function renderBoxOfLiesByStatus(round) {
+  const latestRound = getLatestBoxOfLiesRound(round.id) || round;
+
+  if (latestRound.status === "pending") {
+    if (isBoxOfLiesInvitedFriend(latestRound)) {
+      renderBoxOfLiesInviteReview(latestRound);
+    } else {
+      renderBoxOfLiesSent(latestRound);
+    }
+    return;
+  }
+
+  if (latestRound.status === "declined") {
+    renderBoxOfLiesDeclined(latestRound);
+    return;
+  }
+
+  if (latestRound.status === "cancelled") {
+    renderBoxOfLiesCancelled(latestRound);
+    return;
+  }
+
+  if (latestRound.status === "expired") {
+    renderBoxOfLiesExpired(latestRound);
+    return;
+  }
+
+  if (latestRound.status === "accepted") {
+    renderBoxOfLiesRules(latestRound);
+    return;
+  }
+
+  if (latestRound.status === "in_progress") {
+    if (isBoxOfLiesInvitedFriend(latestRound)) {
+      renderBoxOfLiesGuess(latestRound);
+    } else {
+      renderBoxOfLiesWaitingForGuess(latestRound);
+    }
+    return;
+  }
+
+  renderBoxOfLiesResult(latestRound);
+}
+
+function renderBoxOfLiesInvitePreview(round) {
+  const friendProfile = getFriendProfileSnapshot(round.toFriendCode);
+  boxOfLiesContent.innerHTML = "";
+  boxOfLiesMessage.textContent = isFriendOnline(friendProfile)
+    ? `${friendProfile.nickname} looks online.`
+    : "Your friend is offline. They can play when they come back.";
+
+  const preview = document.createElement("div");
+  preview.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "💌";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Box of Lies Invite";
+  const title = document.createElement("h3");
+  title.textContent = `Invite ${friendProfile.nickname}?`;
+  const body = document.createElement("p");
+  body.textContent = "The round will stay pending until your friend accepts.";
+  details.append(eyebrow, title, body, makeFriendPresenceBadge(friendProfile));
+  preview.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const sendButton = document.createElement("button");
+  sendButton.className = "save-quiz-button";
+  sendButton.type = "button";
+  sendButton.textContent = "Invite to Box of Lies";
+  sendButton.addEventListener("click", () => sendBoxOfLiesInvite(round));
+  const backButton = document.createElement("button");
+  backButton.className = "secondary-button";
+  backButton.type = "button";
+  backButton.textContent = "Choose Another Friend";
+  backButton.addEventListener("click", renderBoxOfLiesFriendChooser);
+  actions.append(sendButton, backButton);
+
+  boxOfLiesContent.append(preview, actions, renderBoxOfLiesHistory());
+}
+
+async function saveBoxOfLiesRoundMessage(round, receiverCode, messageText) {
+  const onlineGameSaved = await saveSharedFriendGameState(round);
+  const result = await saveFriendMessage(
+    receiverCode,
+    messageText.slice(0, 150),
+    "box_of_lies_invite",
+    "",
+    { gameData: { boxOfLies: round, gameInviteId: round.id, gameInviteLink: round.inviteLink || getGameInviteLink(round.id) } },
+  );
+  saveBoxOfLiesRound(round);
+  return { ...result, onlineGameSaved };
+}
+
+async function sendBoxOfLiesInvite(round) {
+  const pendingRound = makeBoxOfLiesStatusRound(round, "pending");
+  activeBoxOfLiesRound = pendingRound;
+  boxOfLiesMessage.textContent = `Sending Box of Lies invite to ${pendingRound.toNickname}...`;
+
+  try {
+    const result = await saveBoxOfLiesRoundMessage(
+      pendingRound,
+      pendingRound.toFriendCode,
+      `${pendingRound.fromNickname} invited you to play Box of Lies!`,
+    );
+    const earnedStar = awardFriendActionStars(`box-invite:${pendingRound.toFriendCode}`, 1);
+
+    addFriendActivity({
+      type: "box_invite_sent",
+      friendCode: pendingRound.toFriendCode,
+      friendNickname: pendingRound.toNickname,
+      text: `You invited ${pendingRound.toNickname} to play Box of Lies.`,
+    });
+
+    boxOfLiesMessage.textContent = result.online
+      ? `Invite sent! You can invite another friend or keep playing.${earnedStar ? " You earned 1 star." : ""}`
+      : `Invite saved here. You can invite another friend or keep playing.${earnedStar ? " You earned 1 star." : ""}`;
+    renderBoxOfLiesSent(pendingRound);
+  } catch (error) {
+    console.error("Box of Lies invite error:", error);
+    boxOfLiesMessage.textContent = "Box of Lies invite could not be sent yet. Please try again.";
+  }
+}
+
+function prepareBoxOfLiesGameplay(round) {
+  if (round.secretItem && Array.isArray(round.messageOptions) && round.messageOptions.length === 3) {
+    return round;
+  }
+
+  const secretItem = shuffleArray(boxOfLiesItems)[0];
+  return {
+    ...round,
+    secretItem: secretItem.text,
+    secretEmoji: secretItem.emoji,
+    messageOptions: createBoxOfLiesOptions(secretItem),
+    updatedAt: Date.now(),
+  };
+}
+
+function renderBoxOfLiesStoryteller(round) {
+  const preparedRound = prepareBoxOfLiesGameplay(round);
+  activeBoxOfLiesRound = preparedRound;
+  saveBoxOfLiesRound(preparedRound);
+  round = preparedRound;
+  boxOfLiesContent.innerHTML = "";
+  boxOfLiesMessage.textContent = "";
+
+  const secret = document.createElement("div");
+  secret.className = "box-secret-panel";
+  const secretIcon = document.createElement("div");
+  secretIcon.className = "box-secret-visual";
+  secretIcon.setAttribute("aria-hidden", "true");
+  secretIcon.textContent = round.secretEmoji;
+  const secretDetails = document.createElement("div");
+  const secretEyebrow = document.createElement("p");
+  secretEyebrow.className = "eyebrow";
+  secretEyebrow.textContent = "Secret box item";
+  const secretTitle = document.createElement("h3");
+  secretTitle.textContent = round.secretItem;
+  const secretText = document.createElement("p");
+  secretText.textContent = `Pick one preset message to send to ${round.toNickname}. They will guess Truth or Lie.`;
+  secretDetails.append(secretEyebrow, secretTitle, secretText);
+  secret.append(secretIcon, secretDetails);
+
+  const options = document.createElement("div");
+  options.className = "box-message-options";
+
+  round.messageOptions.forEach((option) => {
+    const button = document.createElement("button");
+    button.className = option.isTruth ? "choice-card box-option truth-option" : "choice-card box-option";
+    button.type = "button";
+    const title = document.createElement("span");
+    title.className = "choice-title";
+    title.textContent = option.isTruth ? "Truth message" : "Lie message";
+    const description = document.createElement("span");
+    description.className = "choice-description";
+    description.textContent = option.text;
+    button.append(title, description);
+    button.addEventListener("click", () => sendBoxOfLiesChallenge(round, option));
+    options.append(button);
+  });
+
+  const backButton = document.createElement("button");
+  backButton.className = "secondary-button";
+  backButton.type = "button";
+  backButton.textContent = "Choose Another Friend";
+  backButton.addEventListener("click", renderBoxOfLiesFriendChooser);
+
+  boxOfLiesContent.append(secret, options, backButton);
+}
+
+async function sendBoxOfLiesChallenge(round, option) {
+  const updatedRound = {
+    ...round,
+    selectedMessage: option.text,
+    selectedMessageIsTruth: Boolean(option.isTruth),
+    status: "in_progress",
+    updatedAt: Date.now(),
+  };
+
+  activeBoxOfLiesRound = updatedRound;
+  saveBoxOfLiesRound(updatedRound);
+  boxOfLiesMessage.textContent = `Sending box message to ${updatedRound.toNickname}...`;
+
+  try {
+    const result = await saveBoxOfLiesRoundMessage(
+      updatedRound,
+      updatedRound.toFriendCode,
+      `Box of Lies message: ${updatedRound.selectedMessage}`,
+    );
+
+    addFriendActivity({
+      type: "box_message_sent",
+      friendCode: updatedRound.toFriendCode,
+      friendNickname: updatedRound.toNickname,
+      text: `You sent ${updatedRound.toNickname} a Box of Lies message.`,
+    });
+
+    boxOfLiesMessage.textContent = result.online
+      ? `Box message sent to ${updatedRound.toNickname}!`
+      : `Box message saved here for ${updatedRound.toNickname}.`;
+    renderBoxOfLiesSent(updatedRound);
+  } catch (error) {
+    console.error("Box of Lies send error:", error);
+    boxOfLiesMessage.textContent = "Box message could not be sent yet. Please try again.";
+  }
+}
+
+function renderBoxOfLiesSent(round) {
+  boxOfLiesContent.innerHTML = "";
+
+  const sent = document.createElement("div");
+  sent.className = "box-secret-panel";
+  const sentIcon = document.createElement("div");
+  sentIcon.className = "box-secret-visual";
+  sentIcon.setAttribute("aria-hidden", "true");
+  sentIcon.textContent = "💌";
+  const sentDetails = document.createElement("div");
+  const sentEyebrow = document.createElement("p");
+  sentEyebrow.className = "eyebrow";
+  sentEyebrow.textContent = round.status === "pending" ? "Invite Sent" : "Box Message Sent";
+  const sentTitle = document.createElement("h3");
+  sentTitle.textContent = round.status === "pending"
+    ? `${round.toNickname} can accept or decline in Friend Chat.`
+    : `${round.toNickname} can guess Truth or Lie in Friend Chat.`;
+  const sentText = document.createElement("p");
+  sentText.textContent = round.selectedMessage
+    ? `Message sent: “${round.selectedMessage}”`
+    : "The game will not start until your friend accepts.";
+  sentDetails.append(sentEyebrow, sentTitle, sentText);
+  sent.append(sentIcon, sentDetails);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const anotherButton = document.createElement("button");
+  anotherButton.className = "save-quiz-button";
+  anotherButton.type = "button";
+  anotherButton.textContent = "Back to Friends";
+  anotherButton.addEventListener("click", renderBoxOfLiesFriendChooser);
+  const chatButton = document.createElement("button");
+  chatButton.className = "secondary-button";
+  chatButton.type = "button";
+  chatButton.textContent = "Open Chat";
+  chatButton.addEventListener("click", () => showChat(round.toFriendCode));
+  const copyLinkButton = document.createElement("button");
+  copyLinkButton.className = "secondary-button";
+  copyLinkButton.type = "button";
+  copyLinkButton.textContent = "Copy Game Link";
+  copyLinkButton.addEventListener("click", async () => {
+    const link = round.inviteLink || getGameInviteLink(round.id);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      boxOfLiesMessage.textContent = "Box of Lies game link copied.";
+    } catch {
+      boxOfLiesMessage.textContent = `Box of Lies game link: ${link}`;
+    }
+  });
+  actions.append(anotherButton, chatButton, copyLinkButton);
+
+  if (round.status === "pending" && isBoxOfLiesInviter(round)) {
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "secondary-button";
+    cancelButton.type = "button";
+    cancelButton.textContent = "Cancel Invite";
+    cancelButton.addEventListener("click", () => cancelBoxOfLiesInvite(round));
+    actions.append(cancelButton);
+  }
+
+  boxOfLiesContent.append(sent, actions, renderBoxOfLiesHistory());
+}
+
+function getBoxOfLiesRoundFromMessage(message) {
+  const messageRound = message?.gameData?.boxOfLies || null;
+  const round = getLatestBoxOfLiesRound(messageRound?.id || message?.gameData?.boxOfLiesRoundId || "") || messageRound;
+
+  if (!round || round.gameType !== "box_of_lies") {
+    return null;
+  }
+
+  return round;
+}
+
+async function openBoxOfLiesInvite(message) {
+  let round = getBoxOfLiesRoundFromMessage(message);
+  const inviteId = round?.id || message?.gameData?.gameInviteId || "";
+
+  if (inviteId && onlineFriendGames.isConfigured) {
+    try {
+      const onlineRound = await onlineFriendGames.loadGame(inviteId);
+      if (onlineRound?.gameType === "box_of_lies") {
+        mergeBoxOfLiesRounds([onlineRound]);
+        round = onlineRound;
+      }
+    } catch (error) {
+      console.error("Box of Lies online invite load error:", error);
+    }
+  }
+
+  if (!round) {
+    chatMessage.textContent = "This Box of Lies challenge could not be opened. Please ask your friend to send it again.";
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  boxOfLiesCard.classList.remove("hidden");
+  boxOfLiesMessage.textContent = "";
+  renderBoxOfLiesByStatus(round);
+}
+
+function renderBoxOfLiesInviteReview(round) {
+  boxOfLiesContent.innerHTML = "";
+
+  const invite = document.createElement("div");
+  invite.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "💌";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Incoming Invite";
+  const title = document.createElement("h3");
+  title.textContent = `${round.fromNickname} invited you to play Box of Lies!`;
+  const body = document.createElement("p");
+  body.textContent = "Accept to see the rules. The secret item stays hidden until after your guess.";
+  details.append(eyebrow, title, body);
+  invite.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const acceptButton = document.createElement("button");
+  acceptButton.className = "save-quiz-button";
+  acceptButton.type = "button";
+  acceptButton.textContent = "Accept";
+  acceptButton.addEventListener("click", () => acceptBoxOfLiesInvite(round));
+  const declineButton = document.createElement("button");
+  declineButton.className = "secondary-button";
+  declineButton.type = "button";
+  declineButton.textContent = "Decline";
+  declineButton.addEventListener("click", () => declineBoxOfLiesInvite(round));
+  actions.append(acceptButton, declineButton);
+
+  boxOfLiesContent.append(invite, actions);
+}
+
+async function cancelBoxOfLiesInvite(round) {
+  if (!isBoxOfLiesInviter(round) || round.status !== "pending") {
+    boxOfLiesMessage.textContent = "Only a pending invite you sent can be cancelled.";
+    return;
+  }
+
+  const shouldCancel = confirm("Cancel this Box of Lies invite?");
+
+  if (!shouldCancel) {
+    return;
+  }
+
+  const cancelledRound = makeBoxOfLiesStatusRound(round, "cancelled", { cancelledAt: Date.now() });
+  activeBoxOfLiesRound = null;
+  boxOfLiesMessage.textContent = "Cancelling invite...";
+
+  try {
+    await saveBoxOfLiesRoundMessage(
+      cancelledRound,
+      cancelledRound.toFriendCode,
+      `${activePlayer.nickname} cancelled the Box of Lies invite.`,
+    );
+    addFriendActivity({
+      type: "box_invite_cancelled",
+      friendCode: cancelledRound.toFriendCode,
+      friendNickname: cancelledRound.toNickname,
+      text: `You cancelled the Box of Lies invite for ${cancelledRound.toNickname}.`,
+    });
+    boxOfLiesMessage.textContent = "Invite cancelled. You can invite this friend again.";
+    renderBoxOfLiesFriendChooser();
+  } catch (error) {
+    console.error("Box of Lies cancel error:", error);
+    boxOfLiesMessage.textContent = "Could not cancel this invite yet. Please try again.";
+  }
+}
+
+async function acceptBoxOfLiesInvite(round) {
+  const acceptedRound = makeBoxOfLiesStatusRound(round, "accepted", { acceptedAt: Date.now() });
+  activeBoxOfLiesRound = acceptedRound;
+  boxOfLiesMessage.textContent = "Accepting Box of Lies invite...";
+
+  try {
+    await saveBoxOfLiesRoundMessage(
+      acceptedRound,
+      acceptedRound.fromFriendCode,
+      `${activePlayer.nickname} accepted your Box of Lies invite!`,
+    );
+    addFriendActivity({
+      type: "box_invite_accepted",
+      friendCode: acceptedRound.fromFriendCode,
+      friendNickname: acceptedRound.fromNickname,
+      text: `You accepted ${acceptedRound.fromNickname}'s Box of Lies invite.`,
+    });
+    boxOfLiesMessage.textContent = "Invite accepted. Read the rules before the round starts.";
+    hideMainSections();
+    updateProfileBar();
+    boxOfLiesCard.classList.remove("hidden");
+    renderBoxOfLiesRules(acceptedRound);
+  } catch (error) {
+    console.error("Box of Lies accept error:", error);
+    boxOfLiesMessage.textContent = "Could not accept this invite yet. Please try again.";
+  }
+}
+
+async function declineBoxOfLiesInvite(round) {
+  const declinedRound = makeBoxOfLiesStatusRound(round, "declined", { declinedAt: Date.now() });
+  activeBoxOfLiesRound = declinedRound;
+  boxOfLiesMessage.textContent = "Declining Box of Lies invite...";
+
+  try {
+    await saveBoxOfLiesRoundMessage(
+      declinedRound,
+      declinedRound.fromFriendCode,
+      `${activePlayer.nickname} declined your Box of Lies invite.`,
+    );
+    addFriendActivity({
+      type: "box_invite_declined",
+      friendCode: declinedRound.fromFriendCode,
+      friendNickname: declinedRound.fromNickname,
+      text: `You declined ${declinedRound.fromNickname}'s Box of Lies invite.`,
+    });
+    boxOfLiesMessage.textContent = "Invite declined.";
+    hideMainSections();
+    updateProfileBar();
+    boxOfLiesCard.classList.remove("hidden");
+    renderBoxOfLiesDeclined(declinedRound);
+  } catch (error) {
+    console.error("Box of Lies decline error:", error);
+    boxOfLiesMessage.textContent = "Could not decline this invite yet. Please try again.";
+  }
+}
+
+function renderBoxOfLiesDeclined(round) {
+  boxOfLiesContent.innerHTML = "";
+  const declined = document.createElement("div");
+  declined.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "✕";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Invite Declined";
+  const title = document.createElement("h3");
+  title.textContent = isBoxOfLiesInviter(round)
+    ? `${round.toNickname} declined the Box of Lies invite.`
+    : "You declined this Box of Lies invite.";
+  const body = document.createElement("p");
+  body.textContent = "No problem. You can send or accept another safe game later.";
+  details.append(eyebrow, title, body);
+  declined.append(icon, details);
+  boxOfLiesContent.append(declined, renderBoxOfLiesHistory());
+}
+
+function renderBoxOfLiesCancelled(round) {
+  boxOfLiesContent.innerHTML = "";
+  const cancelled = document.createElement("div");
+  cancelled.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "✕";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Invite Cancelled";
+  const title = document.createElement("h3");
+  title.textContent = isBoxOfLiesInviter(round)
+    ? `You cancelled the invite for ${round.toNickname}.`
+    : `${round.fromNickname} cancelled this Box of Lies invite.`;
+  const body = document.createElement("p");
+  body.textContent = "This invite will not block a new Box of Lies round.";
+  details.append(eyebrow, title, body);
+  cancelled.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const friendsButton = document.createElement("button");
+  friendsButton.className = "save-quiz-button";
+  friendsButton.type = "button";
+  friendsButton.textContent = "Back to Friends";
+  friendsButton.addEventListener("click", renderBoxOfLiesFriendChooser);
+  actions.append(friendsButton);
+
+  boxOfLiesContent.append(cancelled, actions, renderBoxOfLiesHistory());
+}
+
+function renderBoxOfLiesExpired(round) {
+  boxOfLiesContent.innerHTML = "";
+  const expired = document.createElement("div");
+  expired.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "⌛";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Invite Expired";
+  const title = document.createElement("h3");
+  title.textContent = "This Box of Lies invite is too old.";
+  const body = document.createElement("p");
+  body.textContent = "Send a new invite if you still want to play.";
+  details.append(eyebrow, title, body);
+  expired.append(icon, details);
+  boxOfLiesContent.append(expired, renderBoxOfLiesHistory());
+}
+
+function renderBoxOfLiesRules(round) {
+  boxOfLiesContent.innerHTML = "";
+
+  const rules = document.createElement("div");
+  rules.className = "box-rules-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Box of Lies Rules";
+  const list = document.createElement("ol");
+  [
+    "One player gets a secret item hidden inside a mystery box.",
+    "That player chooses a message about the item.",
+    "The message might be true, or it might be a lie.",
+    "The other player must guess: Truth or Lie.",
+    "After the guess, the box opens and reveals the real item.",
+    "If the guesser is correct, they win the round.",
+    "If the guesser is wrong, the storyteller wins the round.",
+    "No typing is needed. Everything uses safe preset choices.",
+  ].forEach((ruleText) => {
+    const item = document.createElement("li");
+    item.textContent = ruleText;
+    list.append(item);
+  });
+  const note = document.createElement("p");
+  note.className = "safety-note";
+  note.textContent = "Box of Lies uses preset messages only. No voice, video, or open chat.";
+  rules.append(title, list, note);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const gotItButton = document.createElement("button");
+  gotItButton.className = isBoxOfLiesInviter(round) ? "secondary-button" : "save-quiz-button";
+  gotItButton.type = "button";
+  gotItButton.textContent = "Got it";
+  gotItButton.addEventListener("click", () => {
+    if (!isBoxOfLiesInviter(round)) {
+      renderBoxOfLiesWaitingForStoryteller(round);
+      return;
+    }
+
+    boxOfLiesMessage.textContent = "Great. Press Start Game when you are ready.";
+  });
+  actions.append(gotItButton);
+
+  if (isBoxOfLiesInviter(round)) {
+    const startButton = document.createElement("button");
+    startButton.className = "save-quiz-button";
+    startButton.type = "button";
+    startButton.textContent = "Start Game";
+    startButton.addEventListener("click", () => {
+      renderBoxOfLiesStoryteller(round);
+    });
+    actions.append(startButton);
+  }
+
+  boxOfLiesContent.append(rules, actions);
+}
+
+function renderBoxOfLiesWaitingForStoryteller(round) {
+  boxOfLiesContent.innerHTML = "";
+
+  const waiting = document.createElement("div");
+  waiting.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "💌";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Waiting for Storyteller";
+  const title = document.createElement("h3");
+  title.textContent = `${round.fromNickname} will choose the box message.`;
+  const message = document.createElement("p");
+  message.textContent = "You accepted the invite. The secret item stays hidden until after your guess.";
+  details.append(eyebrow, title, message);
+  waiting.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const chatButton = document.createElement("button");
+  chatButton.className = "save-quiz-button";
+  chatButton.type = "button";
+  chatButton.textContent = "Back to Chat";
+  chatButton.addEventListener("click", () => showChat(round.fromFriendCode));
+  actions.append(chatButton);
+
+  boxOfLiesContent.append(waiting, actions);
+}
+
+function renderBoxOfLiesWaitingForGuess(round) {
+  boxOfLiesContent.innerHTML = "";
+
+  const waiting = document.createElement("div");
+  waiting.className = "box-secret-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "▣";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Message Sent";
+  const title = document.createElement("h3");
+  title.textContent = `${round.toNickname} is guessing Truth or Lie.`;
+  const message = document.createElement("p");
+  message.textContent = "The box will reveal after your friend guesses.";
+  details.append(eyebrow, title, message);
+  waiting.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const chatButton = document.createElement("button");
+  chatButton.className = "save-quiz-button";
+  chatButton.type = "button";
+  chatButton.textContent = "Back to Chat";
+  chatButton.addEventListener("click", () => showChat(round.toFriendCode));
+  actions.append(chatButton);
+
+  boxOfLiesContent.append(waiting, actions);
+}
+
+function renderBoxOfLiesGuess(round) {
+  boxOfLiesContent.innerHTML = "";
+
+  const prompt = document.createElement("div");
+  prompt.className = "box-secret-panel";
+  const promptIcon = document.createElement("div");
+  promptIcon.className = "box-secret-visual";
+  promptIcon.setAttribute("aria-hidden", "true");
+  promptIcon.textContent = "▣";
+  const promptDetails = document.createElement("div");
+  const promptEyebrow = document.createElement("p");
+  promptEyebrow.className = "eyebrow";
+  promptEyebrow.textContent = "Box of Lies";
+  const promptTitle = document.createElement("h3");
+  promptTitle.textContent = `${round.fromNickname} sent you a box message.`;
+  const promptText = document.createElement("p");
+  promptText.textContent = `“${round.selectedMessage}”`;
+  promptDetails.append(promptEyebrow, promptTitle, promptText);
+  prompt.append(promptIcon, promptDetails);
+
+  const choices = document.createElement("div");
+  choices.className = "box-guess-actions";
+  ["Truth", "Lie"].forEach((guess) => {
+    const button = document.createElement("button");
+    button.className = guess === "Truth" ? "save-quiz-button" : "secondary-button";
+    button.type = "button";
+    button.textContent = guess;
+    button.addEventListener("click", () => guessBoxOfLies(round, guess.toLowerCase()));
+    choices.append(button);
+  });
+
+  boxOfLiesContent.append(prompt, choices);
+}
+
+async function guessBoxOfLies(round, guess) {
+  const correctGuess = round.selectedMessageIsTruth ? "truth" : "lie";
+  const isCorrect = guess === correctGuess;
+  const completedRound = {
+    ...round,
+    guess,
+    isCorrect,
+    winnerCode: isCorrect ? round.toFriendCode : round.fromFriendCode,
+    winnerNickname: isCorrect ? round.toNickname : round.fromNickname,
+    status: "completed",
+    updatedAt: Date.now(),
+    completedAt: Date.now(),
+  };
+
+  activeBoxOfLiesRound = completedRound;
+  saveBoxOfLiesRound(completedRound);
+  const completionStar = awardFriendActionStars(`box-complete:${completedRound.id}`, 2);
+
+  addFriendActivity({
+    type: completedRound.isCorrect ? "box_correct" : "box_played",
+    friendCode: completedRound.fromFriendCode,
+    friendNickname: completedRound.fromNickname,
+    text: completedRound.isCorrect
+      ? `${completedRound.fromNickname} guessed your Box of Lies correctly.`
+      : `${completedRound.fromNickname} played your Box of Lies game.`,
+  });
+
+  try {
+    await saveBoxOfLiesRoundMessage(
+      completedRound,
+      completedRound.fromFriendCode,
+      `${activePlayer.nickname} guessed ${guess} in Box of Lies.`,
+    );
+  } catch (error) {
+    console.error("Box of Lies result sync error:", error);
+  }
+
+  const earned = (completionStar ? 2 : 0);
+  boxOfLiesMessage.textContent = earned > 0 ? `You earned ${earned} stars for completing the round!` : "";
+  renderBoxOfLiesResult(completedRound);
+}
+
+function renderBoxOfLiesResult(round) {
+  saveBoxOfLiesRound(round);
+  boxOfLiesContent.innerHTML = "";
+  const title = round.isCorrect
+    ? (round.selectedMessageIsTruth ? "Truth detective!" : "You caught the lie!")
+    : (round.selectedMessageIsTruth ? "You called truth a lie!" : "You believed the story!");
+  const winnerStars = normalizeFriendCode(activePlayer?.friendCode || "") === normalizeFriendCode(round.winnerCode || "")
+    ? awardFriendActionStars(`box-winner:${round.id}`, 2)
+    : false;
+  const resultText = `${round.winnerNickname || (round.isCorrect ? round.toNickname : round.fromNickname)} won this round.`;
+
+  if (winnerStars) {
+    boxOfLiesMessage.textContent = boxOfLiesMessage.textContent
+      ? `${boxOfLiesMessage.textContent} You also earned 2 winner stars.`
+      : "You earned 2 winner stars!";
+  }
+
+  const result = document.createElement("div");
+  result.className = "box-secret-panel";
+  const resultIcon = document.createElement("div");
+  resultIcon.className = "box-secret-visual";
+  resultIcon.setAttribute("aria-hidden", "true");
+  resultIcon.textContent = round.secretEmoji;
+  const resultDetails = document.createElement("div");
+  const resultEyebrow = document.createElement("p");
+  resultEyebrow.className = "eyebrow";
+  resultEyebrow.textContent = "Reveal";
+  const resultTitle = document.createElement("h3");
+  resultTitle.textContent = title;
+  const itemText = document.createElement("p");
+  itemText.textContent = `The secret item was ${round.secretEmoji} ${round.secretItem}.`;
+  const outcomeText = document.createElement("p");
+  outcomeText.textContent = resultText;
+  resultDetails.append(resultEyebrow, resultTitle, itemText, outcomeText);
+  result.append(resultIcon, resultDetails);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const chatButton = document.createElement("button");
+  chatButton.className = "save-quiz-button";
+  chatButton.type = "button";
+  chatButton.textContent = "Back to Chat";
+  chatButton.addEventListener("click", () => showChat(round.fromFriendCode === normalizeFriendCode(activePlayer.friendCode) ? round.toFriendCode : round.fromFriendCode));
+  const gamesButton = document.createElement("button");
+  gamesButton.className = "secondary-button";
+  gamesButton.type = "button";
+  gamesButton.textContent = "Back to Games";
+  gamesButton.addEventListener("click", showGames);
+  const copyLinkButton = document.createElement("button");
+  copyLinkButton.className = "secondary-button";
+  copyLinkButton.type = "button";
+  copyLinkButton.textContent = "Copy Game Link";
+  copyLinkButton.addEventListener("click", async () => {
+    const link = round.inviteLink || getGameInviteLink(round.id);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      boxOfLiesMessage.textContent = "Box of Lies game link copied.";
+    } catch {
+      boxOfLiesMessage.textContent = `Box of Lies game link: ${link}`;
+    }
+  });
+  actions.append(chatButton, copyLinkButton, gamesButton);
+
+  boxOfLiesContent.append(result, actions, renderBoxOfLiesHistory());
+}
+
+function getTradingItem(itemId) {
+  return tradingCollectibles.find((item) => item.itemId === itemId) || {
+    itemId,
+    emoji: "🎁",
+    name: "Mystery Item",
+    rarity: "Collectible",
+    source: "trade",
+  };
+}
+
+function makeTradingItemEntry(itemId, quantity = 0) {
+  const item = getTradingItem(itemId);
+  return {
+    itemId: item.itemId,
+    emoji: item.emoji,
+    name: item.name,
+    rarity: item.rarity,
+    source: item.source,
+    quantity: Math.max(0, Number.parseInt(quantity || "0", 10) || 0),
+  };
+}
+
+function normalizeTradingItems(items = []) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items
+    .map((item) => makeTradingItemEntry(item.itemId, item.quantity))
+    .filter((item) => item.quantity > 0);
+}
+
+function getTradingInventories() {
+  const savedInventory = localStorage.getItem(tradingInventoryKey);
+
+  if (!savedInventory) {
+    return {};
+  }
+
+  try {
+    const inventory = JSON.parse(savedInventory);
+    return inventory && typeof inventory === "object" ? inventory : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTradingInventories(inventories) {
+  localStorage.setItem(tradingInventoryKey, JSON.stringify(inventories));
+}
+
+function getStoredTradingInventory(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const inventories = getTradingInventories();
+  const entry = inventories[safeFriendCode];
+
+  if (!entry) {
+    return null;
+  }
+
+  return normalizeTradingItems(entry.items || entry);
+}
+
+function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return [];
+  }
+
+  const inventories = getTradingInventories();
+  const existingItems = getStoredTradingInventory(safeFriendCode);
+
+  if (existingItems) {
+    return existingItems;
+  }
+
+  const starterItems = normalizeTradingItems(tradingStarterInventory);
+  inventories[safeFriendCode] = {
+    items: starterItems,
+    updatedAt: Date.now(),
+  };
+  saveTradingInventories(inventories);
+  return starterItems;
+}
+
+function saveTradingInventoryForCode(friendCode, items) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return;
+  }
+
+  const inventories = getTradingInventories();
+  inventories[safeFriendCode] = {
+    items: normalizeTradingItems(items),
+    updatedAt: Date.now(),
+  };
+  saveTradingInventories(inventories);
+
+  if (onlineFriendGames.isConfigured) {
+    onlineFriendGames.saveInventory(safeFriendCode, inventories[safeFriendCode].items).catch((error) => {
+      console.error("Supabase trading inventory save error:", error);
+    });
+  }
+}
+
+async function syncTradingInventoryFromOnline(friendCode = activePlayer?.friendCode || "") {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode || !onlineFriendGames.isConfigured) {
+    return getTradingInventory(safeFriendCode);
+  }
+
+  try {
+    const onlineInventory = await onlineFriendGames.loadInventory(safeFriendCode);
+
+    if (onlineInventory) {
+      saveTradingInventoryForCode(safeFriendCode, onlineInventory.items);
+      return onlineInventory.items;
+    }
+
+    const localInventory = getTradingInventory(safeFriendCode);
+    await onlineFriendGames.saveInventory(safeFriendCode, localInventory);
+    return localInventory;
+  } catch (error) {
+    console.error("Supabase trading inventory load error:", error);
+    return getTradingInventory(safeFriendCode);
+  }
+}
+
+async function getSharedTradingInventory(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return [];
+  }
+
+  if (onlineFriendGames.isConfigured) {
+    const onlineInventory = await onlineFriendGames.loadInventory(safeFriendCode).catch((error) => {
+      console.error("Supabase trading inventory lookup error:", error);
+      return null;
+    });
+
+    if (onlineInventory) {
+      saveTradingInventoryForCode(safeFriendCode, onlineInventory.items);
+      return onlineInventory.items;
+    }
+  }
+
+  return getTradingInventory(safeFriendCode);
+}
+
+function getTradingItemQuantity(items, itemId) {
+  return normalizeTradingItems(items).find((item) => item.itemId === itemId)?.quantity || 0;
+}
+
+function hasTradingItems(inventory, items) {
+  return normalizeTradingItems(items).every((item) => getTradingItemQuantity(inventory, item.itemId) >= item.quantity);
+}
+
+function addTradingItems(inventory, items) {
+  const quantities = new Map(normalizeTradingItems(inventory).map((item) => [item.itemId, item.quantity]));
+
+  normalizeTradingItems(items).forEach((item) => {
+    quantities.set(item.itemId, (quantities.get(item.itemId) || 0) + item.quantity);
+  });
+
+  return [...quantities.entries()].map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity)).filter((item) => item.quantity > 0);
+}
+
+function subtractTradingItems(inventory, items) {
+  if (!hasTradingItems(inventory, items)) {
+    return null;
+  }
+
+  const quantities = new Map(normalizeTradingItems(inventory).map((item) => [item.itemId, item.quantity]));
+
+  normalizeTradingItems(items).forEach((item) => {
+    quantities.set(item.itemId, (quantities.get(item.itemId) || 0) - item.quantity);
+  });
+
+  return [...quantities.entries()].map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity)).filter((item) => item.quantity > 0);
+}
+
+function tradingDraftToItems(selection = {}) {
+  return Object.entries(selection)
+    .map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity))
+    .filter((item) => item.quantity > 0);
+}
+
+function getTradingAppliedTrades() {
+  const savedLog = localStorage.getItem(tradingAppliedTradesKey);
+
+  if (!savedLog) {
+    return {};
+  }
+
+  try {
+    const log = JSON.parse(savedLog);
+    return log && typeof log === "object" ? log : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTradingAppliedTrades(log) {
+  localStorage.setItem(tradingAppliedTradesKey, JSON.stringify(log));
+}
+
+function getTradingAppliedKey(trade, friendCode = activePlayer?.friendCode || "") {
+  return `${trade?.id || ""}:${normalizeFriendCode(friendCode)}`;
+}
+
+function isTradingTradeApplied(trade, friendCode = activePlayer?.friendCode || "") {
+  return Boolean(getTradingAppliedTrades()[getTradingAppliedKey(trade, friendCode)]);
+}
+
+function markTradingTradeApplied(trade, friendCode = activePlayer?.friendCode || "") {
+  const log = getTradingAppliedTrades();
+  log[getTradingAppliedKey(trade, friendCode)] = Date.now();
+  saveTradingAppliedTrades(log);
+}
+
+function getTradingTrades() {
+  const savedTrades = localStorage.getItem(tradingTradesKey);
+
+  if (!savedTrades) {
+    return [];
+  }
+
+  try {
+    const trades = JSON.parse(savedTrades);
+    return Array.isArray(trades) ? trades : [];
+  } catch {
+    return [];
+  }
+}
+
+function getTradingTradeTime(trade) {
+  return Number.parseInt(trade?.updatedAt || trade?.completedAt || trade?.respondedAt || trade?.createdAt || "0", 10) || 0;
+}
+
+function saveTradingTrades(trades) {
+  localStorage.setItem(tradingTradesKey, JSON.stringify(trades.slice(0, 80)));
+}
+
+function saveTradingTrade(trade) {
+  const trades = getTradingTrades();
+  saveTradingTrades([
+    trade,
+    ...trades.filter((savedTrade) => savedTrade.id !== trade.id),
+  ].sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade)));
+
+  if (trade?.gameType === "trading_game" && trade.fromFriendCode && trade.toFriendCode) {
+    saveSharedFriendGameState(trade).catch((error) => {
+      console.error("Trading shared save error:", error);
+    });
+  }
+}
+
+function mergeTradingTrades(trades = []) {
+  const tradesById = new Map(
+    getTradingTrades()
+      .filter((trade) => trade?.id)
+      .map((trade) => [trade.id, trade]),
+  );
+
+  trades
+    .filter((trade) => trade?.gameType === "trading_game" && trade.id)
+    .forEach((trade) => {
+      const currentTrade = tradesById.get(trade.id);
+
+      if (!currentTrade || getTradingTradeTime(trade) >= getTradingTradeTime(currentTrade)) {
+        tradesById.set(trade.id, trade);
+      }
+    });
+
+  saveTradingTrades([...tradesById.values()].sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade)));
+}
+
+function cacheTradingTradesFromMessages(messages = []) {
+  const trades = messages
+    .map((message) => message?.gameData?.tradingGame || null)
+    .filter((trade) => trade?.gameType === "trading_game" && trade.id);
+
+  if (trades.length > 0) {
+    mergeTradingTrades(trades);
+  }
+}
+
+function getTradingDisplayTrade(trade) {
+  if (trade?.status === "pending" && Date.now() - (Number.parseInt(trade.createdAt || "0", 10) || 0) > tradingOfferExpiryMs) {
+    return {
+      ...trade,
+      status: "expired",
+    };
+  }
+
+  return trade;
+}
+
+function getTradingTradeMessages(messages = getActiveChatMessages()) {
+  return messages
+    .map((message) => ({
+      message,
+      trade: message?.gameData?.tradingGame || null,
+    }))
+    .filter((entry) => entry.trade?.gameType === "trading_game" && entry.trade.id);
+}
+
+function getLatestTradingTrade(tradeId, messages = getActiveChatMessages()) {
+  const candidates = [
+    getTradingTrades().find((trade) => trade.id === tradeId),
+    ...getTradingTradeMessages(messages)
+      .filter((entry) => entry.trade.id === tradeId)
+      .map((entry) => entry.trade),
+  ].filter(Boolean);
+
+  const latestTrade = candidates.sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade))[0] || null;
+  return getTradingDisplayTrade(latestTrade);
+}
+
+function getLatestTradingMessageIds(messages = getActiveChatMessages()) {
+  const latestByTrade = new Map();
+
+  getTradingTradeMessages(messages).forEach((entry) => {
+    const current = latestByTrade.get(entry.trade.id);
+    if (!current || getTradingTradeTime(entry.trade) >= getTradingTradeTime(current.trade)) {
+      latestByTrade.set(entry.trade.id, entry);
+    }
+  });
+
+  return new Set([...latestByTrade.values()].map((entry) => entry.message.id));
+}
+
+function isTradingSender(trade) {
+  return normalizeFriendCode(activePlayer?.friendCode || "") === normalizeFriendCode(trade?.fromFriendCode || "");
+}
+
+function isTradingReceiver(trade) {
+  return normalizeFriendCode(activePlayer?.friendCode || "") === normalizeFriendCode(trade?.toFriendCode || "");
+}
+
+function formatTradingItems(items = []) {
+  const safeItems = normalizeTradingItems(items);
+
+  if (safeItems.length === 0) {
+    return "No items";
+  }
+
+  return safeItems.map((item) => `${item.emoji} ${item.name} x${item.quantity}`).join(", ");
+}
+
+function makeTradingTrade(friendCode, offeredItems, requestedItems) {
+  const friendProfile = getFriendProfileSnapshot(friendCode);
+  const tradeId = crypto.randomUUID();
+
+  return {
+    id: tradeId,
+    gameType: "trading_game",
+    inviteLink: getGameInviteLink(tradeId),
+    fromFriendCode: normalizeFriendCode(activePlayer.friendCode),
+    fromNickname: activePlayer.nickname,
+    toFriendCode: normalizeFriendCode(friendProfile.friendCode),
+    toNickname: friendProfile.nickname,
+    offeredItems: normalizeTradingItems(offeredItems),
+    requestedItems: normalizeTradingItems(requestedItems),
+    status: "pending",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    respondedAt: null,
+    completedAt: null,
+  };
+}
+
+function renderTradeItemList(title, items) {
+  const wrap = document.createElement("div");
+  wrap.className = "trade-summary-list";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  const text = document.createElement("p");
+  text.textContent = formatTradingItems(items);
+  wrap.append(heading, text);
+  return wrap;
+}
+
+function renderTradingHistory() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const trades = getTradingTrades()
+    .map(getTradingDisplayTrade)
+    .filter((trade) => !ownerCode || trade.fromFriendCode === ownerCode || trade.toFriendCode === ownerCode)
+    .slice(0, 6);
+
+  const history = document.createElement("div");
+  history.className = "box-history-panel trading-history-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Trade History";
+  history.append(title);
+
+  if (trades.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "No trades yet. Send a preset collectible trade to start.";
+    history.append(empty);
+    return history;
+  }
+
+  trades.forEach((trade) => {
+    const item = document.createElement("article");
+    item.className = "friend-activity-item";
+    const friendName = trade.fromFriendCode === ownerCode ? trade.toNickname : trade.fromNickname;
+    const text = document.createElement("p");
+
+    if (trade.status === "completed") {
+      text.textContent = `${friendName}: Trade completed.`;
+    } else if (trade.status === "declined") {
+      text.textContent = `${friendName}: Trade declined.`;
+    } else if (trade.status === "expired") {
+      text.textContent = `${friendName}: Trade expired.`;
+    } else {
+      text.textContent = `${friendName}: Trade offer pending.`;
+    }
+
+    const time = document.createElement("span");
+    const createdAt = new Date(trade.completedAt || trade.respondedAt || trade.createdAt);
+    time.textContent = `${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    item.append(text, time);
+    history.append(item);
+  });
+
+  return history;
+}
+
+function renderTradingOffersPanel() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const activeTrades = getTradingTrades()
+    .map(getTradingDisplayTrade)
+    .filter((trade) => trade.status === "pending" && (trade.fromFriendCode === ownerCode || trade.toFriendCode === ownerCode))
+    .slice(0, 6);
+
+  const panel = document.createElement("div");
+  panel.className = "box-history-panel trading-offers-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Incoming and Pending Trades";
+  panel.append(title);
+
+  if (activeTrades.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "No pending trade offers.";
+    panel.append(empty);
+    return panel;
+  }
+
+  activeTrades.forEach((trade) => {
+    const item = document.createElement("article");
+    item.className = "friend-activity-item trade-offer-row";
+    const text = document.createElement("p");
+    text.textContent = trade.toFriendCode === ownerCode
+      ? `${trade.fromNickname} wants to trade: ${formatTradingItems(trade.offeredItems)} for ${formatTradingItems(trade.requestedItems)}.`
+      : `Waiting for ${trade.toNickname}: ${formatTradingItems(trade.offeredItems)} for ${formatTradingItems(trade.requestedItems)}.`;
+    const actions = document.createElement("div");
+    actions.className = "box-card-actions";
+
+    if (trade.toFriendCode === ownerCode) {
+      const acceptButton = document.createElement("button");
+      acceptButton.className = "save-quiz-button";
+      acceptButton.type = "button";
+      acceptButton.textContent = "Accept";
+      acceptButton.addEventListener("click", () => acceptTradingOffer(trade));
+      const declineButton = document.createElement("button");
+      declineButton.className = "secondary-button";
+      declineButton.type = "button";
+      declineButton.textContent = "Decline";
+      declineButton.addEventListener("click", () => declineTradingOffer(trade));
+      actions.append(acceptButton, declineButton);
+    } else {
+      const openButton = document.createElement("button");
+      openButton.className = "secondary-button";
+      openButton.type = "button";
+      openButton.textContent = "View";
+      openButton.addEventListener("click", () => renderTradingSent(trade));
+      actions.append(openButton);
+    }
+
+    item.append(text, actions);
+    panel.append(item);
+  });
+
+  return panel;
+}
+
+function renderTradingInventoryPanel(title, inventory = getTradingInventory()) {
+  const panel = document.createElement("div");
+  panel.className = "trade-inventory-panel";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const grid = document.createElement("div");
+  grid.className = "trade-item-grid";
+
+  normalizeTradingItems(inventory).forEach((item) => {
+    const card = document.createElement("article");
+    card.className = "trade-item-card";
+    const icon = document.createElement("span");
+    icon.className = "trade-item-icon";
+    icon.textContent = item.emoji;
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const meta = document.createElement("span");
+    meta.textContent = `${item.rarity} • x${item.quantity}`;
+    card.append(icon, name, meta);
+    grid.append(card);
+  });
+
+  panel.append(heading, grid);
+  return panel;
+}
+
+function renderTradingRules(friendCode = "") {
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = "";
+
+  const rules = document.createElement("div");
+  rules.className = "box-rules-panel trading-rules-panel";
+  const title = document.createElement("h3");
+  title.textContent = "Trading Game Rules";
+  const list = document.createElement("ol");
+  [
+    "Trade cute collectible items with your friends.",
+    "Choose what you want to offer.",
+    "Choose what you want to ask for.",
+    "Your friend can accept or decline.",
+    "If they accept, the items swap.",
+    "Only trade preset game items.",
+    "No real money, no strangers, and no open chat.",
+    "Trades should be fair and fun.",
+  ].forEach((ruleText) => {
+    const item = document.createElement("li");
+    item.textContent = ruleText;
+    list.append(item);
+  });
+  rules.append(title, list);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const gotItButton = document.createElement("button");
+  gotItButton.className = "secondary-button";
+  gotItButton.type = "button";
+  gotItButton.textContent = "Got it";
+  gotItButton.addEventListener("click", () => {
+    if (friendCode && isApprovedFriendCode(friendCode)) {
+      renderTradingOfferBuilder(friendCode);
+      return;
+    }
+
+    renderTradingFriendChooser();
+  });
+  const startButton = document.createElement("button");
+  startButton.className = "save-quiz-button";
+  startButton.type = "button";
+  startButton.textContent = "Start Trading";
+  startButton.addEventListener("click", () => {
+    if (friendCode && isApprovedFriendCode(friendCode)) {
+      renderTradingOfferBuilder(friendCode);
+      return;
+    }
+
+    renderTradingFriendChooser();
+  });
+  actions.append(gotItButton, startButton);
+  tradingGameContent.append(rules, actions, renderTradingOffersPanel(), renderTradingInventoryPanel("My Starter Inventory"), renderTradingHistory());
+}
+
+function renderTradingFriendChooser() {
+  tradingGameContent.innerHTML = "";
+
+  const intro = document.createElement("div");
+  intro.className = "box-of-lies-intro trading-intro";
+  intro.innerHTML = `
+    <div class="box-secret-visual" aria-hidden="true">💎</div>
+    <div>
+      <h3>Choose a friend</h3>
+      <p>Send a fair preset trade offer. Your friend can accept or decline later.</p>
+    </div>
+  `;
+  tradingGameContent.append(intro);
+
+  const friendCodes = Array.isArray(activePlayer?.friends) ? activePlayer.friends : [];
+  const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
+
+  if (availableFriends.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "Add a friend code first, then you can send trades.";
+    tradingGameContent.append(empty, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+    return;
+  }
+
+  const list = document.createElement("div");
+  list.className = "friends-list box-friend-list";
+
+  availableFriends.forEach((friendCode) => {
+    const friendProfile = getFriendProfileSnapshot(friendCode);
+    const row = document.createElement("article");
+    row.className = "friend-entry";
+
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, friendProfile.avatar || null);
+
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const name = document.createElement("h3");
+    name.textContent = friendProfile.nickname;
+    const code = document.createElement("p");
+    code.textContent = friendProfile.friendCode;
+    details.append(name, code, makeFriendPresenceBadge(friendProfile));
+
+    const startButton = document.createElement("button");
+    startButton.className = "save-quiz-button";
+    startButton.type = "button";
+    startButton.textContent = "Create Trade";
+    startButton.addEventListener("click", () => renderTradingOfferBuilder(friendProfile.friendCode));
+
+    row.append(avatar, details, startButton);
+    list.append(row);
+  });
+
+  tradingGameContent.append(list, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function changeTradingDraft(kind, itemId, delta, maxQuantity = 3) {
+  const draft = activeTradingDraft[kind] || {};
+  const currentQuantity = Number.parseInt(draft[itemId] || "0", 10) || 0;
+  const nextQuantity = Math.max(0, Math.min(maxQuantity, currentQuantity + delta));
+
+  if (nextQuantity === 0) {
+    delete draft[itemId];
+  } else {
+    draft[itemId] = nextQuantity;
+  }
+
+  activeTradingDraft = {
+    ...activeTradingDraft,
+    [kind]: draft,
+  };
+}
+
+function renderTradingSelectionGrid(title, items, kind) {
+  const section = document.createElement("div");
+  section.className = "trade-picker-section";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  const grid = document.createElement("div");
+  grid.className = "trade-item-grid";
+
+  items.forEach((item) => {
+    const selectedQuantity = Number.parseInt(activeTradingDraft[kind]?.[item.itemId] || "0", 10) || 0;
+    const maxQuantity = kind === "offered" ? item.quantity : 3;
+    const card = document.createElement("article");
+    card.className = "trade-item-card selectable";
+    const icon = document.createElement("span");
+    icon.className = "trade-item-icon";
+    icon.textContent = item.emoji;
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const meta = document.createElement("span");
+    meta.textContent = kind === "offered"
+      ? `You have x${item.quantity}`
+      : `${item.rarity} item`;
+    const selected = document.createElement("span");
+    selected.className = "trade-selected-count";
+    selected.textContent = `Selected: x${selectedQuantity}`;
+    const controls = document.createElement("div");
+    controls.className = "trade-item-controls";
+    const minusButton = document.createElement("button");
+    minusButton.className = "secondary-button";
+    minusButton.type = "button";
+    minusButton.textContent = "-";
+    minusButton.disabled = selectedQuantity === 0;
+    minusButton.addEventListener("click", () => {
+      changeTradingDraft(kind, item.itemId, -1, maxQuantity);
+      renderTradingOfferBuilder(activeTradingFriendCode, false);
+    });
+    const plusButton = document.createElement("button");
+    plusButton.className = "secondary-button";
+    plusButton.type = "button";
+    plusButton.textContent = "+";
+    plusButton.disabled = selectedQuantity >= maxQuantity;
+    plusButton.addEventListener("click", () => {
+      changeTradingDraft(kind, item.itemId, 1, maxQuantity);
+      renderTradingOfferBuilder(activeTradingFriendCode, false);
+    });
+    controls.append(minusButton, plusButton);
+    card.append(icon, name, meta, selected, controls);
+    grid.append(card);
+  });
+
+  section.append(heading, grid);
+  return section;
+}
+
+function renderTradingDraftSummary() {
+  const summary = document.createElement("div");
+  summary.className = "trade-draft-summary";
+  summary.append(
+    renderTradeItemList("You offer", tradingDraftToItems(activeTradingDraft.offered)),
+    renderTradeItemList("You ask for", tradingDraftToItems(activeTradingDraft.requested)),
+  );
+  return summary;
+}
+
+function renderTradingOfferBuilder(friendCode, resetDraft = true) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!isApprovedFriendCode(safeFriendCode)) {
+    tradingGameMessage.textContent = "Choose an added friend first.";
+    renderTradingFriendChooser();
+    return;
+  }
+
+  activeTradingFriendCode = safeFriendCode;
+
+  if (resetDraft) {
+    activeTradingDraft = { offered: {}, requested: {} };
+  }
+
+  const friendProfile = getFriendProfileSnapshot(safeFriendCode);
+  const myInventory = getTradingInventory(activePlayer.friendCode);
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = isFriendOnline(friendProfile)
+    ? `${friendProfile.nickname} looks online.`
+    : "Your friend is offline. They can answer the trade when they come back.";
+
+  const intro = document.createElement("div");
+  intro.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "💎";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Create Trade";
+  const title = document.createElement("h3");
+  title.textContent = `Trade with ${friendProfile.nickname}`;
+  const body = document.createElement("p");
+  body.textContent = "Pick preset items only. Your friend can accept or decline.";
+  details.append(eyebrow, title, body, makeFriendPresenceBadge(friendProfile));
+  intro.append(icon, details);
+
+  const sendButton = document.createElement("button");
+  sendButton.className = "save-quiz-button";
+  sendButton.type = "button";
+  sendButton.textContent = "Send Trade Offer";
+  sendButton.addEventListener("click", sendTradingOffer);
+
+  const backButton = document.createElement("button");
+  backButton.className = "secondary-button";
+  backButton.type = "button";
+  backButton.textContent = "Choose Another Friend";
+  backButton.addEventListener("click", renderTradingFriendChooser);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  actions.append(sendButton, backButton);
+
+  tradingGameContent.append(
+    intro,
+    renderTradingSelectionGrid("Offer from my inventory", myInventory, "offered"),
+    renderTradingSelectionGrid("Ask for a preset collectible", tradingCollectibles.map((item) => makeTradingItemEntry(item.itemId, 1)), "requested"),
+    renderTradingDraftSummary(),
+    actions,
+    renderTradingHistory(),
+  );
+}
+
+async function saveTradingTradeMessage(trade, receiverCode, messageText) {
+  const onlineGameSaved = await saveSharedFriendGameState(trade);
+  const result = await saveFriendMessage(
+    receiverCode,
+    messageText.slice(0, 150),
+    "trading_game_offer",
+    "",
+    { gameData: { tradingGame: trade, gameInviteId: trade.id, gameInviteLink: trade.inviteLink || getGameInviteLink(trade.id) } },
+  );
+  saveTradingTrade(trade);
+  return { ...result, onlineGameSaved };
+}
+
+async function sendTradingOffer() {
+  const friendProfile = getFriendProfileSnapshot(activeTradingFriendCode);
+  const offeredItems = tradingDraftToItems(activeTradingDraft.offered);
+  const requestedItems = tradingDraftToItems(activeTradingDraft.requested);
+
+  if (!friendProfile?.friendCode || !isApprovedFriendCode(friendProfile.friendCode)) {
+    tradingGameMessage.textContent = "Choose an added friend first.";
+    return;
+  }
+
+  if (offeredItems.length === 0 || requestedItems.length === 0) {
+    tradingGameMessage.textContent = "Choose at least one item to offer and one item to ask for.";
+    return;
+  }
+
+  const myInventory = await syncTradingInventoryFromOnline(activePlayer.friendCode);
+
+  if (!hasTradingItems(myInventory, offeredItems)) {
+    tradingGameMessage.textContent = "This trade can’t be sent because you do not have one of those items anymore.";
+    renderTradingOfferBuilder(friendProfile.friendCode, false);
+    return;
+  }
+
+  const trade = makeTradingTrade(friendProfile.friendCode, offeredItems, requestedItems);
+  saveTradingTrade(trade);
+  tradingGameMessage.textContent = `Sending trade offer to ${friendProfile.nickname}...`;
+
+  try {
+    const result = await saveTradingTradeMessage(
+      trade,
+      trade.toFriendCode,
+      `Trade offer: ${formatTradingItems(trade.offeredItems)} for ${formatTradingItems(trade.requestedItems)}`,
+    );
+    const earnedStar = awardFriendActionStars(`trade-offer:${trade.toFriendCode}`, 1);
+
+    addFriendActivity({
+      type: "trade_offer_sent",
+      friendCode: trade.toFriendCode,
+      friendNickname: trade.toNickname,
+      text: `You sent ${trade.toNickname} a trade offer.`,
+    });
+
+    tradingGameMessage.textContent = result.online
+      ? `Trade offer sent to ${trade.toNickname}!${earnedStar ? " You earned 1 star." : ""}`
+      : `Trade offer saved here for ${trade.toNickname}.${earnedStar ? " You earned 1 star." : ""}`;
+    renderTradingSent(trade);
+  } catch (error) {
+    console.error("Trading offer send error:", error);
+    tradingGameMessage.textContent = "Trade offer could not be sent yet. Please try again.";
+  }
+}
+
+function applyTradingTradeForCurrentPlayer(trade) {
+  if (trade.status !== "completed") {
+    return { ok: false, message: "This trade is not completed yet." };
+  }
+
+  if (trade.inventoryMode === "shared") {
+    syncTradingInventoryFromOnline(activePlayer?.friendCode || "").catch((error) => {
+      console.error("Shared trade inventory sync error:", error);
+    });
+    return { ok: true, applied: false, message: "Shared inventory synced." };
+  }
+
+  const activeCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  if (![trade.fromFriendCode, trade.toFriendCode].map(normalizeFriendCode).includes(activeCode)) {
+    return { ok: false, message: "This trade does not belong to this player." };
+  }
+
+  if (isTradingTradeApplied(trade, activeCode)) {
+    return { ok: true, applied: false, message: "Trade already applied." };
+  }
+
+  const itemsToRemove = activeCode === normalizeFriendCode(trade.fromFriendCode) ? trade.offeredItems : trade.requestedItems;
+  const itemsToAdd = activeCode === normalizeFriendCode(trade.fromFriendCode) ? trade.requestedItems : trade.offeredItems;
+  const currentInventory = getTradingInventory(activeCode);
+  const afterRemoval = subtractTradingItems(currentInventory, itemsToRemove);
+
+  if (!afterRemoval) {
+    return { ok: false, message: "This trade can’t be completed because one item is no longer available." };
+  }
+
+  saveTradingInventoryForCode(activeCode, addTradingItems(afterRemoval, itemsToAdd));
+  markTradingTradeApplied(trade, activeCode);
+  return { ok: true, applied: true, message: "Trade applied." };
+}
+
+async function completeTradingInventoriesForSharedTrade(trade) {
+  const senderInventory = await getSharedTradingInventory(trade.fromFriendCode);
+  const receiverInventory = await getSharedTradingInventory(trade.toFriendCode);
+
+  if (!hasTradingItems(senderInventory, trade.offeredItems) || !hasTradingItems(receiverInventory, trade.requestedItems)) {
+    return {
+      ok: false,
+      message: "This trade can’t be completed because one item is no longer available.",
+    };
+  }
+
+  const senderAfterRemoval = subtractTradingItems(senderInventory, trade.offeredItems);
+  const receiverAfterRemoval = subtractTradingItems(receiverInventory, trade.requestedItems);
+
+  if (!senderAfterRemoval || !receiverAfterRemoval) {
+    return {
+      ok: false,
+      message: "This trade can’t be completed because one item is no longer available.",
+    };
+  }
+
+  const senderUpdatedInventory = addTradingItems(senderAfterRemoval, trade.requestedItems);
+  const receiverUpdatedInventory = addTradingItems(receiverAfterRemoval, trade.offeredItems);
+
+  saveTradingInventoryForCode(trade.fromFriendCode, senderUpdatedInventory);
+  saveTradingInventoryForCode(trade.toFriendCode, receiverUpdatedInventory);
+
+  if (onlineFriendGames.isConfigured) {
+    await Promise.all([
+      onlineFriendGames.saveInventory(trade.fromFriendCode, senderUpdatedInventory),
+      onlineFriendGames.saveInventory(trade.toFriendCode, receiverUpdatedInventory),
+    ]);
+  }
+
+  return { ok: true };
+}
+
+async function acceptTradingOffer(trade) {
+  const latestTrade = getLatestTradingTrade(trade.id) || trade;
+  hideMainSections();
+  updateProfileBar();
+  tradingGameCard.classList.remove("hidden");
+
+  if (!isTradingReceiver(latestTrade) || latestTrade.status !== "pending") {
+    tradingGameMessage.textContent = "This trade offer is not available anymore.";
+    renderTradingByStatus(latestTrade);
+    return;
+  }
+
+  const completedTrade = {
+    ...latestTrade,
+    status: "completed",
+    inventoryMode: onlineFriendGames.isConfigured ? "shared" : "local",
+    respondedAt: Date.now(),
+    completedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  const applyResult = onlineFriendGames.isConfigured
+    ? await completeTradingInventoriesForSharedTrade(completedTrade)
+    : applyTradingTradeForCurrentPlayer(completedTrade);
+
+  if (!applyResult.ok) {
+    tradingGameMessage.textContent = applyResult.message;
+    renderIncomingTradingOffer(latestTrade);
+    return;
+  }
+
+  saveTradingTrade(completedTrade);
+  tradingGameMessage.textContent = "Accepting trade...";
+
+  try {
+    await saveTradingTradeMessage(
+      completedTrade,
+      completedTrade.fromFriendCode,
+      `${activePlayer.nickname} accepted your trade.`,
+    );
+    const earnedStars = awardFriendActionStars(`trade-complete:${completedTrade.id}`, 2);
+    addFriendActivity({
+      type: "trade_completed",
+      friendCode: completedTrade.fromFriendCode,
+      friendNickname: completedTrade.fromNickname,
+      text: `You accepted ${completedTrade.fromNickname}'s trade.`,
+    });
+    tradingGameMessage.textContent = earnedStars ? "Trade completed. You earned 2 stars!" : "Trade completed.";
+    hideMainSections();
+    updateProfileBar();
+    tradingGameCard.classList.remove("hidden");
+    renderTradingResult(completedTrade);
+  } catch (error) {
+    console.error("Trading accept sync error:", error);
+    tradingGameMessage.textContent = "Trade completed here. Online sync could not finish yet.";
+    hideMainSections();
+    updateProfileBar();
+    tradingGameCard.classList.remove("hidden");
+    renderTradingResult(completedTrade);
+  }
+}
+
+async function declineTradingOffer(trade) {
+  const latestTrade = getLatestTradingTrade(trade.id) || trade;
+  hideMainSections();
+  updateProfileBar();
+  tradingGameCard.classList.remove("hidden");
+
+  if (!isTradingReceiver(latestTrade) || latestTrade.status !== "pending") {
+    tradingGameMessage.textContent = "This trade offer is not available anymore.";
+    renderTradingByStatus(latestTrade);
+    return;
+  }
+
+  const declinedTrade = {
+    ...latestTrade,
+    status: "declined",
+    respondedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  saveTradingTrade(declinedTrade);
+  tradingGameMessage.textContent = "Declining trade...";
+
+  try {
+    await saveTradingTradeMessage(
+      declinedTrade,
+      declinedTrade.fromFriendCode,
+      `${activePlayer.nickname} declined your trade.`,
+    );
+    addFriendActivity({
+      type: "trade_declined",
+      friendCode: declinedTrade.fromFriendCode,
+      friendNickname: declinedTrade.fromNickname,
+      text: `You declined ${declinedTrade.fromNickname}'s trade.`,
+    });
+    tradingGameMessage.textContent = "Trade declined.";
+    hideMainSections();
+    updateProfileBar();
+    tradingGameCard.classList.remove("hidden");
+    renderTradingDeclined(declinedTrade);
+  } catch (error) {
+    console.error("Trading decline sync error:", error);
+    tradingGameMessage.textContent = "Trade declined here. Online sync could not finish yet.";
+    hideMainSections();
+    updateProfileBar();
+    tradingGameCard.classList.remove("hidden");
+    renderTradingDeclined(declinedTrade);
+  }
+}
+
+function getTradingTradeFromMessage(message) {
+  const messageTrade = message?.gameData?.tradingGame || null;
+  const trade = getLatestTradingTrade(messageTrade?.id || message?.gameData?.tradingTradeId || "") || messageTrade;
+
+  if (!trade || trade.gameType !== "trading_game") {
+    return null;
+  }
+
+  return trade;
+}
+
+async function openTradingOffer(message) {
+  let trade = getTradingTradeFromMessage(message);
+  const inviteId = trade?.id || message?.gameData?.gameInviteId || "";
+
+  if (inviteId && onlineFriendGames.isConfigured) {
+    try {
+      const onlineTrade = await onlineFriendGames.loadGame(inviteId);
+      if (onlineTrade?.gameType === "trading_game") {
+        mergeTradingTrades([onlineTrade]);
+        trade = onlineTrade;
+      }
+    } catch (error) {
+      console.error("Trading online invite load error:", error);
+    }
+  }
+
+  if (!trade) {
+    chatMessage.textContent = "This trade could not be opened. Please ask your friend to send it again.";
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  tradingGameCard.classList.remove("hidden");
+  tradingGameMessage.textContent = "";
+  if (trade.status === "completed" && trade.inventoryMode === "shared") {
+    await syncTradingInventoryFromOnline(activePlayer?.friendCode || "");
+  }
+  renderTradingByStatus(trade);
+}
+
+function renderTradingByStatus(trade) {
+  const latestTrade = getLatestTradingTrade(trade.id) || trade;
+
+  if (latestTrade.status === "pending") {
+    if (isTradingReceiver(latestTrade)) {
+      renderIncomingTradingOffer(latestTrade);
+    } else {
+      renderTradingSent(latestTrade);
+    }
+    return;
+  }
+
+  if (latestTrade.status === "declined") {
+    renderTradingDeclined(latestTrade);
+    return;
+  }
+
+  if (latestTrade.status === "expired") {
+    renderTradingExpired(latestTrade);
+    return;
+  }
+
+  renderTradingResult(latestTrade);
+}
+
+function renderIncomingTradingOffer(trade) {
+  tradingGameContent.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "💎";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Incoming Trade";
+  const title = document.createElement("h3");
+  title.textContent = `${trade.fromNickname} sent you a trade offer.`;
+  details.append(eyebrow, title, renderTradeItemList("They offer", trade.offeredItems), renderTradeItemList("They ask for", trade.requestedItems));
+  card.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const acceptButton = document.createElement("button");
+  acceptButton.className = "save-quiz-button";
+  acceptButton.type = "button";
+  acceptButton.textContent = "Accept";
+  acceptButton.addEventListener("click", () => acceptTradingOffer(trade));
+  const declineButton = document.createElement("button");
+  declineButton.className = "secondary-button";
+  declineButton.type = "button";
+  declineButton.textContent = "Decline";
+  declineButton.addEventListener("click", () => declineTradingOffer(trade));
+  actions.append(acceptButton, declineButton);
+
+  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function renderTradingSent(trade) {
+  tradingGameContent.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "💌";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trade Sent";
+  const title = document.createElement("h3");
+  title.textContent = `${trade.toNickname} can accept or decline this trade.`;
+  details.append(eyebrow, title, renderTradeItemList("You offer", trade.offeredItems), renderTradeItemList("You ask for", trade.requestedItems));
+  card.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const chatButton = document.createElement("button");
+  chatButton.className = "save-quiz-button";
+  chatButton.type = "button";
+  chatButton.textContent = "Open Chat";
+  chatButton.addEventListener("click", () => showChat(trade.toFriendCode));
+  const gamesButton = document.createElement("button");
+  gamesButton.className = "secondary-button";
+  gamesButton.type = "button";
+  gamesButton.textContent = "Back to Games";
+  gamesButton.addEventListener("click", showGames);
+  const copyLinkButton = document.createElement("button");
+  copyLinkButton.className = "secondary-button";
+  copyLinkButton.type = "button";
+  copyLinkButton.textContent = "Copy Trade Link";
+  copyLinkButton.addEventListener("click", async () => {
+    const link = trade.inviteLink || getGameInviteLink(trade.id);
+
+    try {
+      await navigator.clipboard.writeText(link);
+      tradingGameMessage.textContent = "Trading Game link copied.";
+    } catch {
+      tradingGameMessage.textContent = `Trading Game link: ${link}`;
+    }
+  });
+  actions.append(chatButton, copyLinkButton, gamesButton);
+
+  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function renderTradingDeclined(trade) {
+  tradingGameContent.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "✕";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trade Declined";
+  const title = document.createElement("h3");
+  title.textContent = isTradingSender(trade)
+    ? `${trade.toNickname} declined this trade.`
+    : "You declined this trade.";
+  const body = document.createElement("p");
+  body.textContent = "No items were swapped.";
+  details.append(eyebrow, title, body);
+  card.append(icon, details);
+  tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function renderTradingExpired(trade) {
+  tradingGameContent.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "⌛";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trade Expired";
+  const title = document.createElement("h3");
+  title.textContent = "This trade offer is too old.";
+  const body = document.createElement("p");
+  body.textContent = "Send a fresh trade if you still want to swap items.";
+  details.append(eyebrow, title, body);
+  card.append(icon, details);
+  tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function renderTradingResult(trade) {
+  saveTradingTrade(trade);
+  const applyResult = applyTradingTradeForCurrentPlayer(trade);
+  const tradeCompletedForThisPlayer = applyResult.ok;
+
+  if (!applyResult.ok) {
+    tradingGameMessage.textContent = applyResult.message;
+  }
+
+  tradingGameContent.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "🌟";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = tradeCompletedForThisPlayer ? "Trade Complete" : "Trade Needs Attention";
+  const title = document.createElement("h3");
+  title.textContent = tradeCompletedForThisPlayer ? "Items swapped!" : "This trade could not be applied here.";
+  const body = document.createElement("p");
+  body.textContent = tradeCompletedForThisPlayer
+    ? "Your inventory has been updated safely."
+    : "One side no longer has the needed item in this saved inventory.";
+  details.append(eyebrow, title, body, renderTradeItemList(`${trade.fromNickname} offered`, trade.offeredItems), renderTradeItemList(`${trade.toNickname} gave`, trade.requestedItems));
+  card.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const chatButton = document.createElement("button");
+  chatButton.className = "save-quiz-button";
+  chatButton.type = "button";
+  chatButton.textContent = "Back to Chat";
+  chatButton.addEventListener("click", () => showChat(isTradingSender(trade) ? trade.toFriendCode : trade.fromFriendCode));
+  const gamesButton = document.createElement("button");
+  gamesButton.className = "secondary-button";
+  gamesButton.type = "button";
+  gamesButton.textContent = "Back to Games";
+  gamesButton.addEventListener("click", showGames);
+  actions.append(chatButton, gamesButton);
+
+  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function getTradingCardLine(trade) {
+  if (trade.status === "pending") {
+    return `${trade.fromNickname} sent ${trade.toNickname} a trade offer.`;
+  }
+
+  if (trade.status === "declined") {
+    return `${trade.toNickname} declined a trade offer.`;
+  }
+
+  if (trade.status === "expired") {
+    return "This trade offer expired.";
+  }
+
+  return `${trade.fromNickname} and ${trade.toNickname} completed a trade.`;
+}
+
+function getTradingCardTitle(trade) {
+  if (trade.status === "pending") {
+    return isTradingReceiver(trade) ? "Accept or decline this trade" : "Waiting for your friend";
+  }
+
+  if (trade.status === "declined") {
+    return "Trade declined";
+  }
+
+  if (trade.status === "expired") {
+    return "Trade expired";
+  }
+
+  return "Trade completed";
+}
+
+function getTradingCardButtonLabel(trade) {
+  if (trade.status === "pending" && isTradingReceiver(trade)) {
+    return "Review";
+  }
+
+  return trade.status === "completed" ? "View Trade" : "Open";
+}
+
+function showTradingGame(friendCode = "") {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  activeTradingFriendCode = normalizeFriendCode(friendCode);
+  activeTradingDraft = { offered: {}, requested: {} };
+  tradingGameMessage.textContent = "";
+  tradingGameCard.classList.remove("hidden");
+  renderTradingRules(activeTradingFriendCode);
+  syncTradingInventoryFromOnline(activePlayer.friendCode).then(() => {
+    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
+      renderTradingRules();
+    }
+  }).catch((error) => console.error("Trading inventory refresh sync error:", error));
+  syncFriendGameStateFromOnline().then(() => {
+    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
+      renderTradingRules();
+    }
+  }).catch((error) => console.error("Trading game refresh sync error:", error));
+}
+
+function showGameInviteLoadError(message = "This game invite could not be loaded. Please ask your friend to send it again.") {
+  hideMainSections();
+  updateProfileBar();
+  tradingGameCard.classList.remove("hidden");
+  tradingGameContent.innerHTML = "";
+  const errorCard = document.createElement("div");
+  errorCard.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "!";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Game Invite";
+  const title = document.createElement("h3");
+  title.textContent = "Invite not found";
+  const body = document.createElement("p");
+  body.textContent = message;
+  details.append(eyebrow, title, body);
+  errorCard.append(icon, details);
+  tradingGameContent.append(errorCard);
+  tradingGameMessage.textContent = "";
+}
+
+async function openGameInviteFromLink(inviteId) {
+  const safeInviteId = String(inviteId || "").trim();
+
+  if (!safeInviteId) {
+    return false;
+  }
+
+  if (!activePlayer) {
+    pendingGameInviteId = safeInviteId;
+    showPlayerGate();
+    return true;
+  }
+
+  if (!onlineFriendGames.isConfigured) {
+    showGameInviteLoadError("Game invite links need Supabase game tables before they can work across devices.");
+    return true;
+  }
+
+  try {
+    const gameRecord = await onlineFriendGames.loadGame(safeInviteId);
+
+    if (!gameRecord) {
+      showGameInviteLoadError();
+      return true;
+    }
+
+    if (![gameRecord.fromFriendCode, gameRecord.toFriendCode].map(normalizeFriendCode).includes(normalizeFriendCode(activePlayer.friendCode))) {
+      showGameInviteLoadError("This invite belongs to a different friend code. Log in as the invited player to open it.");
+      return true;
+    }
+
+    cacheFriendGameStateFromOnlineRecords([gameRecord]);
+    hideMainSections();
+    updateProfileBar();
+
+    if (gameRecord.gameType === "box_of_lies") {
+      boxOfLiesCard.classList.remove("hidden");
+      boxOfLiesMessage.textContent = "";
+      renderBoxOfLiesByStatus(gameRecord);
+      return true;
+    }
+
+    if (gameRecord.gameType === "trading_game") {
+      tradingGameCard.classList.remove("hidden");
+      tradingGameMessage.textContent = "";
+      if (gameRecord.status === "completed" && gameRecord.inventoryMode === "shared") {
+        await syncTradingInventoryFromOnline(activePlayer.friendCode);
+      }
+      renderTradingByStatus(gameRecord);
+      return true;
+    }
+
+    showGameInviteLoadError();
+    return true;
+  } catch (error) {
+    console.error("Game invite link load error:", error);
+    showGameInviteLoadError();
+    return true;
+  }
+}
+
+async function loadGameInviteFromUrl() {
+  const inviteId = new URLSearchParams(window.location.search).get("gameInvite");
+
+  if (!inviteId) {
+    return false;
+  }
+
+  return openGameInviteFromLink(inviteId);
 }
 
 function getQuizIdFromInvite(quizInvite) {
@@ -4883,6 +7949,94 @@ async function playQuizInvite(message) {
   }
 }
 
+function getBoxOfLiesInviteLine(round) {
+  if (round.status === "pending") {
+    return `${round.fromNickname} invited ${round.toNickname} to play Box of Lies!`;
+  }
+
+  if (round.status === "accepted") {
+    return `${round.toNickname} accepted the Box of Lies invite.`;
+  }
+
+  if (round.status === "declined") {
+    return `${round.toNickname} declined the Box of Lies invite.`;
+  }
+
+  if (round.status === "expired") {
+    return "This Box of Lies invite expired.";
+  }
+
+  if (round.status === "completed") {
+    return `${round.winnerNickname || "Someone"} won Box of Lies!`;
+  }
+
+  return `${round.fromNickname} sent a Box of Lies message.`;
+}
+
+function getBoxOfLiesCardTitle(round) {
+  if (round.status === "pending") {
+    return isBoxOfLiesInvitedFriend(round) ? "Accept or decline this invite" : "Waiting for your friend";
+  }
+
+  if (round.status === "accepted") {
+    return isBoxOfLiesInviter(round) ? "Ready for the rules" : "Waiting for the storyteller";
+  }
+
+  if (round.status === "in_progress") {
+    return isBoxOfLiesInvitedFriend(round) ? "Guess Truth or Lie" : "Waiting for a guess";
+  }
+
+  if (round.status === "declined") {
+    return "Invite declined";
+  }
+
+  if (round.status === "expired") {
+    return "Invite expired";
+  }
+
+  return "Box revealed";
+}
+
+function getBoxOfLiesCardMeta(round) {
+  if (round.status === "in_progress" || round.status === "completed") {
+    return `Box message: “${round.selectedMessage}”`;
+  }
+
+  if (round.status === "pending") {
+    return "The game starts after the invite is accepted.";
+  }
+
+  if (round.status === "accepted") {
+    return "Rules come before the secret item.";
+  }
+
+  if (round.status === "declined") {
+    return "No round was started.";
+  }
+
+  if (round.status === "expired") {
+    return "Send a new invite to play.";
+  }
+
+  return `Secret item: ${round.secretEmoji} ${round.secretItem}`;
+}
+
+function getBoxOfLiesCardButtonLabel(round) {
+  if (round.status === "accepted" && isBoxOfLiesInviter(round)) {
+    return "Start Game";
+  }
+
+  if (round.status === "in_progress" && isBoxOfLiesInvitedFriend(round)) {
+    return "Play";
+  }
+
+  if (round.status === "completed") {
+    return "View Result";
+  }
+
+  return "Open";
+}
+
 function renderChatHistory() {
   chatHistory.innerHTML = "";
 
@@ -4898,6 +8052,9 @@ function renderChatHistory() {
     return;
   }
 
+  const latestBoxMessageIds = getLatestBoxOfLiesMessageIds(messages);
+  const latestTradingMessageIds = getLatestTradingMessageIds(messages);
+
   messages.forEach((message) => {
     const bubble = document.createElement("article");
     bubble.className = normalizeFriendCode(message.senderCode) === normalizeFriendCode(activePlayer.friendCode) ? "chat-bubble mine" : "chat-bubble";
@@ -4911,7 +8068,109 @@ function renderChatHistory() {
     text.className = "chat-text";
     text.textContent = message.text;
 
-    if (message.type === "quiz_invite" && (message.quizInvite?.quizLink || message.quizInvite?.quizId)) {
+    if (message.type === "box_of_lies_invite" && getBoxOfLiesRoundFromMessage(message)) {
+      if (!latestBoxMessageIds.has(message.id)) {
+        return;
+      }
+      const round = getBoxOfLiesRoundFromMessage(message);
+      const inviteCard = document.createElement("div");
+      inviteCard.className = "quiz-invite-card box-lies-invite-card";
+
+      const inviteIcon = document.createElement("span");
+      inviteIcon.className = "quiz-invite-icon";
+      inviteIcon.textContent = "▣";
+
+      const inviteDetails = document.createElement("div");
+      const inviteMessage = document.createElement("p");
+      inviteMessage.className = "quiz-invite-message";
+      inviteMessage.textContent = getBoxOfLiesInviteLine(round);
+      const inviteTitle = document.createElement("h4");
+      inviteTitle.textContent = getBoxOfLiesCardTitle(round);
+      const inviteMeta = document.createElement("p");
+      inviteMeta.textContent = getBoxOfLiesCardMeta(round);
+      const statusLine = document.createElement("p");
+      statusLine.textContent = `Status: ${round.status.replaceAll("_", " ")}`;
+      inviteDetails.append(inviteMessage, inviteTitle, inviteMeta, statusLine);
+
+      const buttonWrap = document.createElement("div");
+      buttonWrap.className = "box-card-actions";
+
+      if (round.status === "pending" && isBoxOfLiesInvitedFriend(round)) {
+        const acceptButton = document.createElement("button");
+        acceptButton.className = "save-quiz-button";
+        acceptButton.type = "button";
+        acceptButton.textContent = "Accept";
+        acceptButton.addEventListener("click", () => acceptBoxOfLiesInvite(round));
+        const declineButton = document.createElement("button");
+        declineButton.className = "secondary-button";
+        declineButton.type = "button";
+        declineButton.textContent = "Decline";
+        declineButton.addEventListener("click", () => declineBoxOfLiesInvite(round));
+        buttonWrap.append(acceptButton, declineButton);
+      } else {
+        const playButton = document.createElement("button");
+        playButton.className = "save-quiz-button";
+        playButton.type = "button";
+        playButton.textContent = getBoxOfLiesCardButtonLabel(round);
+        playButton.addEventListener("click", () => openBoxOfLiesInvite(message));
+        buttonWrap.append(playButton);
+      }
+
+      inviteCard.append(inviteIcon, inviteDetails, buttonWrap);
+      bubble.append(meta, inviteCard);
+    } else if (message.type === "trading_game_offer" && getTradingTradeFromMessage(message)) {
+      if (!latestTradingMessageIds.has(message.id)) {
+        return;
+      }
+      const trade = getTradingTradeFromMessage(message);
+      const tradeCard = document.createElement("div");
+      tradeCard.className = "quiz-invite-card trading-invite-card";
+
+      const tradeIcon = document.createElement("span");
+      tradeIcon.className = "quiz-invite-icon";
+      tradeIcon.textContent = "💎";
+
+      const tradeDetails = document.createElement("div");
+      const tradeMessage = document.createElement("p");
+      tradeMessage.className = "quiz-invite-message";
+      tradeMessage.textContent = getTradingCardLine(trade);
+      const tradeTitle = document.createElement("h4");
+      tradeTitle.textContent = getTradingCardTitle(trade);
+      const offeredLine = document.createElement("p");
+      offeredLine.textContent = `Offer: ${formatTradingItems(trade.offeredItems)}`;
+      const requestedLine = document.createElement("p");
+      requestedLine.textContent = `Asks for: ${formatTradingItems(trade.requestedItems)}`;
+      const statusLine = document.createElement("p");
+      statusLine.textContent = `Status: ${trade.status.replaceAll("_", " ")}`;
+      tradeDetails.append(tradeMessage, tradeTitle, offeredLine, requestedLine, statusLine);
+
+      const buttonWrap = document.createElement("div");
+      buttonWrap.className = "box-card-actions";
+
+      if (trade.status === "pending" && isTradingReceiver(trade)) {
+        const acceptButton = document.createElement("button");
+        acceptButton.className = "save-quiz-button";
+        acceptButton.type = "button";
+        acceptButton.textContent = "Accept";
+        acceptButton.addEventListener("click", () => acceptTradingOffer(trade));
+        const declineButton = document.createElement("button");
+        declineButton.className = "secondary-button";
+        declineButton.type = "button";
+        declineButton.textContent = "Decline";
+        declineButton.addEventListener("click", () => declineTradingOffer(trade));
+        buttonWrap.append(acceptButton, declineButton);
+      } else {
+        const openButton = document.createElement("button");
+        openButton.className = "save-quiz-button";
+        openButton.type = "button";
+        openButton.textContent = getTradingCardButtonLabel(trade);
+        openButton.addEventListener("click", () => openTradingOffer(message));
+        buttonWrap.append(openButton);
+      }
+
+      tradeCard.append(tradeIcon, tradeDetails, buttonWrap);
+      bubble.append(meta, tradeCard);
+    } else if (message.type === "quiz_invite" && (message.quizInvite?.quizLink || message.quizInvite?.quizId)) {
       const inviteCard = document.createElement("div");
       inviteCard.className = "quiz-invite-card";
 
@@ -5126,7 +8385,7 @@ function renderFriends() {
     const stars = document.createElement("p");
     stars.textContent = `Stars: ${friendProfile.stars || 0}`;
 
-    details.append(name, code, stars);
+    details.append(name, code, stars, makeFriendPresenceBadge(friendProfile));
 
     const chatButton = document.createElement("button");
     chatButton.className = "save-quiz-button";
@@ -5140,6 +8399,18 @@ function renderFriends() {
     sendQuizButton.textContent = "Send Quiz";
     sendQuizButton.addEventListener("click", () => openFriendActionPanel(friendCode));
 
+    const boxOfLiesButton = document.createElement("button");
+    boxOfLiesButton.className = "secondary-button";
+    boxOfLiesButton.type = "button";
+    boxOfLiesButton.textContent = "Box of Lies";
+    boxOfLiesButton.addEventListener("click", () => showBoxOfLies(friendCode));
+
+    const tradeButton = document.createElement("button");
+    tradeButton.className = "secondary-button";
+    tradeButton.type = "button";
+    tradeButton.textContent = "Trade";
+    tradeButton.addEventListener("click", () => showTradingGame(friendCode));
+
     const removeButton = document.createElement("button");
     removeButton.className = "secondary-button";
     removeButton.type = "button";
@@ -5152,7 +8423,7 @@ function renderFriends() {
     blockButton.textContent = "Block Friend";
     blockButton.addEventListener("click", () => blockFriend(friendCode));
 
-    row.append(avatar, details, chatButton, sendQuizButton, removeButton, blockButton);
+    row.append(avatar, details, chatButton, sendQuizButton, boxOfLiesButton, tradeButton, removeButton, blockButton);
     friendsList.append(row);
   });
 
@@ -5856,6 +9127,13 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
+  if (pendingGameInviteId) {
+    const inviteId = pendingGameInviteId;
+    pendingGameInviteId = "";
+    await openGameInviteFromLink(inviteId);
+    return;
+  }
+
   showStart();
 }
 
@@ -5994,6 +9272,7 @@ function loginPlayer(event) {
 }
 
 function switchPlayer() {
+  stopPresenceUpdates();
   usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
@@ -6469,6 +9748,8 @@ playWouldYouRatherGameButton.addEventListener("click", () => startMiniGame("woul
 playThisOrThatGameButton.addEventListener("click", () => startMiniGame("thisOrThat"));
 playMysteryGameButton.addEventListener("click", () => startMiniGame("mysteryPersonality"));
 playFavouriteGameButton.addEventListener("click", () => startMiniGame("guessFavourite"));
+playBoxOfLiesGameButton.addEventListener("click", () => showBoxOfLies());
+playTradingGameButton.addEventListener("click", () => showTradingGame());
 featureBestieQuizButton.addEventListener("click", showBestieQuizHome);
 featureGamesButton.addEventListener("click", showGames);
 featureMyQuizzesButton.addEventListener("click", showMyQuizzes);
@@ -6531,6 +9812,12 @@ chatMessageInput.addEventListener("keydown", (event) => {
     sendTypedChatMessage();
   }
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    updateOwnPresence();
+  }
+});
+window.addEventListener("beforeunload", stopPresenceUpdates);
 chatBlockFriendButton.addEventListener("click", blockSelectedChatFriend);
 chatRemoveFriendButton.addEventListener("click", removeSelectedChatFriend);
 clearChatButton.addEventListener("click", clearSelectedChat);
@@ -6576,9 +9863,10 @@ async function initializeApp() {
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
-  const openedSharedQuiz = await loadSharedQuizFromUrl();
+  const openedGameInvite = await loadGameInviteFromUrl();
+  const openedSharedQuiz = openedGameInvite ? false : await loadSharedQuizFromUrl();
 
-  if (!openedSharedQuiz) {
+  if (!openedGameInvite && !openedSharedQuiz) {
     showStart();
   }
 

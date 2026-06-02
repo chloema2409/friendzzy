@@ -114,6 +114,30 @@ create table if not exists public.messages (
   read_at timestamptz
 );
 
+create table if not exists public.game_invites (
+  id uuid primary key default gen_random_uuid(),
+  invite_id text not null unique,
+  game_type text not null,
+  from_friend_code text not null,
+  to_friend_code text not null,
+  status text not null default 'pending',
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  completed_at timestamptz,
+  check (from_friend_code <> to_friend_code),
+  check (game_type in ('box_of_lies', 'trading_game')),
+  check (status in ('pending', 'accepted', 'declined', 'in_progress', 'completed', 'expired', 'cancelled'))
+);
+
+create table if not exists public.player_inventories (
+  id uuid primary key default gen_random_uuid(),
+  friend_code text not null unique,
+  inventory_json jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- Auth-backed cross-device account columns.
 -- These keep the older local/friend-code MVP working while adding real
 -- Supabase Auth ownership.
@@ -136,7 +160,8 @@ add column if not exists receiver_user_id uuid references auth.users(id) on dele
 add column if not exists quiz_id text,
 add column if not exists quiz_title text,
 add column if not exists quiz_link text,
-add column if not exists quiz_question_count integer;
+add column if not exists quiz_question_count integer,
+add column if not exists game_data jsonb not null default '{}'::jsonb;
 
 create table if not exists public.purchases (
   id uuid primary key default gen_random_uuid(),
@@ -179,6 +204,8 @@ create table if not exists public.players (
 alter table public.profiles enable row level security;
 alter table public.friends enable row level security;
 alter table public.messages enable row level security;
+alter table public.game_invites enable row level security;
+alter table public.player_inventories enable row level security;
 alter table public.purchases enable row level security;
 alter table public.diary_entries enable row level security;
 alter table public.players enable row level security;
@@ -302,7 +329,7 @@ with check (
   and char_length(sender_nickname) between 1 and 20
   and char_length(receiver_nickname) between 1 and 20
   and char_length(message_text) between 1 and 150
-  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite', 'quiz_invite')
+  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite', 'quiz_invite', 'box_of_lies_invite', 'trading_game_offer')
   and (
     message_type <> 'quiz_invite'
     or (
@@ -330,7 +357,7 @@ with check (
   sender_user_id = auth.uid()
   and sender_user_id <> receiver_user_id
   and char_length(message_text) between 1 and 150
-  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite', 'quiz_invite')
+  and message_type in ('typed', 'text', 'quick', 'preset', 'sticker', 'game_invite', 'quiz_invite', 'box_of_lies_invite', 'trading_game_offer')
   and (
     message_type <> 'quiz_invite'
     or (
@@ -378,6 +405,98 @@ on public.messages
 for select
 to authenticated
 using (sender_user_id = auth.uid() or receiver_user_id = auth.uid());
+
+drop policy if exists "Friends can save shared game invites" on public.game_invites;
+create policy "Friends can save shared game invites"
+on public.game_invites
+for insert
+to anon, authenticated
+with check (
+  invite_id ~ '^[A-Za-z0-9-]{8,80}$'
+  and game_type in ('box_of_lies', 'trading_game')
+  and status in ('pending', 'accepted', 'declined', 'in_progress', 'completed', 'expired', 'cancelled')
+  and from_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and to_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and from_friend_code <> to_friend_code
+  and jsonb_typeof(payload) = 'object'
+  and exists (
+    select 1
+    from public.friends approved_friend
+    where approved_friend.owner_friend_code = from_friend_code
+      and approved_friend.friend_friend_code = to_friend_code
+  )
+);
+
+drop policy if exists "Friends can refresh shared game invites" on public.game_invites;
+create policy "Friends can refresh shared game invites"
+on public.game_invites
+for update
+to anon, authenticated
+using (
+  exists (
+    select 1
+    from public.friends approved_friend
+    where approved_friend.owner_friend_code = from_friend_code
+      and approved_friend.friend_friend_code = to_friend_code
+  )
+)
+with check (
+  invite_id ~ '^[A-Za-z0-9-]{8,80}$'
+  and game_type in ('box_of_lies', 'trading_game')
+  and status in ('pending', 'accepted', 'declined', 'in_progress', 'completed', 'expired', 'cancelled')
+  and from_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and to_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and from_friend_code <> to_friend_code
+  and jsonb_typeof(payload) = 'object'
+  and exists (
+    select 1
+    from public.friends approved_friend
+    where approved_friend.owner_friend_code = from_friend_code
+      and approved_friend.friend_friend_code = to_friend_code
+  )
+);
+
+drop policy if exists "Friends can read shared game invites" on public.game_invites;
+create policy "Friends can read shared game invites"
+on public.game_invites
+for select
+to anon, authenticated
+using (
+  exists (
+    select 1
+    from public.friends approved_friend
+    where approved_friend.owner_friend_code = from_friend_code
+      and approved_friend.friend_friend_code = to_friend_code
+  )
+);
+
+drop policy if exists "Players can save their game inventory" on public.player_inventories;
+create policy "Players can save their game inventory"
+on public.player_inventories
+for insert
+to anon, authenticated
+with check (
+  friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and jsonb_typeof(inventory_json) = 'array'
+);
+
+drop policy if exists "Players can refresh their game inventory" on public.player_inventories;
+create policy "Players can refresh their game inventory"
+on public.player_inventories
+for update
+to anon, authenticated
+using (friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$')
+with check (
+  friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and jsonb_typeof(inventory_json) = 'array'
+);
+
+drop policy if exists "Players can read game inventories" on public.player_inventories;
+create policy "Players can read game inventories"
+on public.player_inventories
+for select
+to anon, authenticated
+using (friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$');
 
 drop policy if exists "Users can read their purchases" on public.purchases;
 create policy "Users can read their purchases"
@@ -666,6 +785,10 @@ create index if not exists friends_friend_user_id_idx on public.friends (friend_
 create index if not exists messages_conversation_created_idx on public.messages (conversation_id, created_at asc);
 create index if not exists messages_sender_receiver_idx on public.messages (sender_friend_code, receiver_friend_code);
 create index if not exists messages_sender_receiver_user_idx on public.messages (sender_user_id, receiver_user_id);
+create index if not exists game_invites_invite_id_idx on public.game_invites (invite_id);
+create index if not exists game_invites_from_to_updated_idx on public.game_invites (from_friend_code, to_friend_code, updated_at desc);
+create index if not exists game_invites_to_from_updated_idx on public.game_invites (to_friend_code, from_friend_code, updated_at desc);
+create index if not exists player_inventories_friend_code_idx on public.player_inventories (friend_code);
 create index if not exists purchases_user_id_idx on public.purchases (user_id);
 create index if not exists diary_entries_user_created_idx on public.diary_entries (user_id, created_at desc);
 
