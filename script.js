@@ -558,8 +558,9 @@ function normalizeOnlineGamePayload(record) {
     return null;
   }
 
-  const payload = record.payload || record.gamePayload || {};
-  const inviteId = record.invite_id || record.inviteId || payload.id || "";
+  const rawPayload = record.payload || record.gamePayload || null;
+  const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : record;
+  const inviteId = record.invite_id || record.inviteId || record.id || payload.id || "";
   const gameType = record.game_type || record.gameType || payload.gameType || "";
 
   if (!inviteId || !gameType) {
@@ -1304,29 +1305,75 @@ const tradingCollectibles = [
   { itemId: "frog-sticker", emoji: "🐸", name: "Frog Sticker", rarity: "Common", source: "trade" },
   { itemId: "pizza-badge", emoji: "🍕", name: "Pizza Badge", rarity: "Common", source: "trade" },
   { itemId: "cupcake-charm", emoji: "🧁", name: "Cupcake Charm", rarity: "Common", source: "starter" },
+  { itemId: "strawberry-sticker", emoji: "🍓", name: "Strawberry Sticker", rarity: "Common", source: "starter" },
+  { itemId: "duck-card", emoji: "🐥", name: "Duck Card", rarity: "Common", source: "starter" },
+  { itemId: "daisy-charm", emoji: "🌼", name: "Daisy Charm", rarity: "Common", source: "starter" },
+  { itemId: "cookie-badge", emoji: "🍪", name: "Cookie Badge", rarity: "Common", source: "starter" },
+  { itemId: "fish-sticker", emoji: "🐟", name: "Fish Sticker", rarity: "Common", source: "starter" },
+  { itemId: "watermelon-badge", emoji: "🍉", name: "Watermelon Badge", rarity: "Common", source: "starter" },
+  { itemId: "bear-card", emoji: "🐻", name: "Bear Card", rarity: "Common", source: "starter" },
+  { itemId: "mouse-charm", emoji: "🐭", name: "Mouse Charm", rarity: "Common", source: "starter" },
+  { itemId: "lollipop-sticker", emoji: "🍭", name: "Lollipop Sticker", rarity: "Common", source: "starter" },
   { itemId: "pink-bow", emoji: "🎀", name: "Pink Bow", rarity: "Uncommon", source: "shop" },
-  { itemId: "blue-gem", emoji: "🔷", name: "Blue Crystal", rarity: "Uncommon", source: "trade" },
   { itemId: "panda-sticker", emoji: "🐼", name: "Panda Sticker", rarity: "Uncommon", source: "shop" },
   { itemId: "penguin-card", emoji: "🐧", name: "Penguin Card", rarity: "Uncommon", source: "trade" },
   { itemId: "donut-charm", emoji: "🍩", name: "Donut Charm", rarity: "Uncommon", source: "trade" },
   { itemId: "rainbow-sticker", emoji: "🌈", name: "Rainbow Sticker", rarity: "Uncommon", source: "starter" },
+  { itemId: "fox-plushie", emoji: "🦊", name: "Fox Plushie", rarity: "Uncommon", source: "starter" },
+  { itemId: "bunny-roller-skates", emoji: "🐰", name: "Bunny Roller Skates", rarity: "Uncommon", source: "starter" },
+  { itemId: "teddy-charm", emoji: "🧸", name: "Teddy Charm", rarity: "Uncommon", source: "starter" },
+  { itemId: "bee-badge", emoji: "🐝", name: "Bee Badge", rarity: "Uncommon", source: "starter" },
+  { itemId: "bubble-tea-charm", emoji: "🧋", name: "Bubble Tea Charm", rarity: "Uncommon", source: "starter" },
+  { itemId: "dolphin-card", emoji: "🐬", name: "Dolphin Card", rarity: "Uncommon", source: "starter" },
+  { itemId: "cherry-charm", emoji: "🍒", name: "Cherry Charm", rarity: "Uncommon", source: "starter" },
+  { itemId: "lion-sticker", emoji: "🦁", name: "Lion Sticker", rarity: "Uncommon", source: "starter" },
+  { itemId: "koala-badge", emoji: "🐨", name: "Koala Badge", rarity: "Uncommon", source: "starter" },
+  { itemId: "sunflower-charm", emoji: "🌻", name: "Sunflower Charm", rarity: "Uncommon", source: "starter" },
   { itemId: "small-cat-squishy", emoji: "🐱", name: "Small Cat Squishy", rarity: "Rare", source: "shop" },
   { itemId: "unicorn-card", emoji: "🦄", name: "Unicorn Card", rarity: "Rare", source: "shop" },
   { itemId: "tiny-crown", emoji: "👑", name: "Tiny Crown", rarity: "Rare", source: "shop" },
-  { itemId: "fox-plushie", emoji: "🦊", name: "Fox Plushie", rarity: "Rare", source: "trade" },
-  { itemId: "bunny-roller-skates", emoji: "🐰", name: "Bunny Roller Skates", rarity: "Rare", source: "trade" },
-  { itemId: "teddy-charm", emoji: "🧸", name: "Teddy Charm", rarity: "Rare", source: "trade" },
+  { itemId: "baby-dragon-card", emoji: "🐉", name: "Baby Dragon Card", rarity: "Rare", source: "trade" },
+  { itemId: "moon-crystal", emoji: "🌙", name: "Moon Crystal", rarity: "Rare", source: "shop" },
+  { itemId: "bestie-heart", emoji: "💖", name: "Bestie Heart", rarity: "Rare", source: "trade" },
+  { itemId: "disco-gem", emoji: "🪩", name: "Disco Gem", rarity: "Rare", source: "trade" },
+  { itemId: "butterfly-wings", emoji: "🦋", name: "Butterfly Wings", rarity: "Rare", source: "trade" },
+  { itemId: "mushroom-house", emoji: "🍄", name: "Mushroom House", rarity: "Rare", source: "trade" },
+  { itemId: "sparkle-fish", emoji: "🐠", name: "Sparkle Fish", rarity: "Rare", source: "trade" },
+  { itemId: "parrot-plushie", emoji: "🦜", name: "Parrot Plushie", rarity: "Rare", source: "trade" },
+  { itemId: "strawberry-cake-charm", emoji: "🍰", name: "Strawberry Cake Charm", rarity: "Rare", source: "trade" },
+  { itemId: "octopus-card", emoji: "🐙", name: "Octopus Card", rarity: "Rare", source: "trade" },
+  { itemId: "ocean-pearl", emoji: "🌊", name: "Ocean Pearl", rarity: "Rare", source: "trade" },
+  { itemId: "swan-sticker", emoji: "🦢", name: "Swan Sticker", rarity: "Rare", source: "trade" },
   { itemId: "glitter-unicorn", emoji: "🦄", name: "Glitter Unicorn", rarity: "Epic", source: "trade" },
-  { itemId: "baby-dragon-card", emoji: "🐉", name: "Baby Dragon Card", rarity: "Epic", source: "trade" },
-  { itemId: "moon-crystal", emoji: "🌙", name: "Moon Crystal", rarity: "Epic", source: "shop" },
-  { itemId: "bestie-heart", emoji: "💖", name: "Bestie Heart", rarity: "Epic", source: "trade" },
-  { itemId: "disco-gem", emoji: "🪩", name: "Disco Crystal", rarity: "Epic", source: "trade" },
+  { itemId: "rainbow-dragon", emoji: "🐉", name: "Rainbow Dragon", rarity: "Epic", source: "trade" },
+  { itemId: "galaxy-charm", emoji: "🌌", name: "Galaxy Charm", rarity: "Epic", source: "trade" },
+  { itemId: "tiny-castle", emoji: "🏰", name: "Tiny Castle", rarity: "Epic", source: "trade" },
+  { itemId: "golden-cupcake", emoji: "🧁", name: "Golden Cupcake", rarity: "Epic", source: "trade" },
+  { itemId: "fluffy-cat-squishy", emoji: "🐱", name: "Fluffy Cat Squishy", rarity: "Epic", source: "trade" },
+  { itemId: "fairy-wings", emoji: "🧚", name: "Fairy Wings", rarity: "Epic", source: "trade" },
+  { itemId: "magic-flower", emoji: "🌺", name: "Magic Flower", rarity: "Epic", source: "trade" },
+  { itemId: "crystal-wolf", emoji: "🐺", name: "Crystal Wolf", rarity: "Epic", source: "trade" },
+  { itemId: "peacock-feather", emoji: "🦚", name: "Peacock Feather", rarity: "Epic", source: "trade" },
+  { itemId: "magic-crystal", emoji: "🔮", name: "Magic Crystal", rarity: "Epic", source: "trade" },
+  { itemId: "turtle-island", emoji: "🐢", name: "Turtle Island", rarity: "Epic", source: "trade" },
   { itemId: "golden-crown", emoji: "👑", name: "Golden Crown", rarity: "Legendary", source: "trade" },
   { itemId: "rainbow-phoenix", emoji: "🌈", name: "Rainbow Phoenix", rarity: "Legendary", source: "trade" },
   { itemId: "giant-diamond", emoji: "💎", name: "Giant Diamond", rarity: "Legendary", source: "trade" },
   { itemId: "golden-cat-squishy", emoji: "🐱", name: "Golden Cat Squishy", rarity: "Legendary", source: "shop" },
   { itemId: "secret-bestie-star", emoji: "✨", name: "Secret Bestie Star", rarity: "Legendary", source: "trade" },
+  { itemId: "crystal-unicorn", emoji: "🦄", name: "Crystal Unicorn", rarity: "Legendary", source: "trade" },
+  { itemId: "golden-dragon", emoji: "🐉", name: "Golden Dragon", rarity: "Legendary", source: "trade" },
+  { itemId: "ultimate-star", emoji: "🌟", name: "Ultimate Star", rarity: "Legendary", source: "trade" },
+  { itemId: "bestie-trophy", emoji: "🏆", name: "Bestie Trophy", rarity: "Legendary", source: "trade" },
+  { itemId: "angel-wings", emoji: "🪽", name: "Angel Wings", rarity: "Legendary", source: "trade" },
 ];
+const tradingRarityRank = {
+  Legendary: 5,
+  Epic: 4,
+  Rare: 3,
+  Uncommon: 2,
+  Common: 1,
+};
 const tradingStarterInventory = [
   { itemId: "star-sticker", quantity: 2 },
   { itemId: "cat-card", quantity: 1 },
@@ -1335,13 +1382,14 @@ const tradingStarterInventory = [
 ];
 const starterTradingGems = 5;
 const tradingShopOffers = [
-  { itemId: "small-cat-squishy", gemCost: 2 },
+  { itemId: "strawberry-sticker", gemCost: 1 },
   { itemId: "pink-bow", gemCost: 1 },
   { itemId: "panda-sticker", gemCost: 2 },
-  { itemId: "tiny-crown", gemCost: 5 },
+  { itemId: "small-cat-squishy", gemCost: 2 },
+  { itemId: "bee-badge", gemCost: 2 },
   { itemId: "unicorn-card", gemCost: 4 },
-  { itemId: "moon-crystal", gemCost: 8 },
-  { itemId: "golden-cat-squishy", gemCost: 15 },
+  { itemId: "tiny-crown", gemCost: 5 },
+  { itemId: "moon-crystal", gemCost: 6 },
 ];
 const defaultEmojiAvatar = "🌙";
 
@@ -2001,6 +2049,7 @@ let chatLoadedFromSupabase = false;
 let selectedFriendActionCode = "";
 let activeBoxOfLiesRound = null;
 let activeTradingFriendCode = "";
+let activeTradingBoardId = "";
 let activeTradingDraft = { offered: {}, requested: {} };
 let pendingGameInviteId = "";
 let onlineAccountSyncInProgress = false;
@@ -5389,7 +5438,7 @@ function getFriendActivityText(entry) {
   }
 
   if (entry.type === "trade_offer_sent") {
-    return `You sent ${entry.friendNickname} a trade offer.`;
+    return `You opened a Trading Board with ${entry.friendNickname}.`;
   }
 
   if (entry.type === "trade_completed") {
@@ -7269,6 +7318,105 @@ function makeTradingItemEntry(itemId, quantity = 0) {
   };
 }
 
+function getTradingItemsByRarity(rarity) {
+  return tradingCollectibles.filter((item) => item.rarity === rarity);
+}
+
+function getTradingRandomIndex(max) {
+  if (max <= 0) {
+    return 0;
+  }
+
+  if (window.crypto?.getRandomValues) {
+    const randomValues = new Uint32Array(1);
+    window.crypto.getRandomValues(randomValues);
+    return randomValues[0] % max;
+  }
+
+  return Math.floor(Math.random() * max);
+}
+
+function getTradingRandomChance() {
+  if (window.crypto?.getRandomValues) {
+    const randomValues = new Uint32Array(1);
+    window.crypto.getRandomValues(randomValues);
+    return randomValues[0] / 4294967296;
+  }
+
+  return Math.random();
+}
+
+function getTradingRandomRange(min, max) {
+  const safeMin = Math.floor(Number(min) || 0);
+  const safeMax = Math.floor(Number(max) || safeMin);
+
+  if (safeMax <= safeMin) {
+    return safeMin;
+  }
+
+  return safeMin + getTradingRandomIndex(safeMax - safeMin + 1);
+}
+
+function pickTradingStarterItems(rarity, count, quantityMin = 1, quantityMax = 1) {
+  const pool = [...getTradingItemsByRarity(rarity)];
+  const pickedItems = [];
+
+  while (pool.length > 0 && pickedItems.length < count) {
+    const index = getTradingRandomIndex(pool.length);
+    const [item] = pool.splice(index, 1);
+    pickedItems.push({
+      itemId: item.itemId,
+      quantity: getTradingRandomRange(quantityMin, quantityMax),
+    });
+  }
+
+  return pickedItems;
+}
+
+function generateTradingStarterInventory() {
+  const commonStacks = getTradingRandomRange(6, 10);
+  const uncommonStacks = getTradingRandomRange(3, 5);
+  const rareStacks = getTradingRandomChance() < 0.35 ? 2 : 1;
+  const starterItems = [
+    ...pickTradingStarterItems("Common", commonStacks, 2, 5),
+    ...pickTradingStarterItems("Uncommon", uncommonStacks, 1, 3),
+    ...pickTradingStarterItems("Rare", rareStacks, 1, 2),
+  ];
+
+  if (getTradingRandomChance() < 0.25) {
+    starterItems.push(...pickTradingStarterItems("Epic", 1, 1, 1));
+  }
+
+  if (getTradingRandomChance() < 0.05) {
+    starterItems.push(...pickTradingStarterItems("Legendary", 1, 1, 1));
+  }
+
+  return normalizeTradingItems(starterItems.length > 0 ? starterItems : tradingStarterInventory);
+}
+
+function createAndSaveStarterTradingInventoryForCode(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return [];
+  }
+
+  const existingItems = getStoredTradingInventory(safeFriendCode);
+
+  if (existingItems) {
+    return existingItems;
+  }
+
+  const inventories = getTradingInventories();
+  const starterItems = generateTradingStarterInventory();
+  inventories[safeFriendCode] = {
+    items: starterItems,
+    updatedAt: Date.now(),
+  };
+  saveTradingInventories(inventories);
+  return starterItems;
+}
+
 function getTradingCurrencyQuantity(items = []) {
   if (!Array.isArray(items)) {
     return 0;
@@ -7313,6 +7461,19 @@ function normalizeTradingItems(items = []) {
   return [...quantities.entries()]
     .map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity))
     .filter((item) => item.quantity > 0);
+}
+
+function sortTradingItemsByRarity(items = []) {
+  return normalizeTradingItems(items).sort((firstItem, secondItem) => {
+    const firstRank = tradingRarityRank[firstItem.rarity] || 0;
+    const secondRank = tradingRarityRank[secondItem.rarity] || 0;
+
+    if (firstRank !== secondRank) {
+      return secondRank - firstRank;
+    }
+
+    return firstItem.name.localeCompare(secondItem.name);
+  });
 }
 
 function getTradingInventories() {
@@ -7391,7 +7552,7 @@ function saveTradingGemsForCode(friendCode, gems, { updatedAt = Date.now(), sync
   saveTradingGemBalances(balances);
 
   if (syncOnline && onlineFriendGames.isConfigured) {
-    const inventory = getStoredTradingInventory(safeFriendCode) || normalizeTradingItems(tradingStarterInventory);
+    const inventory = getStoredTradingInventory(safeFriendCode) || createAndSaveStarterTradingInventoryForCode(safeFriendCode);
     onlineFriendGames.saveInventory(safeFriendCode, inventory, safeGems).catch((error) => {
       console.error("Supabase trading gems save error:", error);
     });
@@ -7480,19 +7641,13 @@ function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
     return [];
   }
 
-  const inventories = getTradingInventories();
   const existingItems = getStoredTradingInventory(safeFriendCode);
 
   if (existingItems) {
     return existingItems;
   }
 
-  const starterItems = normalizeTradingItems(tradingStarterInventory);
-  inventories[safeFriendCode] = {
-    items: starterItems,
-    updatedAt: Date.now(),
-  };
-  saveTradingInventories(inventories);
+  const starterItems = createAndSaveStarterTradingInventoryForCode(safeFriendCode);
   getTradingGems(safeFriendCode);
   return starterItems;
 }
@@ -7679,6 +7834,49 @@ function markTradingTradeApplied(trade, friendCode = activePlayer?.friendCode ||
   saveTradingAppliedTrades(log);
 }
 
+function normalizeTradingTradeRecord(trade) {
+  if (!trade || typeof trade !== "object") {
+    return null;
+  }
+
+  const id = String(trade.id || trade.inviteId || trade.invite_id || "").trim();
+  const gameType = trade.gameType || trade.game_type || "trading_game";
+  const fromFriendCode = normalizeFriendCode(trade.fromFriendCode || trade.from_friend_code || "");
+  const toFriendCode = normalizeFriendCode(trade.toFriendCode || trade.to_friend_code || "");
+
+  if (!id || gameType !== "trading_game" || !fromFriendCode || !toFriendCode) {
+    return null;
+  }
+
+  const fromProfile = getFriendProfileSnapshot(fromFriendCode);
+  const toProfile = getFriendProfileSnapshot(toFriendCode);
+  const normalizedStatus = trade.status === "active" ? "in_progress" : trade.status;
+  const status = ["pending", "accepted", "declined", "in_progress", "completed", "cancelled", "expired"].includes(normalizedStatus)
+    ? normalizedStatus
+    : "pending";
+
+  return {
+    ...trade,
+    id,
+    gameType: "trading_game",
+    inviteLink: trade.inviteLink || trade.invite_link || getGameInviteLink(id),
+    fromFriendCode,
+    fromNickname: trade.fromNickname || trade.from_nickname || fromProfile.nickname || "Friend",
+    toFriendCode,
+    toNickname: trade.toNickname || trade.to_nickname || toProfile.nickname || "Friend",
+    offeredItems: normalizeTradingItems(trade.offeredItems || trade.offered_items || []),
+    requestedItems: normalizeTradingItems(trade.requestedItems || trade.requested_items || []),
+    fromAccepted: trade.fromAccepted === true || trade.from_accepted === true || trade.playerAAccepted === true,
+    toAccepted: trade.toAccepted === true || trade.to_accepted === true || trade.playerBAccepted === true,
+    status,
+    inventoryMode: trade.inventoryMode || trade.inventory_mode || "",
+    createdAt: Number.parseInt(trade.createdAt || trade.created_at || "0", 10) || Date.now(),
+    updatedAt: Number.parseInt(trade.updatedAt || trade.updated_at || trade.createdAt || trade.created_at || "0", 10) || Date.now(),
+    respondedAt: Number.parseInt(trade.respondedAt || trade.responded_at || "0", 10) || null,
+    completedAt: Number.parseInt(trade.completedAt || trade.completed_at || "0", 10) || null,
+  };
+}
+
 function getTradingTrades() {
   const savedTrades = localStorage.getItem(tradingTradesKey);
 
@@ -7688,7 +7886,7 @@ function getTradingTrades() {
 
   try {
     const trades = JSON.parse(savedTrades);
-    return Array.isArray(trades) ? trades : [];
+    return Array.isArray(trades) ? trades.map(normalizeTradingTradeRecord).filter(Boolean) : [];
   } catch {
     return [];
   }
@@ -7699,19 +7897,29 @@ function getTradingTradeTime(trade) {
 }
 
 function saveTradingTrades(trades) {
-  localStorage.setItem(tradingTradesKey, JSON.stringify(trades.slice(0, 80)));
+  const safeTrades = (Array.isArray(trades) ? trades : [])
+    .map(normalizeTradingTradeRecord)
+    .filter(Boolean)
+    .slice(0, 80);
+  localStorage.setItem(tradingTradesKey, JSON.stringify(safeTrades));
 }
 
 function saveTradingTrade(trade) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade) {
+    return;
+  }
+
   const trades = getTradingTrades();
   saveTradingTrades([
-    trade,
-    ...trades.filter((savedTrade) => savedTrade.id !== trade.id),
+    safeTrade,
+    ...trades.filter((savedTrade) => savedTrade.id !== safeTrade.id),
   ].sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade)));
   syncUsernameProgressOnlineSoon();
 
-  if (trade?.gameType === "trading_game" && trade.fromFriendCode && trade.toFriendCode) {
-    saveSharedFriendGameState(trade).catch((error) => {
+  if (safeTrade.gameType === "trading_game" && safeTrade.fromFriendCode && safeTrade.toFriendCode) {
+    saveSharedFriendGameState(safeTrade).catch((error) => {
       console.error("Trading shared save error:", error);
     });
   }
@@ -7725,7 +7933,8 @@ function mergeTradingTrades(trades = []) {
   );
 
   trades
-    .filter((trade) => trade?.gameType === "trading_game" && trade.id)
+    .map(normalizeTradingTradeRecord)
+    .filter(Boolean)
     .forEach((trade) => {
       const currentTrade = tradesById.get(trade.id);
 
@@ -7748,14 +7957,20 @@ function cacheTradingTradesFromMessages(messages = []) {
 }
 
 function getTradingDisplayTrade(trade) {
-  if (trade?.status === "pending" && Date.now() - (Number.parseInt(trade.createdAt || "0", 10) || 0) > tradingOfferExpiryMs) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade) {
+    return null;
+  }
+
+  if (safeTrade.status === "pending" && Date.now() - (Number.parseInt(safeTrade.createdAt || "0", 10) || 0) > tradingOfferExpiryMs) {
     return {
-      ...trade,
+      ...safeTrade,
       status: "expired",
     };
   }
 
-  return trade;
+  return safeTrade;
 }
 
 function getTradingTradeMessages(messages = getActiveChatMessages()) {
@@ -7801,7 +8016,7 @@ function isTradingReceiver(trade) {
 }
 
 function formatTradingItems(items = []) {
-  const safeItems = normalizeTradingItems(items);
+  const safeItems = sortTradingItemsByRarity(items);
 
   if (safeItems.length === 0) {
     return "No items";
@@ -7815,12 +8030,12 @@ function renderTradingNav(activeView = "") {
   nav.className = "trading-nav result-actions";
   const balance = document.createElement("p");
   balance.className = "trade-gem-total trading-balance";
-  balance.textContent = `💎 Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
+  balance.textContent = `Optional Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
   nav.append(balance);
   [
     { id: "inventory", label: "My Inventory", action: renderTradingInventoryView },
-    { id: "offers", label: "Trade Offers", action: renderTradingOffersView },
-    { id: "shop", label: "Trading Shop", action: renderTradingShop },
+    { id: "offers", label: "Trading Boards", action: renderTradingOffersView },
+    { id: "shop", label: "Optional Shop", action: renderTradingShop },
     { id: "history", label: "Trade History", action: renderTradingHistoryView },
   ].forEach((item) => {
     const button = document.createElement("button");
@@ -7834,7 +8049,111 @@ function renderTradingNav(activeView = "") {
   return nav;
 }
 
-function makeTradingTrade(friendCode, offeredItems, requestedItems) {
+function isTradingBoardOpenStatus(status) {
+  return ["pending", "accepted", "in_progress"].includes(status);
+}
+
+function getTradingSideForCode(trade, friendCode = activePlayer?.friendCode || "") {
+  const safeCode = normalizeFriendCode(friendCode);
+
+  if (safeCode === normalizeFriendCode(trade?.fromFriendCode || "")) {
+    return "from";
+  }
+
+  if (safeCode === normalizeFriendCode(trade?.toFriendCode || "")) {
+    return "to";
+  }
+
+  return "";
+}
+
+function getTradingItemsForSide(trade, side) {
+  return side === "to" ? normalizeTradingItems(trade?.requestedItems || []) : normalizeTradingItems(trade?.offeredItems || []);
+}
+
+function getTradingAcceptedForSide(trade, side) {
+  return side === "to" ? trade?.toAccepted === true : trade?.fromAccepted === true;
+}
+
+function getTradingFriendCodeForSide(trade, side) {
+  return side === "to" ? normalizeFriendCode(trade?.toFriendCode || "") : normalizeFriendCode(trade?.fromFriendCode || "");
+}
+
+function getTradingNicknameForSide(trade, side) {
+  return side === "to" ? trade?.toNickname || "Friend" : trade?.fromNickname || "Friend";
+}
+
+function getTradingOtherSide(side) {
+  return side === "to" ? "from" : "to";
+}
+
+function getTradingPartnerCode(trade) {
+  const activeSide = getTradingSideForCode(trade);
+  return getTradingFriendCodeForSide(trade, getTradingOtherSide(activeSide));
+}
+
+function getTradingBoardStatusText(trade) {
+  if (trade.status === "completed") {
+    return "Completed";
+  }
+
+  if (trade.status === "declined") {
+    return "Declined";
+  }
+
+  if (trade.status === "cancelled") {
+    return "Cancelled";
+  }
+
+  if (trade.status === "expired") {
+    return "Expired";
+  }
+
+  if (trade.fromAccepted && trade.toAccepted) {
+    return "Both accepted";
+  }
+
+  if (trade.fromAccepted || trade.toAccepted) {
+    return "Waiting for one player";
+  }
+
+  return "Building trade";
+}
+
+function updateTradingSideItems(trade, side, items) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade) {
+    return null;
+  }
+
+  return normalizeTradingTradeRecord({
+    ...safeTrade,
+    offeredItems: side === "from" ? normalizeTradingItems(items) : safeTrade.offeredItems,
+    requestedItems: side === "to" ? normalizeTradingItems(items) : safeTrade.requestedItems,
+    fromAccepted: false,
+    toAccepted: false,
+    status: "pending",
+    updatedAt: Date.now(),
+  });
+}
+
+function getTradePairKey(firstCode, secondCode) {
+  return [normalizeFriendCode(firstCode), normalizeFriendCode(secondCode)].sort().join("__");
+}
+
+function findActiveTradingBoardForFriend(friendCode) {
+  const activeCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const targetCode = normalizeFriendCode(friendCode);
+  const pairKey = getTradePairKey(activeCode, targetCode);
+
+  return getTradingTrades()
+    .map(getTradingDisplayTrade)
+    .filter(Boolean)
+    .find((trade) => isTradingBoardOpenStatus(trade.status) && getTradePairKey(trade.fromFriendCode, trade.toFriendCode) === pairKey) || null;
+}
+
+function makeTradingTrade(friendCode, offeredItems = [], requestedItems = []) {
   const friendProfile = getFriendProfileSnapshot(friendCode);
   const tradeId = crypto.randomUUID();
 
@@ -7848,6 +8167,8 @@ function makeTradingTrade(friendCode, offeredItems, requestedItems) {
     toNickname: friendProfile.nickname,
     offeredItems: normalizeTradingItems(offeredItems),
     requestedItems: normalizeTradingItems(requestedItems),
+    fromAccepted: false,
+    toAccepted: false,
     status: "pending",
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -7888,6 +8209,7 @@ function renderTradingHistory() {
   const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
   const trades = getTradingTrades()
     .map(getTradingDisplayTrade)
+    .filter(Boolean)
     .filter((trade) => !ownerCode || trade.fromFriendCode === ownerCode || trade.toFriendCode === ownerCode)
     .slice(0, 6);
 
@@ -7915,10 +8237,12 @@ function renderTradingHistory() {
       text.textContent = `${friendName}: Trade completed.`;
     } else if (trade.status === "declined") {
       text.textContent = `${friendName}: Trade declined.`;
+    } else if (trade.status === "cancelled") {
+      text.textContent = `${friendName}: Trade cancelled.`;
     } else if (trade.status === "expired") {
       text.textContent = `${friendName}: Trade expired.`;
     } else {
-      text.textContent = `${friendName}: Trade offer pending.`;
+      text.textContent = `${friendName}: Trading Board active.`;
     }
 
     const time = document.createElement("span");
@@ -7935,19 +8259,20 @@ function renderTradingOffersPanel() {
   const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
   const activeTrades = getTradingTrades()
     .map(getTradingDisplayTrade)
-    .filter((trade) => trade.status === "pending" && (trade.fromFriendCode === ownerCode || trade.toFriendCode === ownerCode))
+    .filter(Boolean)
+    .filter((trade) => isTradingBoardOpenStatus(trade.status) && (trade.fromFriendCode === ownerCode || trade.toFriendCode === ownerCode))
     .slice(0, 6);
 
   const panel = document.createElement("div");
   panel.className = "box-history-panel trading-offers-panel";
   const title = document.createElement("h3");
-  title.textContent = "Incoming and Pending Trades";
+  title.textContent = "Open Trading Boards";
   panel.append(title);
 
   if (activeTrades.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-leaderboard";
-    empty.textContent = "No pending trade offers.";
+    empty.textContent = "No open Trading Boards.";
     panel.append(empty);
     return panel;
   }
@@ -7956,32 +8281,16 @@ function renderTradingOffersPanel() {
     const item = document.createElement("article");
     item.className = "friend-activity-item trade-offer-row";
     const text = document.createElement("p");
-    text.textContent = trade.toFriendCode === ownerCode
-      ? `${trade.fromNickname} wants to trade: ${formatTradingItems(trade.offeredItems)} for ${formatTradingItems(trade.requestedItems)}.`
-      : `Waiting for ${trade.toNickname}: ${formatTradingItems(trade.offeredItems)} for ${formatTradingItems(trade.requestedItems)}.`;
+    const friendName = trade.fromFriendCode === ownerCode ? trade.toNickname : trade.fromNickname;
+    text.textContent = `Trading Board with ${friendName}: ${getTradingBoardStatusText(trade)}.`;
     const actions = document.createElement("div");
     actions.className = "box-card-actions";
-
-    if (trade.toFriendCode === ownerCode) {
-      const acceptButton = document.createElement("button");
-      acceptButton.className = "save-quiz-button";
-      acceptButton.type = "button";
-      acceptButton.textContent = "Accept";
-      acceptButton.addEventListener("click", () => acceptTradingOffer(trade));
-      const declineButton = document.createElement("button");
-      declineButton.className = "secondary-button";
-      declineButton.type = "button";
-      declineButton.textContent = "Decline";
-      declineButton.addEventListener("click", () => declineTradingOffer(trade));
-      actions.append(acceptButton, declineButton);
-    } else {
-      const openButton = document.createElement("button");
-      openButton.className = "secondary-button";
-      openButton.type = "button";
-      openButton.textContent = "View";
-      openButton.addEventListener("click", () => renderTradingSent(trade));
-      actions.append(openButton);
-    }
+    const openButton = document.createElement("button");
+    openButton.className = "save-quiz-button";
+    openButton.type = "button";
+    openButton.textContent = "Open Board";
+    openButton.addEventListener("click", () => renderTradingBoard(trade));
+    actions.append(openButton);
 
     item.append(text, actions);
     panel.append(item);
@@ -8026,11 +8335,11 @@ function renderTradingInventoryPanel(title, inventory = getTradingInventory()) {
   heading.textContent = title;
   const gemCount = document.createElement("p");
   gemCount.className = "trade-gem-total";
-  gemCount.textContent = `💎 Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
+  gemCount.textContent = `Optional Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
 
-  const safeInventory = normalizeTradingItems(inventory);
+  const safeInventory = sortTradingItemsByRarity(inventory);
 
   if (safeInventory.length === 0) {
     const empty = document.createElement("p");
@@ -8069,7 +8378,7 @@ function renderTradingShop() {
   heading.textContent = "Trading Shop";
   const intro = document.createElement("p");
   intro.className = "friendly-message";
-  intro.textContent = `Use Gems only. You have ${gemCount} Gems. No real money, no mystery boxes.`;
+  intro.textContent = `Optional item shop. You have ${gemCount} Gems. Trading is still item-for-item on the board.`;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
 
@@ -8140,14 +8449,14 @@ function renderTradingRules(friendCode = "") {
   title.textContent = "Trading Game Rules";
   const list = document.createElement("ol");
   [
-    "Trade cute collectible items with your friends.",
-    "Choose what you want to offer.",
-    "Choose what you want to ask for.",
-    "Your friend can accept or decline.",
-    "If they accept, the items swap.",
-    "Only trade preset game items.",
-    "No real money, no strangers, and no open chat.",
-    "Trades should be fair and fun.",
+    "Open a Trading Board with a friend you already added.",
+    "Each player places preset items on their own side of the board.",
+    "Use the plus button to add or change your offer.",
+    "Use the tick button to accept the exact board you see.",
+    "If either player changes items, both accept checks reset.",
+    "The trade completes only when both players accept.",
+    "Only preset game items are traded. No real money, strangers, or open marketplace.",
+    "Trades should feel fair, friendly, and fun.",
   ].forEach((ruleText) => {
     const item = document.createElement("li");
     item.textContent = ruleText;
@@ -8163,7 +8472,7 @@ function renderTradingRules(friendCode = "") {
   gotItButton.textContent = "Got it";
   gotItButton.addEventListener("click", () => {
     if (friendCode && isApprovedFriendCode(friendCode)) {
-      renderTradingOfferBuilder(friendCode);
+      startTradingBoardForFriend(friendCode);
       return;
     }
 
@@ -8175,7 +8484,7 @@ function renderTradingRules(friendCode = "") {
   startButton.textContent = "Start Trading";
   startButton.addEventListener("click", () => {
     if (friendCode && isApprovedFriendCode(friendCode)) {
-      renderTradingOfferBuilder(friendCode);
+      startTradingBoardForFriend(friendCode);
       return;
     }
 
@@ -8191,10 +8500,10 @@ function renderTradingFriendChooser() {
   const intro = document.createElement("div");
   intro.className = "box-of-lies-intro trading-intro";
   intro.innerHTML = `
-    <div class="box-secret-visual" aria-hidden="true">💎</div>
+    <div class="box-secret-visual" aria-hidden="true">🤝</div>
     <div>
       <h3>Choose a Friend</h3>
-      <p>Pick someone from My Friends, then create a fair preset trade offer.</p>
+      <p>Pick someone from My Friends, then open a board where both sides can place items.</p>
     </div>
   `;
   tradingGameContent.append(intro);
@@ -8227,14 +8536,218 @@ function renderTradingFriendChooser() {
     const startButton = document.createElement("button");
     startButton.className = "save-quiz-button";
     startButton.type = "button";
-    startButton.textContent = "Create Trade";
-    startButton.addEventListener("click", () => renderTradingOfferBuilder(friendProfile.friendCode));
+    startButton.textContent = "Open Board";
+    startButton.addEventListener("click", () => startTradingBoardForFriend(friendProfile.friendCode));
 
     row.append(avatar, details, startButton);
     list.append(row);
   });
 
   tradingGameContent.append(renderTradingNav(""), list, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+}
+
+function renderTradingBoardItems(trade, side, { title, canEdit = false } = {}) {
+  const panel = document.createElement("section");
+  panel.className = `trading-board-side ${canEdit ? "my-board-side" : "friend-board-side"}`;
+  const heading = document.createElement("div");
+  heading.className = "trading-board-side-heading";
+  const name = document.createElement("h3");
+  name.textContent = title;
+  const status = document.createElement("span");
+  status.className = getTradingAcceptedForSide(trade, side) ? "trade-accept-status accepted" : "trade-accept-status waiting";
+  status.textContent = getTradingAcceptedForSide(trade, side) ? "Accepted" : "Not accepted";
+  heading.append(name, status);
+  panel.append(heading);
+
+  const items = getTradingItemsForSide(trade, side);
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = canEdit ? "Place items on your side of the board." : "No items placed yet.";
+    panel.append(empty);
+  } else {
+    const grid = document.createElement("div");
+    grid.className = "trade-item-grid trading-board-items";
+    items.forEach((item) => {
+      const card = document.createElement("article");
+      card.className = `trade-item-card ${getTradingRarityClass(item.rarity)}`;
+      const icon = document.createElement("span");
+      icon.className = "trade-item-icon";
+      icon.textContent = item.emoji;
+      const itemName = document.createElement("strong");
+      itemName.textContent = item.name;
+      const quantity = document.createElement("span");
+      quantity.textContent = `x${item.quantity}`;
+      card.append(icon, itemName, makeTradingRarityBadge(item), quantity);
+
+      if (canEdit && isTradingBoardOpenStatus(trade.status)) {
+        const removeButton = document.createElement("button");
+        removeButton.className = "secondary-button";
+        removeButton.type = "button";
+        removeButton.textContent = "Remove";
+        removeButton.addEventListener("click", () => removeTradingBoardItem(trade, item.itemId));
+        card.append(removeButton);
+      }
+
+      grid.append(card);
+    });
+    panel.append(grid);
+  }
+
+  if (canEdit && isTradingBoardOpenStatus(trade.status)) {
+    const changeButton = document.createElement("button");
+    changeButton.className = "save-quiz-button";
+    changeButton.type = "button";
+    changeButton.textContent = "➕ Add / Change Items";
+    changeButton.addEventListener("click", () => renderTradingOfferBuilder(trade));
+    panel.append(changeButton);
+  }
+
+  return panel;
+}
+
+function renderTradingBoard(trade) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade) {
+    renderTradingLoadError("This trade board could not be loaded.");
+    return;
+  }
+
+  const activeSide = getTradingSideForCode(safeTrade);
+
+  if (!activeSide) {
+    renderTradingLoadError("This trade board belongs to different players.");
+    return;
+  }
+
+  activeTradingBoardId = safeTrade.id;
+  activeTradingFriendCode = getTradingPartnerCode(safeTrade);
+  tradingGameContent.innerHTML = "";
+
+  const friendProfile = getFriendProfileSnapshot(activeTradingFriendCode);
+  const header = document.createElement("div");
+  header.className = "box-secret-panel trading-board-header";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "🤝";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trading Board";
+  const title = document.createElement("h3");
+  title.textContent = `Trading with ${friendProfile.nickname}`;
+  const summary = document.createElement("p");
+  summary.textContent = `${getTradingBoardStatusText(safeTrade)}. Both players must accept the final board to swap items.`;
+  details.append(eyebrow, title, summary, makeFriendPresenceBadge(friendProfile));
+  header.append(icon, details);
+
+  const mySide = activeSide;
+  const friendSide = getTradingOtherSide(mySide);
+  const board = document.createElement("div");
+  board.className = "trading-board";
+  const myPanel = renderTradingBoardItems(safeTrade, mySide, { title: "My Offer", canEdit: true });
+  const friendPanel = renderTradingBoardItems(safeTrade, friendSide, { title: "Friend's Offer", canEdit: false });
+  const middle = document.createElement("div");
+  middle.className = "trading-board-middle";
+  const plus = document.createElement("span");
+  plus.className = "trading-board-plus";
+  plus.textContent = "↔";
+  const middleText = document.createElement("p");
+  middleText.textContent = "Items swap only after both players accept.";
+  middle.append(plus, middleText);
+  board.append(myPanel, middle, friendPanel);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions trading-board-actions";
+  const changeButton = document.createElement("button");
+  changeButton.className = "secondary-button";
+  changeButton.type = "button";
+  changeButton.textContent = "➕ Change Offer";
+  changeButton.disabled = !isTradingBoardOpenStatus(safeTrade.status);
+  changeButton.addEventListener("click", () => renderTradingOfferBuilder(safeTrade));
+  const acceptButton = document.createElement("button");
+  acceptButton.className = "save-quiz-button";
+  acceptButton.type = "button";
+  acceptButton.textContent = getTradingAcceptedForSide(safeTrade, mySide) ? "✅ Accepted" : "✅ Accept Trade";
+  acceptButton.disabled = !isTradingBoardOpenStatus(safeTrade.status)
+    || getTradingAcceptedForSide(safeTrade, mySide)
+    || getTradingItemsForSide(safeTrade, mySide).length === 0
+    || getTradingItemsForSide(safeTrade, friendSide).length === 0;
+  acceptButton.addEventListener("click", () => acceptTradingOffer(safeTrade));
+  const declineButton = document.createElement("button");
+  declineButton.className = "secondary-button";
+  declineButton.type = "button";
+  declineButton.textContent = isTradingSender(safeTrade) ? "❌ Cancel Trade" : "❌ Decline Trade";
+  declineButton.disabled = !isTradingBoardOpenStatus(safeTrade.status);
+  declineButton.addEventListener("click", () => declineTradingOffer(safeTrade));
+  actions.append(changeButton, acceptButton, declineButton);
+
+  tradingGameContent.append(
+    renderTradingNav("offers"),
+    header,
+    board,
+    actions,
+    renderTradingInventoryPanel("My Inventory"),
+    renderTradingHistory(),
+  );
+}
+
+function removeTradingBoardItem(trade, itemId) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+  const activeSide = getTradingSideForCode(safeTrade);
+
+  if (!safeTrade || !activeSide || !isTradingBoardOpenStatus(safeTrade.status)) {
+    tradingGameMessage.textContent = "This trade board cannot be changed now.";
+    return;
+  }
+
+  const currentItems = getTradingItemsForSide(safeTrade, activeSide);
+  const updatedItems = subtractTradingItems(currentItems, [makeTradingItemEntry(itemId, 1)]) || [];
+  const updatedTrade = updateTradingSideItems(safeTrade, activeSide, updatedItems);
+  saveTradingTrade(updatedTrade);
+  tradingGameMessage.textContent = "Offer changed. Both players need to accept again.";
+  renderTradingBoard(updatedTrade);
+}
+
+async function startTradingBoardForFriend(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!isApprovedFriendCode(safeFriendCode)) {
+    tradingGameMessage.textContent = "Choose an added friend first.";
+    renderTradingFriendChooser();
+    return;
+  }
+
+  tradingGameMessage.textContent = "Opening Trading Board...";
+
+  try {
+    await syncFriendGameStateFromOnline();
+  } catch (error) {
+    console.error("Trading board sync before open error:", error);
+  }
+
+  let trade = findActiveTradingBoardForFriend(safeFriendCode);
+
+  if (!trade) {
+    trade = makeTradingTrade(safeFriendCode);
+    saveTradingTrade(trade);
+
+    try {
+      await saveTradingTradeMessage(
+        trade,
+        trade.toFriendCode,
+        `${activePlayer.nickname} opened a Trading Board with you.`,
+      );
+    } catch (error) {
+      console.error("Trading board invite message error:", error);
+    }
+  }
+
+  tradingGameMessage.textContent = "";
+  renderTradingBoard(trade);
 }
 
 function changeTradingDraft(kind, itemId, delta, maxQuantity = 3) {
@@ -8261,7 +8774,7 @@ function renderTradingSelectionGrid(title, items, kind) {
   heading.textContent = title;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
-  const safeItems = normalizeTradingItems(items);
+  const safeItems = sortTradingItemsByRarity(items);
 
   if (safeItems.length === 0) {
     const empty = document.createElement("p");
@@ -8299,7 +8812,7 @@ function renderTradingSelectionGrid(title, items, kind) {
     minusButton.disabled = selectedQuantity === 0;
     minusButton.addEventListener("click", () => {
       changeTradingDraft(kind, item.itemId, -1, maxQuantity);
-      renderTradingOfferBuilder(activeTradingFriendCode, false);
+      renderTradingOfferBuilder(getLatestTradingTrade(activeTradingBoardId) || findActiveTradingBoardForFriend(activeTradingFriendCode) || activeTradingFriendCode, false);
     });
     const plusButton = document.createElement("button");
     plusButton.className = "secondary-button";
@@ -8308,7 +8821,7 @@ function renderTradingSelectionGrid(title, items, kind) {
     plusButton.disabled = selectedQuantity >= maxQuantity;
     plusButton.addEventListener("click", () => {
       changeTradingDraft(kind, item.itemId, 1, maxQuantity);
-      renderTradingOfferBuilder(activeTradingFriendCode, false);
+      renderTradingOfferBuilder(getLatestTradingTrade(activeTradingBoardId) || findActiveTradingBoardForFriend(activeTradingFriendCode) || activeTradingFriendCode, false);
     });
     controls.append(minusButton, plusButton);
     card.append(icon, name, makeTradingRarityBadge(item), meta, selected, controls);
@@ -8322,63 +8835,78 @@ function renderTradingSelectionGrid(title, items, kind) {
 function renderTradingDraftSummary() {
   const summary = document.createElement("div");
   summary.className = "trade-draft-summary";
-  summary.append(
-    renderTradeItemList("You offer", tradingDraftToItems(activeTradingDraft.offered)),
-    renderTradeItemList("You ask for", tradingDraftToItems(activeTradingDraft.requested)),
-  );
+  summary.append(renderTradeItemList("My board offer", tradingDraftToItems(activeTradingDraft.offered)));
   return summary;
 }
 
-function renderTradingOfferBuilder(friendCode, resetDraft = true) {
-  const safeFriendCode = normalizeFriendCode(friendCode);
+function renderTradingOfferBuilder(tradeOrFriendCode, resetDraft = true) {
+  let trade = typeof tradeOrFriendCode === "string"
+    ? findActiveTradingBoardForFriend(tradeOrFriendCode)
+    : normalizeTradingTradeRecord(tradeOrFriendCode);
 
-  if (!isApprovedFriendCode(safeFriendCode)) {
+  if (!trade && typeof tradeOrFriendCode === "string" && isApprovedFriendCode(tradeOrFriendCode)) {
+    trade = makeTradingTrade(tradeOrFriendCode);
+    saveTradingTrade(trade);
+  }
+
+  if (!trade) {
     tradingGameMessage.textContent = "Choose an added friend first.";
     renderTradingFriendChooser();
     return;
   }
 
-  activeTradingFriendCode = safeFriendCode;
+  const activeSide = getTradingSideForCode(trade);
+  activeTradingFriendCode = getTradingPartnerCode(trade);
+  activeTradingBoardId = trade.id;
 
-  if (resetDraft) {
-    activeTradingDraft = { offered: {}, requested: {} };
+  if (!activeSide || !isApprovedFriendCode(activeTradingFriendCode)) {
+    tradingGameMessage.textContent = "Choose an added friend first.";
+    renderTradingFriendChooser();
+    return;
   }
 
-  const friendProfile = getFriendProfileSnapshot(safeFriendCode);
+  if (resetDraft) {
+    activeTradingDraft = {
+      offered: Object.fromEntries(getTradingItemsForSide(trade, activeSide).map((item) => [item.itemId, item.quantity])),
+      requested: {},
+    };
+  }
+
+  const friendProfile = getFriendProfileSnapshot(activeTradingFriendCode);
   const myInventory = getTradingInventory(activePlayer.friendCode);
   tradingGameContent.innerHTML = "";
   tradingGameMessage.textContent = isFriendOnline(friendProfile)
     ? `${friendProfile.nickname} looks online.`
-    : "Your friend is offline. They can answer the trade when they come back.";
+    : "Your friend is offline. They can update their side when they come back.";
 
   const intro = document.createElement("div");
   intro.className = "box-secret-panel trading-offer-panel";
   const icon = document.createElement("div");
   icon.className = "box-secret-visual";
   icon.setAttribute("aria-hidden", "true");
-  icon.textContent = "💎";
+  icon.textContent = "➕";
   const details = document.createElement("div");
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow";
-  eyebrow.textContent = "Create Trade";
+  eyebrow.textContent = "Change Offer";
   const title = document.createElement("h3");
-  title.textContent = `Trade with ${friendProfile.nickname}`;
+  title.textContent = `My side of the board`;
   const body = document.createElement("p");
-  body.textContent = "Pick preset items only. Your friend can accept or decline.";
+  body.textContent = `Choose items to place against ${friendProfile.nickname}'s side. Changing items resets both accept checks.`;
   details.append(eyebrow, title, body, makeFriendPresenceBadge(friendProfile));
   intro.append(icon, details);
 
   const sendButton = document.createElement("button");
   sendButton.className = "save-quiz-button";
   sendButton.type = "button";
-  sendButton.textContent = "Send Trade Offer";
+  sendButton.textContent = "Save Board Offer";
   sendButton.addEventListener("click", sendTradingOffer);
 
   const backButton = document.createElement("button");
   backButton.className = "secondary-button";
   backButton.type = "button";
-  backButton.textContent = "Choose Another Friend";
-  backButton.addEventListener("click", renderTradingFriendChooser);
+  backButton.textContent = "Back to Board";
+  backButton.addEventListener("click", () => renderTradingBoard(trade));
 
   const actions = document.createElement("div");
   actions.className = "result-actions";
@@ -8387,8 +8915,7 @@ function renderTradingOfferBuilder(friendCode, resetDraft = true) {
   tradingGameContent.append(
     renderTradingNav(""),
     intro,
-    renderTradingSelectionGrid("Offer from my inventory", myInventory, "offered"),
-    renderTradingSelectionGrid("Ask for a preset collectible", tradingCollectibles.map((item) => makeTradingItemEntry(item.itemId, 1)), "requested"),
+    renderTradingSelectionGrid("Place items from my inventory", myInventory, "offered"),
     renderTradingDraftSummary(),
     actions,
     renderTradingHistory(),
@@ -8409,17 +8936,24 @@ async function saveTradingTradeMessage(trade, receiverCode, messageText) {
 }
 
 async function sendTradingOffer() {
+  const currentTrade = getLatestTradingTrade(activeTradingBoardId) || findActiveTradingBoardForFriend(activeTradingFriendCode);
   const friendProfile = getFriendProfileSnapshot(activeTradingFriendCode);
+  const activeSide = getTradingSideForCode(currentTrade);
   const offeredItems = tradingDraftToItems(activeTradingDraft.offered);
-  const requestedItems = tradingDraftToItems(activeTradingDraft.requested);
 
-  if (!friendProfile?.friendCode || !isApprovedFriendCode(friendProfile.friendCode)) {
+  if (!currentTrade || !activeSide || !friendProfile?.friendCode || !isApprovedFriendCode(friendProfile.friendCode)) {
     tradingGameMessage.textContent = "Choose an added friend first.";
     return;
   }
 
-  if (offeredItems.length === 0 || requestedItems.length === 0) {
-    tradingGameMessage.textContent = "Choose at least one item to offer and one item to ask for.";
+  if (!isTradingBoardOpenStatus(currentTrade.status)) {
+    tradingGameMessage.textContent = "This trade board cannot be changed now.";
+    renderTradingByStatus(currentTrade);
+    return;
+  }
+
+  if (offeredItems.length === 0) {
+    tradingGameMessage.textContent = "Place at least one item on your side of the board.";
     return;
   }
 
@@ -8427,36 +8961,36 @@ async function sendTradingOffer() {
 
   if (!hasTradingItems(myInventory, offeredItems)) {
     tradingGameMessage.textContent = "This trade can’t be sent because you do not have one of those items anymore.";
-    renderTradingOfferBuilder(friendProfile.friendCode, false);
+    renderTradingOfferBuilder(currentTrade, false);
     return;
   }
 
-  const trade = makeTradingTrade(friendProfile.friendCode, offeredItems, requestedItems);
+  const trade = updateTradingSideItems(currentTrade, activeSide, offeredItems);
   saveTradingTrade(trade);
-  tradingGameMessage.textContent = `Sending trade offer to ${friendProfile.nickname}...`;
+  tradingGameMessage.textContent = `Saving board offer for ${friendProfile.nickname}...`;
 
   try {
     const result = await saveTradingTradeMessage(
       trade,
-      trade.toFriendCode,
-      `Trade offer: ${formatTradingItems(trade.offeredItems)} for ${formatTradingItems(trade.requestedItems)}`,
+      friendProfile.friendCode,
+      `${activePlayer.nickname} changed their Trading Board offer: ${formatTradingItems(offeredItems)}`,
     );
-    const earnedStar = awardFriendActionStars(`trade-offer:${trade.toFriendCode}`, 1);
+    const earnedStar = awardFriendActionStars(`trade-offer:${friendProfile.friendCode}`, 1);
 
     addFriendActivity({
       type: "trade_offer_sent",
-      friendCode: trade.toFriendCode,
-      friendNickname: trade.toNickname,
-      text: `You sent ${trade.toNickname} a trade offer.`,
+      friendCode: friendProfile.friendCode,
+      friendNickname: friendProfile.nickname,
+      text: `You updated a Trading Board with ${friendProfile.nickname}.`,
     });
 
     tradingGameMessage.textContent = result.online
-      ? `Trade offer sent to ${trade.toNickname}!${earnedStar ? " You earned 1 star." : ""}`
-      : `Trade offer saved here for ${trade.toNickname}.${earnedStar ? " You earned 1 star." : ""}`;
-    renderTradingSent(trade);
+      ? `Trading Board updated for ${friendProfile.nickname}!${earnedStar ? " You earned 1 star." : ""}`
+      : `Trading Board saved here for ${friendProfile.nickname}.${earnedStar ? " You earned 1 star." : ""}`;
+    renderTradingBoard(trade);
   } catch (error) {
     console.error("Trading offer send error:", error);
-    tradingGameMessage.textContent = "Trade offer could not be sent yet. Please try again.";
+    tradingGameMessage.textContent = "Board offer could not be sent yet. Please try again.";
   }
 }
 
@@ -8534,31 +9068,64 @@ async function completeTradingInventoriesForSharedTrade(trade) {
 }
 
 async function acceptTradingOffer(trade) {
-  const latestTrade = getLatestTradingTrade(trade.id) || trade;
+  const latestTrade = normalizeTradingTradeRecord(getLatestTradingTrade(trade.id) || trade);
   hideMainSections();
   updateProfileBar();
   tradingGameCard.classList.remove("hidden");
 
-  if (!isTradingReceiver(latestTrade) || latestTrade.status !== "pending") {
-    tradingGameMessage.textContent = "This trade offer is not available anymore.";
+  const activeSide = getTradingSideForCode(latestTrade);
+  const friendSide = getTradingOtherSide(activeSide);
+
+  if (!latestTrade || !activeSide || !isTradingBoardOpenStatus(latestTrade.status)) {
+    tradingGameMessage.textContent = "This trade board is not available anymore.";
     renderTradingByStatus(latestTrade);
     return;
   }
 
-  const completedTrade = {
+  if (getTradingItemsForSide(latestTrade, activeSide).length === 0 || getTradingItemsForSide(latestTrade, friendSide).length === 0) {
+    tradingGameMessage.textContent = "Both players need to place at least one item before accepting.";
+    renderTradingBoard(latestTrade);
+    return;
+  }
+
+  const acceptedTrade = normalizeTradingTradeRecord({
     ...latestTrade,
-    status: "completed",
-    inventoryMode: onlineFriendGames.isConfigured ? "shared" : "local",
+    fromAccepted: activeSide === "from" ? true : latestTrade.fromAccepted,
+    toAccepted: activeSide === "to" ? true : latestTrade.toAccepted,
+    status: "in_progress",
     respondedAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  if (!acceptedTrade.fromAccepted || !acceptedTrade.toAccepted) {
+    saveTradingTrade(acceptedTrade);
+    tradingGameMessage.textContent = "Accepted. Waiting for your friend to accept the same board.";
+
+    try {
+      await saveTradingTradeMessage(
+        acceptedTrade,
+        getTradingPartnerCode(acceptedTrade),
+        `${activePlayer.nickname} accepted the Trading Board.`,
+      );
+    } catch (error) {
+      console.error("Trading accept notice sync error:", error);
+    }
+
+    renderTradingBoard(acceptedTrade);
+    return;
+  }
+
+  const completedTrade = normalizeTradingTradeRecord({
+    ...acceptedTrade,
+    status: "completed",
+    inventoryMode: "shared",
     completedAt: Date.now(),
     updatedAt: Date.now(),
-  };
+  });
   let applyResult;
 
   try {
-    applyResult = onlineFriendGames.isConfigured
-      ? await completeTradingInventoriesForSharedTrade(completedTrade)
-      : applyTradingTradeForCurrentPlayer(completedTrade);
+    applyResult = await completeTradingInventoriesForSharedTrade(completedTrade);
   } catch (error) {
     console.error("Trading inventory completion error:", error);
     applyResult = {
@@ -8569,7 +9136,7 @@ async function acceptTradingOffer(trade) {
 
   if (!applyResult.ok) {
     tradingGameMessage.textContent = applyResult.message;
-    renderIncomingTradingOffer(latestTrade);
+    renderTradingBoard(latestTrade);
     return;
   }
 
@@ -8579,15 +9146,15 @@ async function acceptTradingOffer(trade) {
   try {
     await saveTradingTradeMessage(
       completedTrade,
-      completedTrade.fromFriendCode,
-      `${activePlayer.nickname} accepted your trade.`,
+      getTradingPartnerCode(completedTrade),
+      `${activePlayer.nickname} accepted the Trading Board. The trade is complete!`,
     );
     const earnedStars = awardFriendActionStars(`trade-complete:${completedTrade.id}`, 2);
     addFriendActivity({
       type: "trade_completed",
-      friendCode: completedTrade.fromFriendCode,
-      friendNickname: completedTrade.fromNickname,
-      text: `You accepted ${completedTrade.fromNickname}'s trade.`,
+      friendCode: getTradingPartnerCode(completedTrade),
+      friendNickname: getFriendProfileSnapshot(getTradingPartnerCode(completedTrade)).nickname,
+      text: "You completed a Trading Board trade.",
     });
     tradingGameMessage.textContent = earnedStars ? "Trade completed. You earned 2 stars!" : "Trade completed.";
     hideMainSections();
@@ -8605,20 +9172,23 @@ async function acceptTradingOffer(trade) {
 }
 
 async function declineTradingOffer(trade) {
-  const latestTrade = getLatestTradingTrade(trade.id) || trade;
+  const latestTrade = normalizeTradingTradeRecord(getLatestTradingTrade(trade.id) || trade);
   hideMainSections();
   updateProfileBar();
   tradingGameCard.classList.remove("hidden");
 
-  if (!isTradingReceiver(latestTrade) || latestTrade.status !== "pending") {
-    tradingGameMessage.textContent = "This trade offer is not available anymore.";
+  if (!latestTrade || !getTradingSideForCode(latestTrade) || !isTradingBoardOpenStatus(latestTrade.status)) {
+    tradingGameMessage.textContent = "This trade board is not available anymore.";
     renderTradingByStatus(latestTrade);
     return;
   }
 
+  const partnerCode = getTradingPartnerCode(latestTrade);
   const declinedTrade = {
     ...latestTrade,
-    status: "declined",
+    status: isTradingSender(latestTrade) ? "cancelled" : "declined",
+    fromAccepted: false,
+    toAccepted: false,
     respondedAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -8628,16 +9198,18 @@ async function declineTradingOffer(trade) {
   try {
     await saveTradingTradeMessage(
       declinedTrade,
-      declinedTrade.fromFriendCode,
-      `${activePlayer.nickname} declined your trade.`,
+      partnerCode,
+      isTradingSender(latestTrade)
+        ? `${activePlayer.nickname} cancelled the Trading Board.`
+        : `${activePlayer.nickname} declined the Trading Board.`,
     );
     addFriendActivity({
-      type: "trade_declined",
-      friendCode: declinedTrade.fromFriendCode,
-      friendNickname: declinedTrade.fromNickname,
-      text: `You declined ${declinedTrade.fromNickname}'s trade.`,
+      type: declinedTrade.status === "cancelled" ? "trade_cancelled" : "trade_declined",
+      friendCode: partnerCode,
+      friendNickname: getFriendProfileSnapshot(partnerCode).nickname,
+      text: declinedTrade.status === "cancelled" ? "You cancelled a Trading Board." : "You declined a Trading Board.",
     });
-    tradingGameMessage.textContent = "Trade declined.";
+    tradingGameMessage.textContent = declinedTrade.status === "cancelled" ? "Trade cancelled." : "Trade declined.";
     hideMainSections();
     updateProfileBar();
     tradingGameCard.classList.remove("hidden");
@@ -8695,28 +9267,30 @@ async function openTradingOffer(message) {
 }
 
 function renderTradingByStatus(trade) {
-  const latestTrade = getLatestTradingTrade(trade.id) || trade;
+  const latestTrade = getLatestTradingTrade(trade?.id || "") || trade;
+  const safeTrade = normalizeTradingTradeRecord(latestTrade);
 
-  if (latestTrade.status === "pending") {
-    if (isTradingReceiver(latestTrade)) {
-      renderIncomingTradingOffer(latestTrade);
-    } else {
-      renderTradingSent(latestTrade);
-    }
+  if (!safeTrade) {
+    renderTradingLoadError("This trade could not be loaded. Please ask your friend to send it again.");
     return;
   }
 
-  if (latestTrade.status === "declined") {
-    renderTradingDeclined(latestTrade);
+  if (isTradingBoardOpenStatus(safeTrade.status)) {
+    renderTradingBoard(safeTrade);
     return;
   }
 
-  if (latestTrade.status === "expired") {
-    renderTradingExpired(latestTrade);
+  if (safeTrade.status === "declined" || safeTrade.status === "cancelled") {
+    renderTradingDeclined(safeTrade);
     return;
   }
 
-  renderTradingResult(latestTrade);
+  if (safeTrade.status === "expired") {
+    renderTradingExpired(safeTrade);
+    return;
+  }
+
+  renderTradingResult(safeTrade);
 }
 
 function renderIncomingTradingOffer(trade) {
@@ -8732,7 +9306,7 @@ function renderIncomingTradingOffer(trade) {
   eyebrow.className = "eyebrow";
   eyebrow.textContent = "Incoming Trade";
   const title = document.createElement("h3");
-  title.textContent = `${trade.fromNickname} sent you a trade offer.`;
+  title.textContent = `${trade.fromNickname} opened a Trading Board with you.`;
   details.append(eyebrow, title, renderTradeItemList("They offer", trade.offeredItems), renderTradeItemList("They ask for", trade.requestedItems));
   card.append(icon, details);
 
@@ -8812,11 +9386,13 @@ function renderTradingDeclined(trade) {
   const details = document.createElement("div");
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow";
-  eyebrow.textContent = "Trade Declined";
+  eyebrow.textContent = trade.status === "cancelled" ? "Trade Cancelled" : "Trade Declined";
   const title = document.createElement("h3");
-  title.textContent = isTradingSender(trade)
-    ? `${trade.toNickname} declined this trade.`
-    : "You declined this trade.";
+  title.textContent = trade.status === "cancelled"
+    ? "This Trading Board was cancelled."
+    : isTradingSender(trade)
+      ? `${trade.toNickname} declined this trade.`
+      : "You declined this trade.";
   const body = document.createElement("p");
   body.textContent = "No items were swapped.";
   details.append(eyebrow, title, body);
@@ -8837,18 +9413,32 @@ function renderTradingExpired(trade) {
   eyebrow.className = "eyebrow";
   eyebrow.textContent = "Trade Expired";
   const title = document.createElement("h3");
-  title.textContent = "This trade offer is too old.";
+  title.textContent = "This Trading Board is too old.";
   const body = document.createElement("p");
-  body.textContent = "Send a fresh trade if you still want to swap items.";
+  body.textContent = "Open a fresh board if you still want to swap items.";
   details.append(eyebrow, title, body);
   card.append(icon, details);
   tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
 }
 
 function renderTradingResult(trade) {
-  saveTradingTrade(trade);
-  const applyResult = applyTradingTradeForCurrentPlayer(trade);
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade) {
+    renderTradingLoadError("This trade could not be loaded. Please ask your friend to send it again.");
+    return;
+  }
+
+  saveTradingTrade(safeTrade);
+  const usesSharedInventory = safeTrade.status === "completed" && safeTrade.inventoryMode === "shared";
+  const applyResult = usesSharedInventory
+    ? { ok: true, applied: false, message: "Trade completed online." }
+    : applyTradingTradeForCurrentPlayer(safeTrade);
   const tradeCompletedForThisPlayer = applyResult.ok;
+
+  if (usesSharedInventory) {
+    markTradingTradeApplied(safeTrade, activePlayer?.friendCode || "");
+  }
 
   if (!applyResult.ok) {
     tradingGameMessage.textContent = applyResult.message;
@@ -8871,7 +9461,7 @@ function renderTradingResult(trade) {
   body.textContent = tradeCompletedForThisPlayer
     ? "Your inventory has been updated safely."
     : "One side no longer has the needed item in this saved inventory.";
-  details.append(eyebrow, title, body, renderTradeItemList(`${trade.fromNickname} offered`, trade.offeredItems), renderTradeItemList(`${trade.toNickname} gave`, trade.requestedItems));
+  details.append(eyebrow, title, body, renderTradeItemList(`${safeTrade.fromNickname} offered`, safeTrade.offeredItems), renderTradeItemList(`${safeTrade.toNickname} gave`, safeTrade.requestedItems));
   card.append(icon, details);
 
   const actions = document.createElement("div");
@@ -8880,7 +9470,7 @@ function renderTradingResult(trade) {
   chatButton.className = "save-quiz-button";
   chatButton.type = "button";
   chatButton.textContent = "Back to Chat";
-  chatButton.addEventListener("click", () => showChat(isTradingSender(trade) ? trade.toFriendCode : trade.fromFriendCode));
+  chatButton.addEventListener("click", () => showChat(isTradingSender(safeTrade) ? safeTrade.toFriendCode : safeTrade.fromFriendCode));
   const gamesButton = document.createElement("button");
   gamesButton.className = "secondary-button";
   gamesButton.type = "button";
@@ -8892,28 +9482,36 @@ function renderTradingResult(trade) {
 }
 
 function getTradingCardLine(trade) {
-  if (trade.status === "pending") {
-    return `${trade.fromNickname} sent ${trade.toNickname} a trade offer.`;
+  if (isTradingBoardOpenStatus(trade.status)) {
+    return `${trade.fromNickname} and ${trade.toNickname} have an open Trading Board.`;
   }
 
   if (trade.status === "declined") {
-    return `${trade.toNickname} declined a trade offer.`;
+    return `${trade.toNickname} declined a Trading Board.`;
+  }
+
+  if (trade.status === "cancelled") {
+    return "This Trading Board was cancelled.";
   }
 
   if (trade.status === "expired") {
-    return "This trade offer expired.";
+  return "This Trading Board expired.";
   }
 
   return `${trade.fromNickname} and ${trade.toNickname} completed a trade.`;
 }
 
 function getTradingCardTitle(trade) {
-  if (trade.status === "pending") {
-    return isTradingReceiver(trade) ? "Accept or decline this trade" : "Waiting for your friend";
+  if (isTradingBoardOpenStatus(trade.status)) {
+    return "Open Trading Board";
   }
 
   if (trade.status === "declined") {
     return "Trade declined";
+  }
+
+  if (trade.status === "cancelled") {
+    return "Trade cancelled";
   }
 
   if (trade.status === "expired") {
@@ -8924,8 +9522,8 @@ function getTradingCardTitle(trade) {
 }
 
 function getTradingCardButtonLabel(trade) {
-  if (trade.status === "pending" && isTradingReceiver(trade)) {
-    return "Review";
+  if (isTradingBoardOpenStatus(trade.status)) {
+    return "Open Board";
   }
 
   return trade.status === "completed" ? "View Trade" : "Open";
@@ -8981,6 +9579,7 @@ function showTradingGame(friendCode = "") {
   hideMainSections();
   updateProfileBar();
   activeTradingFriendCode = normalizeFriendCode(friendCode);
+  activeTradingBoardId = "";
   activeTradingDraft = { offered: {}, requested: {} };
   tradingGameMessage.textContent = "";
   tradingGameCard.classList.remove("hidden");
@@ -8994,9 +9593,14 @@ function showTradingGame(friendCode = "") {
       safelyRenderTradingGame(() => renderTradingRules(), "Inventory could not be loaded.");
     }
   }).catch((error) => console.error("Trading inventory refresh sync error:", error));
+  syncOnlineFriendsToLocal().then(() => {
+    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
+      safelyRenderTradingGame(() => renderTradingRules(), "Could not load friends for Trading Game.");
+    }
+  }).catch((error) => console.error("Trading friends refresh sync error:", error));
   syncFriendGameStateFromOnline().then(() => {
     if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
-      safelyRenderTradingGame(() => renderTradingRules(), "Trade offers could not be loaded.");
+      safelyRenderTradingGame(() => renderTradingRules(), "Trading Boards could not be loaded.");
     }
   }).catch((error) => console.error("Trading game refresh sync error:", error));
 }
@@ -9328,7 +9932,7 @@ function renderChatHistory() {
 
       const tradeIcon = document.createElement("span");
       tradeIcon.className = "quiz-invite-icon";
-      tradeIcon.textContent = "💎";
+      tradeIcon.textContent = "🤝";
 
       const tradeDetails = document.createElement("div");
       const tradeMessage = document.createElement("p");
@@ -9337,36 +9941,22 @@ function renderChatHistory() {
       const tradeTitle = document.createElement("h4");
       tradeTitle.textContent = getTradingCardTitle(trade);
       const offeredLine = document.createElement("p");
-      offeredLine.textContent = `Offer: ${formatTradingItems(trade.offeredItems)}`;
+      offeredLine.textContent = `${trade.fromNickname}'s side: ${formatTradingItems(trade.offeredItems)}`;
       const requestedLine = document.createElement("p");
-      requestedLine.textContent = `Asks for: ${formatTradingItems(trade.requestedItems)}`;
+      requestedLine.textContent = `${trade.toNickname}'s side: ${formatTradingItems(trade.requestedItems)}`;
       const statusLine = document.createElement("p");
-      statusLine.textContent = `Status: ${trade.status.replaceAll("_", " ")}`;
+      statusLine.textContent = `Status: ${getTradingBoardStatusText(trade)}`;
       tradeDetails.append(tradeMessage, tradeTitle, offeredLine, requestedLine, statusLine);
 
       const buttonWrap = document.createElement("div");
       buttonWrap.className = "box-card-actions";
 
-      if (trade.status === "pending" && isTradingReceiver(trade)) {
-        const acceptButton = document.createElement("button");
-        acceptButton.className = "save-quiz-button";
-        acceptButton.type = "button";
-        acceptButton.textContent = "Accept";
-        acceptButton.addEventListener("click", () => acceptTradingOffer(trade));
-        const declineButton = document.createElement("button");
-        declineButton.className = "secondary-button";
-        declineButton.type = "button";
-        declineButton.textContent = "Decline";
-        declineButton.addEventListener("click", () => declineTradingOffer(trade));
-        buttonWrap.append(acceptButton, declineButton);
-      } else {
-        const openButton = document.createElement("button");
-        openButton.className = "save-quiz-button";
-        openButton.type = "button";
-        openButton.textContent = getTradingCardButtonLabel(trade);
-        openButton.addEventListener("click", () => openTradingOffer(message));
-        buttonWrap.append(openButton);
-      }
+      const openButton = document.createElement("button");
+      openButton.className = "save-quiz-button";
+      openButton.type = "button";
+      openButton.textContent = getTradingCardButtonLabel(trade);
+      openButton.addEventListener("click", () => openTradingOffer(message));
+      buttonWrap.append(openButton);
 
       tradeCard.append(tradeIcon, tradeDetails, buttonWrap);
       bubble.append(meta, tradeCard);

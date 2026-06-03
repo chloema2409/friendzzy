@@ -2575,6 +2575,108 @@ h2 {
   gap: 12px;
 }
 
+.trading-board-header {
+  align-items: center;
+}
+
+.trading-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 14px;
+}
+
+.trading-board-side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 18px;
+  border: 2px solid rgba(183, 156, 255, 0.28);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 14px 28px rgba(109, 74, 130, 0.08);
+}
+
+.my-board-side {
+  border-color: rgba(255, 151, 196, 0.42);
+}
+
+.friend-board-side {
+  border-color: rgba(122, 181, 255, 0.42);
+}
+
+.trading-board-side-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trading-board-side-heading h3 {
+  margin: 0;
+}
+
+.trade-accept-status {
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 1000;
+}
+
+.trade-accept-status.accepted {
+  background: rgba(205, 247, 231, 0.7);
+  color: #34765e;
+}
+
+.trade-accept-status.waiting {
+  background: rgba(255, 230, 240, 0.76);
+  color: #925774;
+}
+
+.trading-board-items {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.trading-board-middle {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  min-width: 92px;
+  padding: 12px;
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(231, 220, 255, 0.62));
+  color: var(--muted);
+  text-align: center;
+  font-weight: 900;
+}
+
+.trading-board-plus {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--ink);
+  color: white;
+  font-size: 1.6rem;
+}
+
+.trading-board-middle p {
+  margin: 0;
+  max-width: 130px;
+  overflow-wrap: anywhere;
+}
+
+.trading-board-actions {
+  justify-content: center;
+}
+
 .friend-presence {
   display: inline-flex;
   align-items: center;
@@ -3455,6 +3557,26 @@ textarea {
 .star-leaderboard-card,
 .trading-game-card {
   overflow: hidden;
+}
+
+@media (max-width: 760px) {
+  .trading-board {
+    grid-template-columns: 1fr;
+  }
+
+  .trading-board-middle {
+    min-width: 0;
+  }
+
+  .trading-board-plus {
+    width: 46px;
+    height: 46px;
+  }
+
+  .trading-board-side-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .friend-code-card {
