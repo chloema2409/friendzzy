@@ -226,13 +226,28 @@ create table if not exists public.players (
   active_theme text not null default 'default',
   purchases_json jsonb not null default '[]'::jsonb,
   saved_quizzes_json jsonb not null default '[]'::jsonb,
+  diary_entries_json jsonb not null default '[]'::jsonb,
+  box_of_lies_rounds_json jsonb not null default '[]'::jsonb,
+  trading_trades_json jsonb not null default '[]'::jsonb,
+  trading_inventory_json jsonb not null default '[]'::jsonb,
+  trading_gems integer not null default 5,
+  game_progress_json jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   check (char_length(username) between 1 and 20),
   check (char_length(normalized_username) between 1 and 20),
   check (friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'),
-  check (stars >= 0)
+  check (stars >= 0),
+  check (trading_gems >= 0)
 );
+
+alter table public.players
+add column if not exists diary_entries_json jsonb not null default '[]'::jsonb,
+add column if not exists box_of_lies_rounds_json jsonb not null default '[]'::jsonb,
+add column if not exists trading_trades_json jsonb not null default '[]'::jsonb,
+add column if not exists trading_inventory_json jsonb not null default '[]'::jsonb,
+add column if not exists trading_gems integer not null default 5,
+add column if not exists game_progress_json jsonb not null default '{}'::jsonb;
 
 alter table public.profiles enable row level security;
 alter table public.friends enable row level security;
@@ -910,9 +925,187 @@ begin
 end;
 $$;
 
+create or replace function public.load_player_full_progress(
+  player_username text,
+  player_pin text
+)
+returns table (
+  id uuid,
+  username text,
+  normalized_username text,
+  friend_code text,
+  emoji_avatar text,
+  stars integer,
+  active_theme text,
+  purchases_json jsonb,
+  saved_quizzes_json jsonb,
+  diary_entries_json jsonb,
+  box_of_lies_rounds_json jsonb,
+  trading_trades_json jsonb,
+  trading_inventory_json jsonb,
+  trading_gems integer,
+  game_progress_json jsonb,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized text := lower(trim(player_username));
+begin
+  if normalized = '' or player_pin !~ '^[0-9]{4,6}$' then
+    raise exception 'INVALID_LOGIN';
+  end if;
+
+  return query
+  select
+    p.id,
+    p.username,
+    p.normalized_username,
+    p.friend_code,
+    p.emoji_avatar,
+    p.stars,
+    p.active_theme,
+    p.purchases_json,
+    p.saved_quizzes_json,
+    p.diary_entries_json,
+    p.box_of_lies_rounds_json,
+    p.trading_trades_json,
+    p.trading_inventory_json,
+    p.trading_gems,
+    p.game_progress_json,
+    p.created_at,
+    p.updated_at
+  from public.players p
+  where p.normalized_username = normalized
+    and p.pin_hash = crypt(player_pin, p.pin_hash)
+  limit 1;
+end;
+$$;
+
+create or replace function public.save_player_full_progress(
+  player_username text,
+  player_pin text,
+  player_emoji_avatar text,
+  player_stars integer,
+  player_active_theme text,
+  player_purchases_json jsonb,
+  player_saved_quizzes_json jsonb,
+  player_diary_entries_json jsonb,
+  player_box_of_lies_rounds_json jsonb,
+  player_trading_trades_json jsonb,
+  player_trading_inventory_json jsonb,
+  player_trading_gems integer,
+  player_game_progress_json jsonb
+)
+returns table (
+  id uuid,
+  username text,
+  normalized_username text,
+  friend_code text,
+  emoji_avatar text,
+  stars integer,
+  active_theme text,
+  purchases_json jsonb,
+  saved_quizzes_json jsonb,
+  diary_entries_json jsonb,
+  box_of_lies_rounds_json jsonb,
+  trading_trades_json jsonb,
+  trading_inventory_json jsonb,
+  trading_gems integer,
+  game_progress_json jsonb,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  normalized text := lower(trim(player_username));
+begin
+  if normalized = '' or player_pin !~ '^[0-9]{4,6}$' then
+    raise exception 'INVALID_LOGIN';
+  end if;
+
+  if jsonb_typeof(coalesce(player_purchases_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_PURCHASES';
+  end if;
+
+  if jsonb_typeof(coalesce(player_saved_quizzes_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_QUIZZES';
+  end if;
+
+  if jsonb_typeof(coalesce(player_diary_entries_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_DIARY';
+  end if;
+
+  if jsonb_typeof(coalesce(player_box_of_lies_rounds_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_BOX_OF_LIES';
+  end if;
+
+  if jsonb_typeof(coalesce(player_trading_trades_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_TRADING_TRADES';
+  end if;
+
+  if jsonb_typeof(coalesce(player_trading_inventory_json, '[]'::jsonb)) <> 'array' then
+    raise exception 'INVALID_TRADING_INVENTORY';
+  end if;
+
+  if jsonb_typeof(coalesce(player_game_progress_json, '{}'::jsonb)) <> 'object' then
+    raise exception 'INVALID_GAME_PROGRESS';
+  end if;
+
+  update public.players p
+  set
+    emoji_avatar = coalesce(nullif(player_emoji_avatar, ''), p.emoji_avatar),
+    stars = greatest(0, coalesce(player_stars, p.stars)),
+    active_theme = coalesce(nullif(player_active_theme, ''), 'default'),
+    purchases_json = coalesce(player_purchases_json, '[]'::jsonb),
+    saved_quizzes_json = coalesce(player_saved_quizzes_json, '[]'::jsonb),
+    diary_entries_json = coalesce(player_diary_entries_json, '[]'::jsonb),
+    box_of_lies_rounds_json = coalesce(player_box_of_lies_rounds_json, '[]'::jsonb),
+    trading_trades_json = coalesce(player_trading_trades_json, '[]'::jsonb),
+    trading_inventory_json = coalesce(player_trading_inventory_json, '[]'::jsonb),
+    trading_gems = greatest(0, coalesce(player_trading_gems, p.trading_gems, 5)),
+    game_progress_json = coalesce(player_game_progress_json, '{}'::jsonb),
+    updated_at = now()
+  where p.normalized_username = normalized
+    and p.pin_hash = crypt(player_pin, p.pin_hash);
+
+  return query
+  select
+    p.id,
+    p.username,
+    p.normalized_username,
+    p.friend_code,
+    p.emoji_avatar,
+    p.stars,
+    p.active_theme,
+    p.purchases_json,
+    p.saved_quizzes_json,
+    p.diary_entries_json,
+    p.box_of_lies_rounds_json,
+    p.trading_trades_json,
+    p.trading_inventory_json,
+    p.trading_gems,
+    p.game_progress_json,
+    p.created_at,
+    p.updated_at
+  from public.players p
+  where p.normalized_username = normalized
+    and p.pin_hash = crypt(player_pin, p.pin_hash)
+  limit 1;
+end;
+$$;
+
 grant execute on function public.create_player_account(text, text, text) to anon, authenticated;
 grant execute on function public.login_player_with_pin(text, text) to anon, authenticated;
 grant execute on function public.save_player_progress(text, text, text, integer, text, jsonb, jsonb) to anon, authenticated;
+grant execute on function public.load_player_full_progress(text, text) to anon, authenticated;
+grant execute on function public.save_player_full_progress(text, text, text, integer, text, jsonb, jsonb, jsonb, jsonb, jsonb, jsonb, integer, jsonb) to anon, authenticated;
 
 create index if not exists profiles_friend_code_idx on public.profiles (friend_code);
 create index if not exists profiles_user_id_idx on public.profiles (user_id);

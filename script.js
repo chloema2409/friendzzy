@@ -1006,6 +1006,24 @@ function normalizeUsernameAccount(account) {
     savedQuizzes = [];
   }
 
+  const diaryEntries = normalizeDiaryEntries(account.diary_entries_json || account.diaryEntriesJson || []);
+  const boxOfLiesRounds = Array.isArray(account.box_of_lies_rounds_json || account.boxOfLiesRoundsJson)
+    ? account.box_of_lies_rounds_json || account.boxOfLiesRoundsJson
+    : [];
+  const tradingTrades = Array.isArray(account.trading_trades_json || account.tradingTradesJson)
+    ? account.trading_trades_json || account.tradingTradesJson
+    : [];
+  const tradingInventory = normalizeTradingItems(account.trading_inventory_json || account.tradingInventoryJson || []);
+  const tradingGems = Math.max(
+    0,
+    Number.parseInt(account.trading_gems ?? account.tradingGems ?? starterTradingGems, 10) || 0,
+  );
+  const gameProgress = account.game_progress_json && typeof account.game_progress_json === "object"
+    ? account.game_progress_json
+    : account.gameProgressJson && typeof account.gameProgressJson === "object"
+      ? account.gameProgressJson
+      : {};
+
   return {
     playerId: account.id || account.player_id || account.playerId || "",
     username,
@@ -1016,6 +1034,12 @@ function normalizeUsernameAccount(account) {
     activeTheme: account.active_theme || account.activeTheme || "default",
     purchases,
     savedQuizzes,
+    diaryEntries,
+    boxOfLiesRounds,
+    tradingTrades,
+    tradingInventory,
+    tradingGems,
+    gameProgress,
     createdAt: account.created_at || account.createdAt || "",
     updatedAt: account.updated_at || account.updatedAt || "",
   };
@@ -1036,7 +1060,9 @@ function profileFromUsernameAccount(account) {
     purchasedRewards: safeAccount.purchases,
     diaryAccess: safeAccount.purchases.includes("daily-diary"),
     diaryNotes: {},
-    settings: {},
+    settings: {
+      activeTheme: safeAccount.activeTheme,
+    },
     avatar: {
       ...createDefaultAvatar(),
       emojiAvatar: safeAccount.emojiAvatar,
@@ -1049,6 +1075,21 @@ const onlineUsernameAccounts = {
   get isConfigured() {
     return isSupabaseConfigured();
   },
+  async loadFullProgress({ username, pin, fallbackAccount = null }) {
+    try {
+      const data = await supabaseRequest("rpc/load_player_full_progress", {
+        method: "POST",
+        body: {
+          player_username: username,
+          player_pin: pin,
+        },
+      });
+      return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data) || normalizeUsernameAccount(fallbackAccount);
+    } catch (error) {
+      console.error("Supabase username full progress load error:", error);
+      return normalizeUsernameAccount(fallbackAccount);
+    }
+  },
   async createAccount({ username, pin, emojiAvatar }) {
     const data = await supabaseRequest("rpc/create_player_account", {
       method: "POST",
@@ -1058,7 +1099,8 @@ const onlineUsernameAccounts = {
         player_emoji_avatar: emojiAvatar || defaultEmojiAvatar,
       },
     });
-    return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+    const account = normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+    return this.loadFullProgress({ username, pin, fallbackAccount: account });
   },
   async login({ username, pin }) {
     const data = await supabaseRequest("rpc/login_player_with_pin", {
@@ -1068,7 +1110,13 @@ const onlineUsernameAccounts = {
         player_pin: pin,
       },
     });
-    return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+    const account = normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+
+    if (!account) {
+      return null;
+    }
+
+    return this.loadFullProgress({ username, pin, fallbackAccount: account });
   },
   async saveProgress({ username, pin, profile = activePlayer, purchases = getPurchasedRewards(), quizzes = getSavedQuizzes() }) {
     if (!username || !pin || !profile) {
@@ -1091,18 +1139,64 @@ const onlineUsernameAccounts = {
 
     return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
   },
+  async saveFullProgress({
+    username,
+    pin,
+    profile = activePlayer,
+    purchases = getPurchasedRewards(),
+    quizzes = getSavedQuizzes(),
+    diaryEntries = getDiaryEntries(),
+    boxOfLiesRounds = getPlayerBoxOfLiesRounds(profile?.friendCode),
+    tradingTrades = getPlayerTradingTrades(profile?.friendCode),
+    tradingInventory = getTradingInventory(profile?.friendCode),
+    tradingGems = getTradingGems(profile?.friendCode),
+    gameProgress = getPlayerGameProgressSnapshot(profile?.friendCode),
+  }) {
+    if (!username || !pin || !profile) {
+      return null;
+    }
+
+    const avatar = getUnlockedAvatar(profile.avatar || createDefaultAvatar());
+    const data = await supabaseRequest("rpc/save_player_full_progress", {
+      method: "POST",
+      body: {
+        player_username: username,
+        player_pin: pin,
+        player_emoji_avatar: avatar.emojiAvatar || defaultEmojiAvatar,
+        player_stars: profile.stars || 0,
+        player_active_theme: getActiveTheme(),
+        player_purchases_json: purchases,
+        player_saved_quizzes_json: quizzes,
+        player_diary_entries_json: diaryEntries,
+        player_box_of_lies_rounds_json: boxOfLiesRounds,
+        player_trading_trades_json: tradingTrades,
+        player_trading_inventory_json: normalizeTradingItems(tradingInventory),
+        player_trading_gems: Math.max(0, Number.parseInt(tradingGems || "0", 10) || 0),
+        player_game_progress_json: gameProgress,
+      },
+    });
+
+    return normalizeUsernameAccount(Array.isArray(data) ? data[0] : data);
+  },
   async saveCurrentProgress() {
     if (!usernamePinSession || !activePlayer) {
       return null;
     }
 
-    return this.saveProgress({
+    const progress = {
       username: usernamePinSession.username,
       pin: usernamePinSession.pin,
       profile: activePlayer,
       purchases: getPurchasedRewards(),
       quizzes: getSavedQuizzes(),
-    });
+    };
+
+    try {
+      return await this.saveFullProgress(progress);
+    } catch (error) {
+      console.error("Supabase full username progress sync error:", error);
+      return this.saveProgress(progress);
+    }
   },
 };
 window.bestieOnlineUsernameAccounts = onlineUsernameAccounts;
@@ -1910,6 +2004,7 @@ let activeTradingFriendCode = "";
 let activeTradingDraft = { offered: {}, requested: {} };
 let pendingGameInviteId = "";
 let onlineAccountSyncInProgress = false;
+let usernameProgressSyncTimer = null;
 let usernamePinSession = null;
 let usernameAccountMode = "login";
 let presenceUpdateTimer = null;
@@ -2538,6 +2633,21 @@ function syncActiveProfileOnline() {
   }
 }
 
+function syncUsernameProgressOnlineSoon() {
+  if (!usernamePinSession || !activePlayer || onlineAccountSyncInProgress || !onlineUsernameAccounts.isConfigured) {
+    return;
+  }
+
+  if (usernameProgressSyncTimer) {
+    clearTimeout(usernameProgressSyncTimer);
+  }
+
+  usernameProgressSyncTimer = window.setTimeout(() => {
+    usernameProgressSyncTimer = null;
+    syncActiveProfileOnline();
+  }, 350);
+}
+
 function updateOwnPresence() {
   if (!activePlayer || !onlineFriendCodes.isConfigured) {
     return;
@@ -2876,6 +2986,8 @@ function saveDiaryEntries(entries) {
       console.error("Supabase diary sync error:", error);
     });
   }
+
+  syncUsernameProgressOnlineSoon();
 }
 
 function applyPurchasedEffects() {
@@ -5817,6 +5929,7 @@ function saveBoxOfLiesRound(round) {
     round,
     ...rounds.filter((savedRound) => savedRound.id !== round.id),
   ]);
+  syncUsernameProgressOnlineSoon();
 
   if (round?.gameType === "box_of_lies" && round.fromFriendCode && round.toFriendCode) {
     saveSharedFriendGameState(round).catch((error) => {
@@ -7283,6 +7396,10 @@ function saveTradingGemsForCode(friendCode, gems, { updatedAt = Date.now(), sync
       console.error("Supabase trading gems save error:", error);
     });
   }
+
+  if (safeFriendCode === normalizeFriendCode(activePlayer?.friendCode || "")) {
+    syncUsernameProgressOnlineSoon();
+  }
 }
 
 function migrateTradingGemsFromInventory(friendCode, existingGemRecord = null) {
@@ -7398,6 +7515,10 @@ function saveTradingInventoryForCode(friendCode, items, { updatedAt = Date.now()
     onlineFriendGames.saveInventory(safeFriendCode, inventories[safeFriendCode].items, getTradingGems(safeFriendCode)).catch((error) => {
       console.error("Supabase trading inventory save error:", error);
     });
+  }
+
+  if (safeFriendCode === normalizeFriendCode(activePlayer?.friendCode || "")) {
+    syncUsernameProgressOnlineSoon();
   }
 }
 
@@ -7587,6 +7708,7 @@ function saveTradingTrade(trade) {
     trade,
     ...trades.filter((savedTrade) => savedTrade.id !== trade.id),
   ].sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade)));
+  syncUsernameProgressOnlineSoon();
 
   if (trade?.gameType === "trading_game" && trade.fromFriendCode && trade.toFriendCode) {
     saveSharedFriendGameState(trade).catch((error) => {
@@ -9896,6 +10018,34 @@ function mergeSavedQuizLists(firstQuizzes, secondQuizzes) {
   return [...quizzesById.values()].sort((firstQuiz, secondQuiz) => new Date(secondQuiz.updatedAt) - new Date(firstQuiz.updatedAt));
 }
 
+function getGenericGameRecordTime(record) {
+  return Number.parseInt(
+    record?.updatedAt
+    || record?.completedAt
+    || record?.acceptedAt
+    || record?.respondedAt
+    || record?.createdAt
+    || "0",
+    10,
+  ) || 0;
+}
+
+function mergeGameRecordLists(firstRecords, secondRecords) {
+  const recordsById = new Map();
+
+  [...(firstRecords || []), ...(secondRecords || [])]
+    .filter((record) => record?.id)
+    .forEach((record) => {
+      const currentRecord = recordsById.get(record.id);
+
+      if (!currentRecord || getGenericGameRecordTime(record) >= getGenericGameRecordTime(currentRecord)) {
+        recordsById.set(record.id, record);
+      }
+    });
+
+  return [...recordsById.values()].sort((firstRecord, secondRecord) => getGenericGameRecordTime(secondRecord) - getGenericGameRecordTime(firstRecord));
+}
+
 async function saveLocalAccountDataToSupabase() {
   if (!onlineAccountStorage.isLoggedIn || !activePlayer) {
     return;
@@ -10118,12 +10268,132 @@ function validateUsernamePin(username, pin) {
   };
 }
 
+function isRecordForFriendCode(record, friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode || !record) {
+    return false;
+  }
+
+  return [record.fromFriendCode, record.toFriendCode, record.friendCode, record.ownerFriendCode]
+    .map(normalizeFriendCode)
+    .includes(safeFriendCode);
+}
+
+function getPlayerBoxOfLiesRounds(friendCode = activePlayer?.friendCode || "") {
+  return getBoxOfLiesRounds().filter((round) => isRecordForFriendCode(round, friendCode));
+}
+
+function getPlayerTradingTrades(friendCode = activePlayer?.friendCode || "") {
+  return getTradingTrades().filter((trade) => isRecordForFriendCode(trade, friendCode));
+}
+
+function getPlayerGameProgressSnapshot(friendCode = activePlayer?.friendCode || "") {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  return {
+    friendCode: safeFriendCode,
+    boxOfLiesCount: getPlayerBoxOfLiesRounds(safeFriendCode).length,
+    tradingTradeCount: getPlayerTradingTrades(safeFriendCode).length,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function replacePlayerScopedRecords(allRecords, incomingRecords, friendCode, isForPlayer) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const incomingById = new Map();
+
+  (incomingRecords || []).filter(Boolean).forEach((record) => {
+    const recordId = record.id || record.requestId || record.inviteId || crypto.randomUUID();
+    incomingById.set(recordId, {
+      ...record,
+      id: recordId,
+    });
+  });
+
+  return [
+    ...Array.from(incomingById.values()),
+    ...(allRecords || []).filter((record) => !isForPlayer(record, safeFriendCode) && !incomingById.has(record?.id)),
+  ];
+}
+
+function applyUsernameAccountProgressToLocal(account, { importSnapshot = null } = {}) {
+  const safeAccount = normalizeUsernameAccount(account);
+
+  if (!safeAccount) {
+    return;
+  }
+
+  const mergedPurchases = importSnapshot
+    ? [...new Set([...(safeAccount.purchases || []), ...(importSnapshot.purchases || [])])]
+    : safeAccount.purchases || [];
+  const mergedQuizzes = importSnapshot
+    ? mergeSavedQuizLists(safeAccount.savedQuizzes || [], importSnapshot.quizzes || [])
+    : mergeSavedQuizLists([], safeAccount.savedQuizzes || []);
+  const mergedDiaryEntries = importSnapshot
+    ? mergeDiaryEntryLists(safeAccount.diaryEntries || [], importSnapshot.diaryEntries || [])
+    : mergeDiaryEntryLists([], safeAccount.diaryEntries || []);
+  const mergedBoxRounds = importSnapshot
+    ? mergeGameRecordLists(safeAccount.boxOfLiesRounds || [], importSnapshot.boxOfLiesRounds || [])
+    : mergeGameRecordLists([], safeAccount.boxOfLiesRounds || []);
+  const mergedTradingTrades = importSnapshot
+    ? mergeGameRecordLists(safeAccount.tradingTrades || [], importSnapshot.tradingTrades || [])
+    : mergeGameRecordLists([], safeAccount.tradingTrades || []);
+  const chosenInventory = importSnapshot?.tradingInventory?.length
+    ? normalizeTradingItems(importSnapshot.tradingInventory)
+    : normalizeTradingItems(safeAccount.tradingInventory || []);
+  const chosenGems = importSnapshot && Number.isFinite(importSnapshot.tradingGems)
+    ? importSnapshot.tradingGems
+    : safeAccount.tradingGems;
+
+  if (activePlayer) {
+    activePlayer = ensureFriendProfile({
+      ...activePlayer,
+      stars: importSnapshot ? Math.max(activePlayer.stars || 0, importSnapshot.stars || 0, safeAccount.stars || 0) : safeAccount.stars,
+      purchasedRewards: mergedPurchases,
+      diaryAccess: mergedPurchases.includes("daily-diary"),
+      activeTheme: importSnapshot?.activeTheme || safeAccount.activeTheme || "default",
+    });
+    saveActivePlayerProfile();
+  }
+
+  localStorage.setItem(savedQuizzesKey, JSON.stringify(mergedQuizzes));
+  localStorage.setItem(diaryEntriesKey, JSON.stringify(mergedDiaryEntries));
+  localStorage.setItem(activeThemeKey, importSnapshot?.activeTheme || safeAccount.activeTheme || "default");
+
+  saveBoxOfLiesRounds(
+    replacePlayerScopedRecords(getBoxOfLiesRounds(), mergedBoxRounds, safeAccount.friendCode, isRecordForFriendCode)
+      .slice(0, 60),
+  );
+  saveTradingTrades(
+    replacePlayerScopedRecords(getTradingTrades(), mergedTradingTrades, safeAccount.friendCode, isRecordForFriendCode)
+      .sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade))
+      .slice(0, 80),
+  );
+
+  if (chosenInventory.length > 0) {
+    saveTradingInventoryForCode(safeAccount.friendCode, chosenInventory, { syncOnline: false });
+  }
+
+  if (Number.isFinite(chosenGems)) {
+    saveTradingGemsForCode(safeAccount.friendCode, chosenGems, { syncOnline: false });
+  }
+}
+
 function collectLocalProgressSnapshot() {
+  const friendCode = activePlayer?.friendCode || "";
+  const tradingGemRecord = getStoredTradingGemRecord(friendCode);
+
   return {
     hasActivePlayer: Boolean(activePlayer),
     stars: activePlayer?.stars || Number.parseInt(localStorage.getItem(guestStarsKey) || "0", 10) || 0,
     purchases: getPurchasedRewards(),
     quizzes: getSavedQuizzes(),
+    diaryEntries: getDiaryEntries(),
+    boxOfLiesRounds: getPlayerBoxOfLiesRounds(friendCode),
+    tradingTrades: getPlayerTradingTrades(friendCode),
+    tradingInventory: getStoredTradingInventory(friendCode) || [],
+    tradingGems: tradingGemRecord?.gems ?? null,
     avatar: activePlayer?.avatar || null,
     activeTheme: getActiveTheme(),
   };
@@ -10134,6 +10404,11 @@ function hasLocalProgressSnapshot(snapshot) {
     snapshot.stars > 0
     || snapshot.purchases.length > 0
     || snapshot.quizzes.length > 0
+    || snapshot.diaryEntries.length > 0
+    || snapshot.boxOfLiesRounds.length > 0
+    || snapshot.tradingTrades.length > 0
+    || snapshot.tradingInventory.length > 0
+    || Number.isFinite(snapshot.tradingGems)
     || hasMeaningfulSavedAvatar(snapshot.avatar)
     || snapshot.activeTheme !== "default"
   );
@@ -10170,36 +10445,28 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
     ? confirm("Do you want to save this local progress to this player account?")
     : false;
   const onlineProfile = profileFromUsernameAccount(safeAccount);
-  const mergedPurchasedRewards = [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])];
   const importedAvatar = hasMeaningfulSavedAvatar(localSnapshot.avatar)
     ? localSnapshot.avatar
     : onlineProfile.avatar;
-  const importedTheme = localSnapshot.activeTheme !== "default"
-    ? localSnapshot.activeTheme
-    : safeAccount.activeTheme;
   const profile = shouldImport
     ? ensureFriendProfile({
         ...onlineProfile,
         stars: Math.max(onlineProfile.stars || 0, localSnapshot.stars || 0),
-        purchasedRewards: mergedPurchasedRewards,
-        diaryAccess: mergedPurchasedRewards.includes("daily-diary"),
+        purchasedRewards: [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])],
+        diaryAccess: [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])].includes("daily-diary"),
         avatar: importedAvatar,
       })
     : onlineProfile;
-  const localQuizzes = getSavedQuizzes();
-  const onlineQuizzes = mergeSavedQuizLists([], safeAccount.savedQuizzes || []);
-  const visibleQuizzes = shouldImport
-    ? mergeSavedQuizLists(onlineQuizzes, localSnapshot.quizzes)
-    : mergeSavedQuizLists(localQuizzes, onlineQuizzes);
 
   onlineAccountSyncInProgress = true;
   setActivePlayer(profile);
-  localStorage.setItem(savedQuizzesKey, JSON.stringify(visibleQuizzes));
-  localStorage.setItem(activeThemeKey, shouldImport ? importedTheme : safeAccount.activeTheme);
   usernamePinSession = {
     username: safeAccount.username,
     pin,
   };
+  applyUsernameAccountProgressToLocal(safeAccount, {
+    importSnapshot: shouldImport ? localSnapshot : null,
+  });
   onlineAccountSyncInProgress = false;
 
   if (shouldImport) {
@@ -10216,7 +10483,12 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
+  await syncOnlineFriendsToLocal();
   await syncFriendRequestsFromOnline();
+  await syncFriendGameStateFromOnline();
+  await syncTradingInventoryFromOnline(activePlayer.friendCode);
+  syncUsernameProgressOnlineSoon();
+
   if (pendingGameInviteId) {
     const inviteId = pendingGameInviteId;
     pendingGameInviteId = "";
