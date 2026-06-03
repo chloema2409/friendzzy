@@ -39,9 +39,26 @@
         <button id="open-star-leaderboard" class="secondary-button" type="button">View Star Leaderboard</button>
         <button id="open-friends" class="secondary-button" type="button">My Friends</button>
         <button id="open-chat" class="secondary-button" type="button">Friend Chat</button>
+        <button id="open-notifications" class="secondary-button notification-button" type="button">
+          <span aria-hidden="true">🔔</span>
+          Notifications
+          <span id="notification-count" class="notification-count hidden">0</span>
+        </button>
         <button id="edit-avatar" class="secondary-button" type="button">Edit Avatar</button>
         <button id="auth-logout" class="secondary-button hidden" type="button">Log Out</button>
         <button id="switch-player" class="secondary-button" type="button">Switch Player</button>
+      </section>
+
+      <section id="notifications-panel" class="notifications-panel hidden" aria-labelledby="notifications-title">
+        <div class="section-heading compact-heading">
+          <div>
+            <p class="eyebrow">Notification Corner</p>
+            <h2 id="notifications-title">Notifications</h2>
+          </div>
+          <button id="close-notifications" class="secondary-button" type="button">Close</button>
+        </div>
+        <p class="safety-note">Only accept friend requests from people you know.</p>
+        <div id="notifications-list" class="notification-list"></div>
       </section>
 
       <section id="player-gate" class="start-card" aria-labelledby="player-gate-title">
@@ -612,10 +629,21 @@
         <div class="friend-add-box">
           <label for="friend-code-input">Add Friend by Code</label>
           <div class="save-row">
-            <input id="friend-code-input" type="text" maxlength="12" autocomplete="off" placeholder="LUNA-4821" />
-            <button id="add-friend-button" class="save-quiz-button" type="button">Add Friend</button>
+            <input id="friend-code-input" type="text" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="friends-message" placeholder="LUNA-4821" />
+            <button id="add-friend-button" class="save-quiz-button" type="button">Send Request</button>
           </div>
+          <label for="friend-request-message">Request message</label>
+          <select id="friend-request-message">
+            <option value="Hi! Can we be friends?">Hi! Can we be friends?</option>
+            <option value="It's me from school!">It's me from school!</option>
+            <option value="Let's play quizzes together!">Let's play quizzes together!</option>
+            <option value="Want to be friends?">Want to be friends?</option>
+          </select>
           <p id="friends-message" class="friendly-message" aria-live="polite"></p>
+        </div>
+        <div class="friends-list-wrap">
+          <h3>Sent Requests</h3>
+          <div id="sent-friend-requests" class="friend-request-list"></div>
         </div>
         <div class="friends-list-wrap">
           <h3>My Friends list</h3>

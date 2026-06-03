@@ -19,8 +19,10 @@ const activeThemeKey = "bestieQuizActiveTheme";
 const friendChatKey = "bestieFriendChatMessages";
 const friendActivityKey = "bestieFriendActivity";
 const friendRewardLogKey = "bestieFriendRewardLog";
+const friendRequestsKey = "bestieFriendRequests";
 const boxOfLiesRoundsKey = "friendzzyBoxOfLiesRounds";
 const tradingInventoryKey = "friendzzyTradingInventory";
+const tradingGemsKey = "friendzzyTradingGems";
 const tradingTradesKey = "friendzzyTradingTrades";
 const tradingAppliedTradesKey = "friendzzyTradingAppliedTrades";
 const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
@@ -246,6 +248,40 @@ function normalizeOnlineFriendProfile(profile) {
   };
 }
 
+function normalizeFriendRequest(request) {
+  if (!request) {
+    return null;
+  }
+
+  const requestId = request.request_id || request.requestId || request.id || crypto.randomUUID();
+  const fromFriendCode = normalizeFriendCode(request.from_friend_code || request.fromFriendCode || "");
+  const toFriendCode = normalizeFriendCode(request.to_friend_code || request.toFriendCode || "");
+  const status = request.status || "pending";
+  const message = friendRequestMessages.includes(request.message) ? request.message : friendRequestMessages[0];
+
+  if (!requestId || !fromFriendCode || !toFriendCode || fromFriendCode === toFriendCode) {
+    return null;
+  }
+
+  return {
+    id: requestId,
+    requestId,
+    fromUserId: request.from_user_id || request.fromUserId || "",
+    toUserId: request.to_user_id || request.toUserId || "",
+    fromFriendCode,
+    toFriendCode,
+    fromNickname: request.from_nickname || request.fromNickname || "Friend",
+    fromEmojiAvatar: request.from_emoji_avatar || request.fromEmojiAvatar || defaultEmojiAvatar,
+    toNickname: request.to_nickname || request.toNickname || "Friend",
+    toEmojiAvatar: request.to_emoji_avatar || request.toEmojiAvatar || defaultEmojiAvatar,
+    status,
+    message,
+    createdAt: request.created_at ? new Date(request.created_at).getTime() : request.createdAt || Date.now(),
+    updatedAt: request.updated_at ? new Date(request.updated_at).getTime() : request.updatedAt || Date.now(),
+    respondedAt: request.responded_at ? new Date(request.responded_at).getTime() : request.respondedAt || null,
+  };
+}
+
 const onlineFriendCodes = {
   get isConfigured() {
     return isSupabaseConfigured();
@@ -267,6 +303,85 @@ const onlineFriendCodes = {
         updated_at: new Date().toISOString(),
       },
     });
+  },
+  async sendFriendRequest(ownerProfile, friendProfile, message) {
+    const safeOwner = normalizeOnlineFriendProfile(ownerProfile);
+    const safeFriend = normalizeOnlineFriendProfile(friendProfile);
+
+    if (!safeOwner || !safeFriend || safeOwner.friendCode === safeFriend.friendCode) {
+      throw new Error("Friend request needs two different friend profiles.");
+    }
+
+    const request = normalizeFriendRequest({
+      request_id: crypto.randomUUID(),
+      from_user_id: safeOwner.userId || null,
+      to_user_id: safeFriend.userId || null,
+      from_friend_code: safeOwner.friendCode,
+      to_friend_code: safeFriend.friendCode,
+      from_nickname: safeOwner.nickname,
+      from_emoji_avatar: safeOwner.avatar?.emojiAvatar || defaultEmojiAvatar,
+      to_nickname: safeFriend.nickname,
+      to_emoji_avatar: safeFriend.avatar?.emojiAvatar || defaultEmojiAvatar,
+      status: "pending",
+      message,
+      created_at: Date.now(),
+      updated_at: Date.now(),
+    });
+
+    const data = await supabaseRequest("friend_requests", {
+      method: "POST",
+      prefer: "return=representation",
+      body: {
+        request_id: request.requestId,
+        from_user_id: request.fromUserId || null,
+        to_user_id: request.toUserId || null,
+        from_friend_code: request.fromFriendCode,
+        to_friend_code: request.toFriendCode,
+        from_nickname: request.fromNickname,
+        from_emoji_avatar: request.fromEmojiAvatar,
+        to_nickname: request.toNickname,
+        to_emoji_avatar: request.toEmojiAvatar,
+        status: "pending",
+        message: request.message,
+      },
+    });
+
+    return normalizeFriendRequest(Array.isArray(data) ? data[0] : null) || request;
+  },
+  async loadFriendRequests(friendCode) {
+    const safeFriendCode = normalizeFriendCode(friendCode);
+
+    if (!safeFriendCode) {
+      return [];
+    }
+
+    const query = new URLSearchParams({
+      select: "*",
+      order: "updated_at.desc",
+      limit: "100",
+    });
+    query.set("or", `(from_friend_code.eq.${safeFriendCode},to_friend_code.eq.${safeFriendCode})`);
+    const data = await supabaseRequest(`friend_requests?${query.toString()}`);
+    return (data || []).map(normalizeFriendRequest).filter(Boolean);
+  },
+  async updateFriendRequestStatus(requestId, status) {
+    const safeStatus = ["accepted", "declined", "cancelled", "expired"].includes(status) ? status : "";
+
+    if (!requestId || !safeStatus) {
+      throw new Error("Friend request update needs a valid status.");
+    }
+
+    const data = await supabaseRequest(`friend_requests?request_id=eq.${encodeURIComponent(requestId)}`, {
+      method: "PATCH",
+      prefer: "return=representation",
+      body: {
+        status: safeStatus,
+        updated_at: new Date().toISOString(),
+        responded_at: new Date().toISOString(),
+      },
+    });
+
+    return normalizeFriendRequest(Array.isArray(data) ? data[0] : null);
   },
   async findProfileByFriendCode(friendCode) {
     const query = new URLSearchParams({
@@ -469,11 +584,48 @@ function normalizeOnlineInventoryRow(row) {
     return null;
   }
 
+  let inventoryJson = row.inventory_json || row.inventoryJson || row.items || [];
+
+  if (typeof inventoryJson === "string") {
+    try {
+      inventoryJson = JSON.parse(inventoryJson);
+    } catch {
+      inventoryJson = [];
+    }
+  }
+
+  const inventoryObject = inventoryJson && typeof inventoryJson === "object" ? inventoryJson : {};
+  const rawItems = Array.isArray(inventoryJson)
+    ? inventoryJson
+    : Array.isArray(inventoryObject.items)
+      ? inventoryObject.items
+      : [];
+  const hasStoredGemBalance = Array.isArray(inventoryJson)
+    ? getTradingCurrencyQuantity(rawItems) > 0
+    : Object.prototype.hasOwnProperty.call(inventoryObject, "gems") || Object.prototype.hasOwnProperty.call(inventoryObject, "gemBalance");
+  const gems = Array.isArray(inventoryJson)
+    ? getTradingCurrencyQuantity(rawItems)
+    : Math.max(0, Number.parseInt(inventoryObject.gems || inventoryObject.gemBalance || "0", 10) || 0);
+
   return {
     friendCode: normalizeFriendCode(row.friend_code || row.friendCode || ""),
-    items: normalizeTradingItems(row.inventory_json || row.inventoryJson || row.items || []),
+    items: normalizeTradingItems(rawItems),
+    gems,
+    hasGemBalance: hasStoredGemBalance,
     updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : row.updatedAt || Date.now(),
   };
+}
+
+function isTradingInventoryObjectPolicyError(error) {
+  const errorText = [
+    error?.message,
+    error?.details,
+    error?.hint,
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  return errorText.includes("row-level security")
+    || errorText.includes("check constraint")
+    || errorText.includes("violates");
 }
 
 const onlineFriendGames = {
@@ -530,11 +682,38 @@ const onlineFriendGames = {
     const data = await supabaseRequest(`game_invites?${query.toString()}`, { auth: onlineAccountStorage.isLoggedIn });
     return (data || []).map(normalizeOnlineGamePayload).filter(Boolean);
   },
-  async saveInventory(friendCode, items) {
+  async saveInventory(friendCode, items, gems = getTradingGems(friendCode)) {
     const safeFriendCode = normalizeFriendCode(friendCode);
 
     if (!safeFriendCode) {
       throw new Error("Inventory needs a friend code.");
+    }
+
+    const safeItems = normalizeTradingItems(items);
+    const safeGems = Math.max(0, Number.parseInt(gems || "0", 10) || 0);
+    const updatedAt = new Date().toISOString();
+
+    try {
+      await supabaseRequest("player_inventories?on_conflict=friend_code", {
+        method: "POST",
+        auth: onlineAccountStorage.isLoggedIn,
+        prefer: "resolution=merge-duplicates,return=minimal",
+        body: {
+          friend_code: safeFriendCode,
+          inventory_json: {
+            items: safeItems,
+            gems: safeGems,
+          },
+          updated_at: updatedAt,
+        },
+      });
+      return;
+    } catch (error) {
+      if (!isTradingInventoryObjectPolicyError(error)) {
+        throw error;
+      }
+
+      console.warn("Supabase player_inventories policy still expects the older array format. Update supabase-schema.sql to save Gems online too.", error);
     }
 
     await supabaseRequest("player_inventories?on_conflict=friend_code", {
@@ -543,8 +722,8 @@ const onlineFriendGames = {
       prefer: "resolution=merge-duplicates,return=minimal",
       body: {
         friend_code: safeFriendCode,
-        inventory_json: normalizeTradingItems(items),
-        updated_at: new Date().toISOString(),
+        inventory_json: safeItems,
+        updated_at: updatedAt,
       },
     });
   },
@@ -989,6 +1168,12 @@ const safeGameInvites = [
   "Want to play Box of Lies?",
   "Want to trade collectibles?",
 ];
+const friendRequestMessages = [
+  "Hi! Can we be friends?",
+  "It's me from school!",
+  "Let's play quizzes together!",
+  "Want to be friends?",
+];
 const stickerReactions = [
   { label: "Amazing", text: "🌟 Amazing!" },
   { label: "Funny", text: "😂 Funny!" },
@@ -1020,23 +1205,49 @@ const boxOfLiesItems = [
 ];
 const tradingCollectibles = [
   { itemId: "star-sticker", emoji: "🌟", name: "Star Sticker", rarity: "Common", source: "starter" },
-  { itemId: "blue-gem", emoji: "💎", name: "Blue Gem", rarity: "Rare", source: "trade" },
   { itemId: "cat-card", emoji: "🐱", name: "Cat Card", rarity: "Common", source: "starter" },
-  { itemId: "unicorn-card", emoji: "🦄", name: "Unicorn Card", rarity: "Rare", source: "trade" },
-  { itemId: "rainbow-sticker", emoji: "🌈", name: "Rainbow Sticker", rarity: "Common", source: "starter" },
-  { itemId: "frog-sticker", emoji: "🐸", name: "Frog Sticker", rarity: "Common", source: "trade" },
   { itemId: "puppy-card", emoji: "🐶", name: "Puppy Card", rarity: "Common", source: "trade" },
-  { itemId: "pizza-badge", emoji: "🍕", name: "Pizza Badge", rarity: "Fun", source: "trade" },
-  { itemId: "panda-sticker", emoji: "🐼", name: "Panda Sticker", rarity: "Common", source: "trade" },
-  { itemId: "tiny-crown", emoji: "👑", name: "Tiny Crown", rarity: "Rare", source: "trade" },
-  { itemId: "pink-bow", emoji: "🎀", name: "Pink Bow", rarity: "Cute", source: "trade" },
+  { itemId: "frog-sticker", emoji: "🐸", name: "Frog Sticker", rarity: "Common", source: "trade" },
+  { itemId: "pizza-badge", emoji: "🍕", name: "Pizza Badge", rarity: "Common", source: "trade" },
   { itemId: "cupcake-charm", emoji: "🧁", name: "Cupcake Charm", rarity: "Common", source: "starter" },
+  { itemId: "pink-bow", emoji: "🎀", name: "Pink Bow", rarity: "Uncommon", source: "shop" },
+  { itemId: "blue-gem", emoji: "🔷", name: "Blue Crystal", rarity: "Uncommon", source: "trade" },
+  { itemId: "panda-sticker", emoji: "🐼", name: "Panda Sticker", rarity: "Uncommon", source: "shop" },
+  { itemId: "penguin-card", emoji: "🐧", name: "Penguin Card", rarity: "Uncommon", source: "trade" },
+  { itemId: "donut-charm", emoji: "🍩", name: "Donut Charm", rarity: "Uncommon", source: "trade" },
+  { itemId: "rainbow-sticker", emoji: "🌈", name: "Rainbow Sticker", rarity: "Uncommon", source: "starter" },
+  { itemId: "small-cat-squishy", emoji: "🐱", name: "Small Cat Squishy", rarity: "Rare", source: "shop" },
+  { itemId: "unicorn-card", emoji: "🦄", name: "Unicorn Card", rarity: "Rare", source: "shop" },
+  { itemId: "tiny-crown", emoji: "👑", name: "Tiny Crown", rarity: "Rare", source: "shop" },
+  { itemId: "fox-plushie", emoji: "🦊", name: "Fox Plushie", rarity: "Rare", source: "trade" },
+  { itemId: "bunny-roller-skates", emoji: "🐰", name: "Bunny Roller Skates", rarity: "Rare", source: "trade" },
+  { itemId: "teddy-charm", emoji: "🧸", name: "Teddy Charm", rarity: "Rare", source: "trade" },
+  { itemId: "glitter-unicorn", emoji: "🦄", name: "Glitter Unicorn", rarity: "Epic", source: "trade" },
+  { itemId: "baby-dragon-card", emoji: "🐉", name: "Baby Dragon Card", rarity: "Epic", source: "trade" },
+  { itemId: "moon-crystal", emoji: "🌙", name: "Moon Crystal", rarity: "Epic", source: "shop" },
+  { itemId: "bestie-heart", emoji: "💖", name: "Bestie Heart", rarity: "Epic", source: "trade" },
+  { itemId: "disco-gem", emoji: "🪩", name: "Disco Crystal", rarity: "Epic", source: "trade" },
+  { itemId: "golden-crown", emoji: "👑", name: "Golden Crown", rarity: "Legendary", source: "trade" },
+  { itemId: "rainbow-phoenix", emoji: "🌈", name: "Rainbow Phoenix", rarity: "Legendary", source: "trade" },
+  { itemId: "giant-diamond", emoji: "💎", name: "Giant Diamond", rarity: "Legendary", source: "trade" },
+  { itemId: "golden-cat-squishy", emoji: "🐱", name: "Golden Cat Squishy", rarity: "Legendary", source: "shop" },
+  { itemId: "secret-bestie-star", emoji: "✨", name: "Secret Bestie Star", rarity: "Legendary", source: "trade" },
 ];
 const tradingStarterInventory = [
   { itemId: "star-sticker", quantity: 2 },
   { itemId: "cat-card", quantity: 1 },
   { itemId: "rainbow-sticker", quantity: 1 },
   { itemId: "cupcake-charm", quantity: 1 },
+];
+const starterTradingGems = 5;
+const tradingShopOffers = [
+  { itemId: "small-cat-squishy", gemCost: 2 },
+  { itemId: "pink-bow", gemCost: 1 },
+  { itemId: "panda-sticker", gemCost: 2 },
+  { itemId: "tiny-crown", gemCost: 5 },
+  { itemId: "unicorn-card", gemCost: 4 },
+  { itemId: "moon-crystal", gemCost: 8 },
+  { itemId: "golden-cat-squishy", gemCost: 15 },
 ];
 const defaultEmojiAvatar = "🌙";
 
@@ -1735,6 +1946,11 @@ const openShopButton = document.querySelector("#open-shop");
 const openStarLeaderboardButton = document.querySelector("#open-star-leaderboard");
 const openFriendsButton = document.querySelector("#open-friends");
 const openChatButton = document.querySelector("#open-chat");
+const openNotificationsButton = document.querySelector("#open-notifications");
+const notificationCount = document.querySelector("#notification-count");
+const notificationsPanel = document.querySelector("#notifications-panel");
+const notificationsList = document.querySelector("#notifications-list");
+const closeNotificationsButton = document.querySelector("#close-notifications");
 const editAvatarButton = document.querySelector("#edit-avatar");
 const authLogoutButton = document.querySelector("#auth-logout");
 const switchPlayerButton = document.querySelector("#switch-player");
@@ -1844,9 +2060,11 @@ const friendsCard = document.querySelector("#friends-card");
 const myFriendCode = document.querySelector("#my-friend-code");
 const copyFriendCodeButton = document.querySelector("#copy-friend-code");
 const friendCodeInput = document.querySelector("#friend-code-input");
+const friendRequestMessageSelect = document.querySelector("#friend-request-message");
 const addFriendButton = document.querySelector("#add-friend-button");
 const friendsMessage = document.querySelector("#friends-message");
 const friendsList = document.querySelector("#friends-list");
+const sentFriendRequestsList = document.querySelector("#sent-friend-requests");
 const friendActionPanel = document.querySelector("#friend-action-panel");
 const friendActionTitle = document.querySelector("#friend-action-title");
 const friendQuizSelect = document.querySelector("#friend-quiz-select");
@@ -2538,6 +2756,15 @@ function getActiveTheme() {
 function saveActiveTheme(themeId) {
   localStorage.setItem(activeThemeKey, themeId);
 
+  if (activePlayer) {
+    activePlayer = ensureFriendProfile({
+      ...activePlayer,
+      activeTheme: themeId,
+      updatedAt: Date.now(),
+    });
+    saveActivePlayerProfile();
+  }
+
   if (activePlayer && onlineAccountStorage.isLoggedIn && !onlineAccountSyncInProgress) {
     onlineAccountStorage.saveProfile({ ...activePlayer, activeTheme: themeId }).catch((error) => {
       console.error("Supabase theme sync error:", error);
@@ -2677,6 +2904,20 @@ function createDefaultAvatar() {
     ...Object.fromEntries(Object.entries(avatarOptions).map(([key, values]) => [key, values[0]])),
     emojiAvatar: defaultEmojiAvatar,
   };
+}
+
+function hasMeaningfulSavedAvatar(avatar) {
+  if (!avatar || typeof avatar !== "object") {
+    return false;
+  }
+
+  if (String(avatar.avatarName || "").trim()) {
+    return true;
+  }
+
+  const defaultAvatar = createDefaultAvatar();
+  const safeAvatar = getUnlockedAvatar(avatar);
+  return Object.keys(defaultAvatar).some((key) => String(safeAvatar[key] || "") !== String(defaultAvatar[key] || ""));
 }
 
 function getSelectedAvatar() {
@@ -3043,6 +3284,7 @@ function updateProfileBar() {
     openStarLeaderboardButton.hidden = false;
     openFriendsButton.hidden = true;
     openChatButton.hidden = true;
+    openNotificationsButton.hidden = true;
     editAvatarButton.hidden = true;
     authLogoutButton.classList.toggle("hidden", !onlineAccountStorage.isLoggedIn);
     switchPlayerButton.hidden = false;
@@ -3057,6 +3299,7 @@ function updateProfileBar() {
     openStarLeaderboardButton.hidden = false;
     openFriendsButton.hidden = false;
     openChatButton.hidden = false;
+    openNotificationsButton.hidden = false;
     editAvatarButton.hidden = false;
     authLogoutButton.classList.toggle("hidden", !onlineAccountStorage.isLoggedIn);
     switchPlayerButton.hidden = false;
@@ -3105,6 +3348,7 @@ function useGuestMode() {
   stopPresenceUpdates();
   activePlayer = null;
   guestMode = true;
+  notificationsPanel.classList.add("hidden");
   localStorage.removeItem(currentPlayerKey);
   updateProfileBar();
   applyPurchasedEffects();
@@ -3412,6 +3656,7 @@ async function showFriends() {
   selectedFriendActionCode = "";
   friendActionPanel.classList.add("hidden");
   await syncOnlineFriendsToLocal();
+  await syncFriendRequestsFromOnline();
   await syncFriendGameStateFromOnline();
   renderFriends();
   renderFriendActivity();
@@ -4245,7 +4490,7 @@ function renderLeaderboard() {
 }
 
 function normalizeFriendCode(code) {
-  return code.trim().toUpperCase();
+  return String(code || "").trim().toUpperCase();
 }
 
 function findProfileByFriendCode(code) {
@@ -4299,6 +4544,337 @@ function addFriendToProfile(profile, friendProfile) {
     friends: [...friendSet],
     friendProfiles: buildFriendProfileMap(safeProfile.friendProfiles, safeFriend),
   };
+}
+
+function getFriendRequests() {
+  const savedRequests = localStorage.getItem(friendRequestsKey);
+
+  if (!savedRequests) {
+    return [];
+  }
+
+  try {
+    const requests = JSON.parse(savedRequests);
+    return Array.isArray(requests) ? requests.map(normalizeFriendRequest).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function getFriendRequestTime(request) {
+  return Number.parseInt(request?.updatedAt || request?.createdAt || "0", 10) || 0;
+}
+
+function saveFriendRequests(requests) {
+  const safeRequests = requests
+    .map(normalizeFriendRequest)
+    .filter(Boolean)
+    .sort((firstRequest, secondRequest) => getFriendRequestTime(secondRequest) - getFriendRequestTime(firstRequest))
+    .slice(0, 100);
+  localStorage.setItem(friendRequestsKey, JSON.stringify(safeRequests));
+}
+
+function mergeFriendRequests(requests = []) {
+  const requestsById = new Map(
+    getFriendRequests()
+      .filter((request) => request?.requestId)
+      .map((request) => [request.requestId, request]),
+  );
+
+  requests
+    .map(normalizeFriendRequest)
+    .filter(Boolean)
+    .forEach((request) => {
+      const existingRequest = requestsById.get(request.requestId);
+
+      if (!existingRequest || getFriendRequestTime(request) >= getFriendRequestTime(existingRequest)) {
+        requestsById.set(request.requestId, request);
+      }
+    });
+
+  saveFriendRequests([...requestsById.values()]);
+}
+
+function saveFriendRequestLocal(request) {
+  mergeFriendRequests([request]);
+}
+
+function getFriendRequestsForCurrentPlayer() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  if (!ownerCode) {
+    return [];
+  }
+
+  return getFriendRequests().filter((request) => request.fromFriendCode === ownerCode || request.toFriendCode === ownerCode);
+}
+
+function getIncomingPendingFriendRequests() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  return getFriendRequestsForCurrentPlayer()
+    .filter((request) => request.status === "pending" && request.toFriendCode === ownerCode)
+    .sort((firstRequest, secondRequest) => getFriendRequestTime(secondRequest) - getFriendRequestTime(firstRequest));
+}
+
+function getSentFriendRequests() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  return getFriendRequestsForCurrentPlayer()
+    .filter((request) => request.fromFriendCode === ownerCode)
+    .sort((firstRequest, secondRequest) => getFriendRequestTime(secondRequest) - getFriendRequestTime(firstRequest));
+}
+
+function getPendingFriendRequestForPair(friendCode) {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  return getFriendRequestsForCurrentPlayer()
+    .find((request) => (
+      request.status === "pending"
+      && request.fromFriendCode === ownerCode
+      && request.toFriendCode === safeFriendCode
+    )) || null;
+}
+
+async function syncFriendRequestsFromOnline() {
+  if (!activePlayer || !onlineFriendCodes.isConfigured) {
+    updateNotificationBadge();
+    return;
+  }
+
+  try {
+    await onlineFriendCodes.saveProfile(activePlayer);
+    const onlineRequests = await onlineFriendCodes.loadFriendRequests(activePlayer.friendCode);
+    mergeFriendRequests(onlineRequests);
+  } catch (error) {
+    console.error("Supabase friend request sync error:", error);
+  }
+
+  updateNotificationBadge();
+
+  if (notificationsPanel && !notificationsPanel.classList.contains("hidden")) {
+    renderNotifications();
+  }
+}
+
+function getFriendRequestProfile(request, side = "from") {
+  const isFrom = side === "from";
+  return normalizeOnlineFriendProfile({
+    user_id: isFrom ? request.fromUserId : request.toUserId,
+    nickname: isFrom ? request.fromNickname : request.toNickname,
+    friend_code: isFrom ? request.fromFriendCode : request.toFriendCode,
+    emoji_avatar: isFrom ? request.fromEmojiAvatar : request.toEmojiAvatar,
+  });
+}
+
+async function updateFriendRequestStatus(request, status) {
+  const safeRequest = normalizeFriendRequest(request);
+
+  if (!safeRequest) {
+    return null;
+  }
+
+  const updatedRequest = normalizeFriendRequest({
+    ...safeRequest,
+    status,
+    updatedAt: Date.now(),
+    respondedAt: Date.now(),
+  });
+
+  if (onlineFriendCodes.isConfigured) {
+    try {
+      const onlineRequest = await onlineFriendCodes.updateFriendRequestStatus(updatedRequest.requestId, status);
+      saveFriendRequestLocal(onlineRequest || updatedRequest);
+      return onlineRequest || updatedRequest;
+    } catch (error) {
+      console.error("Supabase friend request status error:", error);
+    }
+  }
+
+  saveFriendRequestLocal(updatedRequest);
+  return updatedRequest;
+}
+
+function updateNotificationBadge() {
+  if (!notificationCount || !openNotificationsButton) {
+    return;
+  }
+
+  const incomingCount = getIncomingPendingFriendRequests().length;
+  notificationCount.textContent = String(incomingCount);
+  notificationCount.classList.toggle("hidden", incomingCount === 0);
+  openNotificationsButton.setAttribute("aria-label", incomingCount > 0 ? `Notifications, ${incomingCount} pending` : "Notifications");
+}
+
+function renderSentFriendRequests() {
+  if (!sentFriendRequestsList) {
+    return;
+  }
+
+  const sentRequests = getSentFriendRequests().slice(0, 8);
+  sentFriendRequestsList.innerHTML = "";
+
+  if (sentRequests.length === 0) {
+    sentFriendRequestsList.innerHTML = '<p class="empty-leaderboard">No sent friend requests yet.</p>';
+    return;
+  }
+
+  sentRequests.forEach((request) => {
+    const item = document.createElement("article");
+    item.className = "friend-request-item";
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, { ...createDefaultAvatar(), emojiAvatar: request.toEmojiAvatar || defaultEmojiAvatar });
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const title = document.createElement("h3");
+    title.textContent = `Request sent to ${request.toNickname}`;
+    const status = document.createElement("p");
+    status.textContent = request.status === "pending"
+      ? "Pending"
+      : request.status === "accepted"
+        ? "Request accepted"
+        : request.status === "declined"
+          ? "Request declined"
+          : request.status === "cancelled"
+            ? "Request cancelled"
+            : "Request expired";
+    details.append(title, status);
+
+    const actions = document.createElement("div");
+    actions.className = "result-actions";
+
+    if (request.status === "pending") {
+      const cancelButton = document.createElement("button");
+      cancelButton.className = "secondary-button";
+      cancelButton.type = "button";
+      cancelButton.textContent = "Cancel Request";
+      cancelButton.addEventListener("click", async () => {
+        await updateFriendRequestStatus(request, "cancelled");
+        friendsMessage.textContent = "Friend request cancelled.";
+        renderSentFriendRequests();
+        updateNotificationBadge();
+      });
+      actions.append(cancelButton);
+    }
+
+    item.append(avatar, details, actions);
+    sentFriendRequestsList.append(item);
+  });
+}
+
+function renderNotifications() {
+  if (!notificationsList) {
+    return;
+  }
+
+  const incomingRequests = getIncomingPendingFriendRequests();
+  notificationsList.innerHTML = "";
+
+  if (incomingRequests.length === 0) {
+    notificationsList.innerHTML = '<p class="empty-leaderboard">No new notifications right now.</p>';
+    updateNotificationBadge();
+    return;
+  }
+
+  incomingRequests.forEach((request) => {
+    const item = document.createElement("article");
+    item.className = "friend-request-item notification-card";
+    const avatar = document.createElement("div");
+    renderAvatar(avatar, { ...createDefaultAvatar(), emojiAvatar: request.fromEmojiAvatar || defaultEmojiAvatar });
+    const details = document.createElement("div");
+    details.className = "friend-details";
+    const title = document.createElement("h3");
+    title.textContent = `${request.fromNickname} wants to add you as a friend.`;
+    const message = document.createElement("p");
+    message.textContent = `Message: ${request.message}`;
+    details.append(title, message);
+
+    const actions = document.createElement("div");
+    actions.className = "result-actions";
+    const acceptButton = document.createElement("button");
+    acceptButton.className = "save-quiz-button";
+    acceptButton.type = "button";
+    acceptButton.textContent = "Accept";
+    acceptButton.addEventListener("click", () => acceptFriendRequest(request));
+    const declineButton = document.createElement("button");
+    declineButton.className = "secondary-button";
+    declineButton.type = "button";
+    declineButton.textContent = "Decline";
+    declineButton.addEventListener("click", () => declineFriendRequest(request));
+    actions.append(acceptButton, declineButton);
+
+    item.append(avatar, details, actions);
+    notificationsList.append(item);
+  });
+
+  updateNotificationBadge();
+}
+
+function showNotifications() {
+  if (!activePlayer) {
+    showPlayerGate();
+    return;
+  }
+
+  notificationsPanel.classList.toggle("hidden");
+
+  if (!notificationsPanel.classList.contains("hidden")) {
+    syncFriendRequestsFromOnline().finally(renderNotifications);
+  }
+}
+
+async function acceptFriendRequest(request) {
+  const safeRequest = normalizeFriendRequest(request);
+
+  if (!safeRequest || safeRequest.toFriendCode !== normalizeFriendCode(activePlayer?.friendCode || "")) {
+    return;
+  }
+
+  let requesterProfile = onlineFriendCodes.isConfigured
+    ? await onlineFriendCodes.findProfileByFriendCode(safeRequest.fromFriendCode).catch(() => null)
+    : null;
+  requesterProfile = requesterProfile || getFriendRequestProfile(safeRequest, "from");
+
+  if (!requesterProfile) {
+    notificationsList.innerHTML = '<p class="empty-leaderboard">This request could not be accepted right now.</p>';
+    return;
+  }
+
+  if (onlineFriendCodes.isConfigured) {
+    try {
+      await onlineFriendCodes.saveFriend(activePlayer, requesterProfile);
+    } catch (error) {
+      console.error("Supabase accept friend request error:", error);
+    }
+  }
+
+  const updatedProfile = addFriendToProfile(activePlayer, requesterProfile);
+  updateActivePlayerProfile({
+    friends: updatedProfile.friends,
+    friendProfiles: updatedProfile.friendProfiles,
+  });
+  saveLocalMutualFriend(activePlayer, requesterProfile);
+  await updateFriendRequestStatus(safeRequest, "accepted");
+  addFriendActivity({
+    type: "friend_request_accepted",
+    friendCode: safeRequest.fromFriendCode,
+    friendNickname: safeRequest.fromNickname,
+    text: `You are now friends with ${safeRequest.fromNickname}!`,
+  });
+  friendsMessage.textContent = "";
+  renderNotifications();
+  renderFriends();
+}
+
+async function declineFriendRequest(request) {
+  const safeRequest = normalizeFriendRequest(request);
+
+  if (!safeRequest || safeRequest.toFriendCode !== normalizeFriendCode(activePlayer?.friendCode || "")) {
+    return;
+  }
+
+  await updateFriendRequestStatus(safeRequest, "declined");
+  renderNotifications();
+  renderSentFriendRequests();
 }
 
 function saveLocalMutualFriend(ownerProfile, friendProfile) {
@@ -4431,6 +5007,8 @@ async function addFriendByCode() {
     return;
   }
 
+  await syncFriendRequestsFromOnline();
+
   friendsMessage.textContent = "Checking friend code...";
 
   let friendProfile = null;
@@ -4439,10 +5017,6 @@ async function addFriendByCode() {
     try {
       await onlineFriendCodes.saveProfile(activePlayer);
       friendProfile = await onlineFriendCodes.findProfileByFriendCode(friendCode);
-
-      if (friendProfile) {
-        await onlineFriendCodes.saveFriend(activePlayer, friendProfile);
-      }
     } catch (error) {
       console.error("Supabase friend code lookup error:", error);
       friendsMessage.textContent = "Online friend lookup could not run right now. Trying your saved friend list next.";
@@ -4463,15 +5037,74 @@ async function addFriendByCode() {
     return;
   }
 
-  const friendProfiles = buildFriendProfileMap(activePlayer.friendProfiles, safeFriend);
+  if (friends.includes(safeFriend.friendCode)) {
+    friendsMessage.textContent = "That friend is already in your list.";
+    return;
+  }
 
-  updateActivePlayerProfile({
-    friends: [...friends, safeFriend.friendCode],
-    friendProfiles,
+  const existingPendingRequest = getPendingFriendRequestForPair(safeFriend.friendCode);
+
+  if (existingPendingRequest) {
+    friendsMessage.textContent = `Friend request to ${safeFriend.nickname} is already pending.`;
+    renderSentFriendRequests();
+    return;
+  }
+
+  const incomingPendingRequest = getIncomingPendingFriendRequests()
+    .find((request) => request.fromFriendCode === safeFriend.friendCode);
+
+  if (incomingPendingRequest) {
+    friendsMessage.textContent = `${safeFriend.nickname} already sent you a request. Open Notifications to accept it.`;
+    renderNotifications();
+    notificationsPanel.classList.remove("hidden");
+    return;
+  }
+
+  const requestMessage = friendRequestMessages.includes(friendRequestMessageSelect?.value)
+    ? friendRequestMessageSelect.value
+    : friendRequestMessages[0];
+  let friendRequest = normalizeFriendRequest({
+    request_id: crypto.randomUUID(),
+    from_user_id: activePlayer.userId || "",
+    to_user_id: safeFriend.userId || "",
+    from_friend_code: activePlayer.friendCode,
+    to_friend_code: safeFriend.friendCode,
+    from_nickname: activePlayer.nickname,
+    from_emoji_avatar: activePlayer.avatar?.emojiAvatar || defaultEmojiAvatar,
+    to_nickname: safeFriend.nickname,
+    to_emoji_avatar: safeFriend.avatar?.emojiAvatar || defaultEmojiAvatar,
+    status: "pending",
+    message: requestMessage,
+    created_at: Date.now(),
+    updated_at: Date.now(),
   });
-  saveLocalMutualFriend(activePlayer, safeFriend);
+
+  if (onlineFriendCodes.isConfigured) {
+    try {
+      friendRequest = await onlineFriendCodes.sendFriendRequest(activePlayer, safeFriend, requestMessage);
+    } catch (error) {
+      console.error("Supabase friend request send error:", error);
+      if (String(error?.message || "").includes("duplicate key")) {
+        await syncFriendRequestsFromOnline();
+        friendsMessage.textContent = `Friend request to ${safeFriend.nickname} is already pending.`;
+        renderSentFriendRequests();
+        return;
+      }
+      friendsMessage.textContent = "Friend request saved here. Online requests need the friend_requests table to be ready.";
+    }
+  }
+
+  saveFriendRequestLocal(friendRequest);
   friendCodeInput.value = "";
-  friendsMessage.textContent = `${safeFriend.nickname} added to My Friends.`;
+  if (!friendsMessage.textContent.includes("Online requests need")) {
+    friendsMessage.textContent = "Friend request sent!";
+  }
+  addFriendActivity({
+    type: "friend_request_sent",
+    friendCode: safeFriend.friendCode,
+    friendNickname: safeFriend.nickname,
+    text: `You sent ${safeFriend.nickname} a friend request.`,
+  });
   renderFriends();
 }
 
@@ -5499,6 +6132,28 @@ function renderBoxOfLiesPendingInvites() {
   return panel;
 }
 
+function makeGoToAddFriendButton() {
+  const button = document.createElement("button");
+  button.className = "secondary-button";
+  button.type = "button";
+  button.textContent = "Go to Add Friend";
+  button.addEventListener("click", () => {
+    showFriends();
+    window.setTimeout(() => friendCodeInput?.focus(), 0);
+  });
+  return button;
+}
+
+function makeNoGameFriendsMessage() {
+  const emptyState = document.createElement("div");
+  emptyState.className = "game-friend-empty";
+  const empty = document.createElement("p");
+  empty.className = "empty-leaderboard";
+  empty.textContent = "Add a friend first using Friend Codes.";
+  emptyState.append(empty, makeGoToAddFriendButton());
+  return emptyState;
+}
+
 function renderBoxOfLiesFriendChooser() {
   boxOfLiesContent.innerHTML = "";
 
@@ -5507,8 +6162,8 @@ function renderBoxOfLiesFriendChooser() {
   intro.innerHTML = `
     <div class="box-secret-visual" aria-hidden="true">▣</div>
     <div>
-      <h3>Choose a friend</h3>
-      <p>Send a safe invite first. The game starts only after your friend accepts.</p>
+      <h3>Choose a Friend</h3>
+      <p>Pick someone from My Friends. The game starts only after your friend accepts.</p>
     </div>
   `;
   boxOfLiesContent.append(intro);
@@ -5517,10 +6172,7 @@ function renderBoxOfLiesFriendChooser() {
   const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
 
   if (availableFriends.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty-leaderboard";
-    empty.textContent = "Add a friend code first, then you can send Box of Lies challenges.";
-    boxOfLiesContent.append(empty, renderBoxOfLiesHistory());
+    boxOfLiesContent.append(makeNoGameFriendsMessage(), renderBoxOfLiesHistory());
     return;
   }
 
@@ -5539,9 +6191,7 @@ function renderBoxOfLiesFriendChooser() {
     details.className = "friend-details";
     const name = document.createElement("h3");
     name.textContent = friendProfile.nickname;
-    const code = document.createElement("p");
-    code.textContent = friendProfile.friendCode;
-    details.append(name, code, makeFriendPresenceBadge(friendProfile));
+    details.append(name, makeFriendPresenceBadge(friendProfile));
 
     const actions = document.createElement("div");
     actions.className = "result-actions";
@@ -5575,7 +6225,7 @@ function renderBoxOfLiesFriendChooser() {
       const startButton = document.createElement("button");
       startButton.className = "save-quiz-button";
       startButton.type = "button";
-      startButton.textContent = "Invite";
+      startButton.textContent = "Invite to Box of Lies";
       startButton.addEventListener("click", () => startBoxOfLiesForFriend(friendProfile.friendCode));
       actions.append(startButton);
     }
@@ -6483,6 +7133,17 @@ function getTradingItem(itemId) {
   };
 }
 
+function getTradingRarityClass(rarity = "") {
+  return `rarity-${String(rarity || "common").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+}
+
+function makeTradingRarityBadge(item) {
+  const badge = document.createElement("span");
+  badge.className = `trade-rarity-badge ${getTradingRarityClass(item.rarity)}`;
+  badge.textContent = item.rarity;
+  return badge;
+}
+
 function makeTradingItemEntry(itemId, quantity = 0) {
   const item = getTradingItem(itemId);
   return {
@@ -6495,13 +7156,49 @@ function makeTradingItemEntry(itemId, quantity = 0) {
   };
 }
 
+function getTradingCurrencyQuantity(items = []) {
+  if (!Array.isArray(items)) {
+    return 0;
+  }
+
+  return items
+    .filter((item) => item?.itemId === "gem")
+    .reduce((total, item) => total + (Number.parseInt(item.quantity || "0", 10) || 0), 0);
+}
+
 function normalizeTradingItems(items = []) {
   if (!Array.isArray(items)) {
     return [];
   }
 
-  return items
-    .map((item) => makeTradingItemEntry(item.itemId, item.quantity))
+  const quantities = new Map();
+
+  items.forEach((item) => {
+    const itemId = typeof item === "string"
+      ? item
+      : item?.itemId || item?.id || "";
+
+    if (!itemId || itemId === "gem") {
+      return;
+    }
+
+    const quantity = Math.max(
+      0,
+      Number.parseInt(
+        typeof item === "string" ? "1" : item.quantity || item.count || "0",
+        10,
+      ) || 0,
+    );
+
+    if (quantity <= 0) {
+      return;
+    }
+
+    quantities.set(itemId, (quantities.get(itemId) || 0) + quantity);
+  });
+
+  return [...quantities.entries()]
+    .map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity))
     .filter((item) => item.quantity > 0);
 }
 
@@ -6524,7 +7221,71 @@ function saveTradingInventories(inventories) {
   localStorage.setItem(tradingInventoryKey, JSON.stringify(inventories));
 }
 
-function getStoredTradingInventory(friendCode) {
+function getTradingGemBalances() {
+  const savedGems = localStorage.getItem(tradingGemsKey);
+
+  if (!savedGems) {
+    return {};
+  }
+
+  try {
+    const balances = JSON.parse(savedGems);
+    return balances && typeof balances === "object" ? balances : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTradingGemBalances(balances) {
+  localStorage.setItem(tradingGemsKey, JSON.stringify(balances));
+}
+
+function getStoredTradingGemRecord(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const balances = getTradingGemBalances();
+  const entry = balances[safeFriendCode];
+
+  if (!entry) {
+    return null;
+  }
+
+  if (typeof entry === "number") {
+    return {
+      gems: Math.max(0, Number.parseInt(entry || "0", 10) || 0),
+      updatedAt: 0,
+    };
+  }
+
+  return {
+    gems: Math.max(0, Number.parseInt(entry.gems || "0", 10) || 0),
+    updatedAt: Number.parseInt(entry.updatedAt || "0", 10) || 0,
+  };
+}
+
+function saveTradingGemsForCode(friendCode, gems, { updatedAt = Date.now(), syncOnline = true } = {}) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return;
+  }
+
+  const balances = getTradingGemBalances();
+  const safeGems = Math.max(0, Number.parseInt(gems || "0", 10) || 0);
+  balances[safeFriendCode] = {
+    gems: safeGems,
+    updatedAt,
+  };
+  saveTradingGemBalances(balances);
+
+  if (syncOnline && onlineFriendGames.isConfigured) {
+    const inventory = getStoredTradingInventory(safeFriendCode) || normalizeTradingItems(tradingStarterInventory);
+    onlineFriendGames.saveInventory(safeFriendCode, inventory, safeGems).catch((error) => {
+      console.error("Supabase trading gems save error:", error);
+    });
+  }
+}
+
+function migrateTradingGemsFromInventory(friendCode, existingGemRecord = null) {
   const safeFriendCode = normalizeFriendCode(friendCode);
   const inventories = getTradingInventories();
   const entry = inventories[safeFriendCode];
@@ -6533,7 +7294,66 @@ function getStoredTradingInventory(friendCode) {
     return null;
   }
 
-  return normalizeTradingItems(entry.items || entry);
+  const rawItems = Array.isArray(entry) ? entry : entry.items || [];
+  const inventoryGems = getTradingCurrencyQuantity(rawItems);
+
+  if (inventoryGems <= 0) {
+    return null;
+  }
+
+  inventories[safeFriendCode] = {
+    items: normalizeTradingItems(rawItems),
+    updatedAt: Date.now(),
+  };
+  saveTradingInventories(inventories);
+
+  if (existingGemRecord) {
+    return existingGemRecord.gems;
+  }
+
+  saveTradingGemsForCode(safeFriendCode, inventoryGems, { syncOnline: false });
+  return inventoryGems;
+}
+
+function getTradingGems(friendCode = activePlayer?.friendCode || "") {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return 0;
+  }
+
+  const existingRecord = getStoredTradingGemRecord(safeFriendCode);
+  const migratedGems = migrateTradingGemsFromInventory(safeFriendCode, existingRecord);
+
+  if (existingRecord) {
+    return existingRecord.gems;
+  }
+
+  if (migratedGems !== null) {
+    return migratedGems;
+  }
+
+  saveTradingGemsForCode(safeFriendCode, starterTradingGems);
+  return starterTradingGems;
+}
+
+function getStoredTradingInventoryRecord(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const inventories = getTradingInventories();
+  const entry = inventories[safeFriendCode];
+
+  if (!entry) {
+    return null;
+  }
+
+  return {
+    items: normalizeTradingItems(entry.items || entry),
+    updatedAt: Number.parseInt(entry.updatedAt || "0", 10) || 0,
+  };
+}
+
+function getStoredTradingInventory(friendCode) {
+  return getStoredTradingInventoryRecord(friendCode)?.items || null;
 }
 
 function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
@@ -6556,10 +7376,11 @@ function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
     updatedAt: Date.now(),
   };
   saveTradingInventories(inventories);
+  getTradingGems(safeFriendCode);
   return starterItems;
 }
 
-function saveTradingInventoryForCode(friendCode, items) {
+function saveTradingInventoryForCode(friendCode, items, { updatedAt = Date.now(), syncOnline = true } = {}) {
   const safeFriendCode = normalizeFriendCode(friendCode);
 
   if (!safeFriendCode) {
@@ -6569,12 +7390,12 @@ function saveTradingInventoryForCode(friendCode, items) {
   const inventories = getTradingInventories();
   inventories[safeFriendCode] = {
     items: normalizeTradingItems(items),
-    updatedAt: Date.now(),
+    updatedAt,
   };
   saveTradingInventories(inventories);
 
-  if (onlineFriendGames.isConfigured) {
-    onlineFriendGames.saveInventory(safeFriendCode, inventories[safeFriendCode].items).catch((error) => {
+  if (syncOnline && onlineFriendGames.isConfigured) {
+    onlineFriendGames.saveInventory(safeFriendCode, inventories[safeFriendCode].items, getTradingGems(safeFriendCode)).catch((error) => {
       console.error("Supabase trading inventory save error:", error);
     });
   }
@@ -6588,15 +7409,39 @@ async function syncTradingInventoryFromOnline(friendCode = activePlayer?.friendC
   }
 
   try {
+    const localRecord = getStoredTradingInventoryRecord(safeFriendCode);
+    const localGemRecord = getStoredTradingGemRecord(safeFriendCode);
+    const localUpdatedAt = Math.max(localRecord?.updatedAt || 0, localGemRecord?.updatedAt || 0);
     const onlineInventory = await onlineFriendGames.loadInventory(safeFriendCode);
 
     if (onlineInventory) {
-      saveTradingInventoryForCode(safeFriendCode, onlineInventory.items);
+      if (localUpdatedAt && localUpdatedAt > onlineInventory.updatedAt) {
+        const localItems = localRecord?.items || getTradingInventory(safeFriendCode);
+        const localGems = localGemRecord?.gems ?? getTradingGems(safeFriendCode);
+        await onlineFriendGames.saveInventory(safeFriendCode, localItems, localGems);
+        return localItems;
+      }
+
+      saveTradingInventoryForCode(safeFriendCode, onlineInventory.items, {
+        updatedAt: onlineInventory.updatedAt,
+        syncOnline: false,
+      });
+      const onlineGemBalance = onlineInventory.hasGemBalance
+        ? onlineInventory.gems
+        : localGemRecord?.gems ?? starterTradingGems;
+      saveTradingGemsForCode(safeFriendCode, onlineGemBalance, {
+        updatedAt: onlineInventory.updatedAt,
+        syncOnline: false,
+      });
+      if (!onlineInventory.hasGemBalance) {
+        await onlineFriendGames.saveInventory(safeFriendCode, onlineInventory.items, onlineGemBalance);
+      }
       return onlineInventory.items;
     }
 
     const localInventory = getTradingInventory(safeFriendCode);
-    await onlineFriendGames.saveInventory(safeFriendCode, localInventory);
+    const localGems = getTradingGems(safeFriendCode);
+    await onlineFriendGames.saveInventory(safeFriendCode, localInventory, localGems);
     return localInventory;
   } catch (error) {
     console.error("Supabase trading inventory load error:", error);
@@ -6618,7 +7463,23 @@ async function getSharedTradingInventory(friendCode) {
     });
 
     if (onlineInventory) {
-      saveTradingInventoryForCode(safeFriendCode, onlineInventory.items);
+      const localGemRecord = getStoredTradingGemRecord(safeFriendCode);
+      const onlineGemBalance = onlineInventory.hasGemBalance
+        ? onlineInventory.gems
+        : localGemRecord?.gems ?? starterTradingGems;
+      saveTradingInventoryForCode(safeFriendCode, onlineInventory.items, {
+        updatedAt: onlineInventory.updatedAt,
+        syncOnline: false,
+      });
+      saveTradingGemsForCode(safeFriendCode, onlineGemBalance, {
+        updatedAt: onlineInventory.updatedAt,
+        syncOnline: false,
+      });
+      if (!onlineInventory.hasGemBalance) {
+        onlineFriendGames.saveInventory(safeFriendCode, onlineInventory.items, onlineGemBalance).catch((error) => {
+          console.error("Supabase trading gems migration error:", error);
+        });
+      }
       return onlineInventory.items;
     }
   }
@@ -6827,6 +7688,30 @@ function formatTradingItems(items = []) {
   return safeItems.map((item) => `${item.emoji} ${item.name} x${item.quantity}`).join(", ");
 }
 
+function renderTradingNav(activeView = "") {
+  const nav = document.createElement("div");
+  nav.className = "trading-nav result-actions";
+  const balance = document.createElement("p");
+  balance.className = "trade-gem-total trading-balance";
+  balance.textContent = `💎 Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
+  nav.append(balance);
+  [
+    { id: "inventory", label: "My Inventory", action: renderTradingInventoryView },
+    { id: "offers", label: "Trade Offers", action: renderTradingOffersView },
+    { id: "shop", label: "Trading Shop", action: renderTradingShop },
+    { id: "history", label: "Trade History", action: renderTradingHistoryView },
+  ].forEach((item) => {
+    const button = document.createElement("button");
+    button.className = activeView === item.id ? "purchased-label" : "secondary-button";
+    button.type = "button";
+    button.textContent = item.label;
+    button.disabled = activeView === item.id;
+    button.addEventListener("click", item.action);
+    nav.append(button);
+  });
+  return nav;
+}
+
 function makeTradingTrade(friendCode, offeredItems, requestedItems) {
   const friendProfile = getFriendProfileSnapshot(friendCode);
   const tradeId = crypto.randomUUID();
@@ -6854,9 +7739,26 @@ function renderTradeItemList(title, items) {
   wrap.className = "trade-summary-list";
   const heading = document.createElement("h4");
   heading.textContent = title;
-  const text = document.createElement("p");
-  text.textContent = formatTradingItems(items);
-  wrap.append(heading, text);
+  const safeItems = normalizeTradingItems(items);
+
+  if (safeItems.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = "No items";
+    wrap.append(heading, empty);
+    return wrap;
+  }
+
+  const list = document.createElement("div");
+  list.className = "trade-summary-items";
+  safeItems.forEach((item) => {
+    const row = document.createElement("span");
+    row.className = "trade-summary-item";
+    const name = document.createElement("span");
+    name.textContent = `${item.emoji} ${item.name} x${item.quantity}`;
+    row.append(name, makeTradingRarityBadge(item));
+    list.append(row);
+  });
+  wrap.append(heading, list);
   return wrap;
 }
 
@@ -6966,30 +7868,144 @@ function renderTradingOffersPanel() {
   return panel;
 }
 
+function renderTradingInventoryView() {
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = "";
+  tradingGameContent.append(
+    renderTradingNav("inventory"),
+    renderTradingInventoryPanel("My Inventory"),
+    renderTradingOffersPanel(),
+  );
+}
+
+function renderTradingOffersView() {
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = "";
+  tradingGameContent.append(
+    renderTradingNav("offers"),
+    renderTradingOffersPanel(),
+    renderTradingInventoryPanel("My Inventory"),
+  );
+}
+
+function renderTradingHistoryView() {
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = "";
+  tradingGameContent.append(
+    renderTradingNav("history"),
+    renderTradingHistory(),
+  );
+}
+
 function renderTradingInventoryPanel(title, inventory = getTradingInventory()) {
   const panel = document.createElement("div");
   panel.className = "trade-inventory-panel";
   const heading = document.createElement("h3");
   heading.textContent = title;
+  const gemCount = document.createElement("p");
+  gemCount.className = "trade-gem-total";
+  gemCount.textContent = `💎 Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
 
-  normalizeTradingItems(inventory).forEach((item) => {
+  const safeInventory = normalizeTradingItems(inventory);
+
+  if (safeInventory.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = "No trading items yet.";
+    panel.append(heading, gemCount, empty);
+    return panel;
+  }
+
+  safeInventory.forEach((item) => {
     const card = document.createElement("article");
-    card.className = "trade-item-card";
+    card.className = `trade-item-card ${getTradingRarityClass(item.rarity)}`;
     const icon = document.createElement("span");
     icon.className = "trade-item-icon";
     icon.textContent = item.emoji;
     const name = document.createElement("strong");
     name.textContent = item.name;
     const meta = document.createElement("span");
-    meta.textContent = `${item.rarity} • x${item.quantity}`;
-    card.append(icon, name, meta);
+    meta.textContent = `x${item.quantity}`;
+    card.append(icon, name, makeTradingRarityBadge(item), meta);
     grid.append(card);
   });
 
-  panel.append(heading, grid);
+  panel.append(heading, gemCount, grid);
   return panel;
+}
+
+function renderTradingShop() {
+  const inventory = getTradingInventory();
+  const gemCount = getTradingGems(activePlayer?.friendCode || "");
+  tradingGameContent.innerHTML = "";
+
+  const shopPanel = document.createElement("div");
+  shopPanel.className = "trade-inventory-panel trading-shop-panel";
+  const heading = document.createElement("h3");
+  heading.textContent = "Trading Shop";
+  const intro = document.createElement("p");
+  intro.className = "friendly-message";
+  intro.textContent = `Use Gems only. You have ${gemCount} Gems. No real money, no mystery boxes.`;
+  const grid = document.createElement("div");
+  grid.className = "trade-item-grid";
+
+  tradingShopOffers.forEach((offer) => {
+    const item = makeTradingItemEntry(offer.itemId, 1);
+    const card = document.createElement("article");
+    card.className = `trade-item-card trading-shop-item ${getTradingRarityClass(item.rarity)}`;
+    const icon = document.createElement("span");
+    icon.className = "trade-item-icon";
+    icon.textContent = item.emoji;
+    const name = document.createElement("strong");
+    name.textContent = item.name;
+    const cost = document.createElement("span");
+    cost.className = "trade-shop-cost";
+    cost.textContent = `${offer.gemCost} Gems`;
+    const buyButton = document.createElement("button");
+    buyButton.className = gemCount >= offer.gemCost ? "save-quiz-button" : "secondary-button";
+    buyButton.type = "button";
+    buyButton.textContent = gemCount >= offer.gemCost ? "Buy" : "Not enough Gems";
+    buyButton.disabled = gemCount < offer.gemCost;
+    buyButton.addEventListener("click", () => buyTradingShopItem(offer));
+    card.append(icon, name, makeTradingRarityBadge(item), cost, buyButton);
+    grid.append(card);
+  });
+
+  shopPanel.append(heading, intro, grid);
+  tradingGameContent.append(renderTradingNav("shop"), shopPanel, renderTradingInventoryPanel("My Inventory", inventory));
+}
+
+async function buyTradingShopItem(offer) {
+  const item = makeTradingItemEntry(offer.itemId, 1);
+  const latestInventory = await syncTradingInventoryFromOnline(activePlayer.friendCode);
+  const gemCount = getTradingGems(activePlayer.friendCode);
+
+  if (gemCount < offer.gemCost) {
+    tradingGameMessage.textContent = "Not enough Gems yet.";
+    renderTradingShop();
+    return;
+  }
+
+  const updatedGemCount = gemCount - offer.gemCost;
+  const updatedInventory = addTradingItems(latestInventory, [item]);
+  saveTradingGemsForCode(activePlayer.friendCode, updatedGemCount, { syncOnline: false });
+  saveTradingInventoryForCode(activePlayer.friendCode, updatedInventory, { syncOnline: false });
+
+  if (onlineFriendGames.isConfigured) {
+    try {
+      await onlineFriendGames.saveInventory(activePlayer.friendCode, updatedInventory, updatedGemCount);
+    } catch (error) {
+      console.error("Trading shop inventory sync error:", error);
+      tradingGameMessage.textContent = `You bought ${item.name}, but online sync could not finish yet.`;
+      renderTradingShop();
+      return;
+    }
+  }
+
+  tradingGameMessage.textContent = `You bought ${item.name}!`;
+  renderTradingShop();
 }
 
 function renderTradingRules(friendCode = "") {
@@ -7044,7 +8060,7 @@ function renderTradingRules(friendCode = "") {
     renderTradingFriendChooser();
   });
   actions.append(gotItButton, startButton);
-  tradingGameContent.append(rules, actions, renderTradingOffersPanel(), renderTradingInventoryPanel("My Starter Inventory"), renderTradingHistory());
+  tradingGameContent.append(renderTradingNav(""), rules, actions, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
 }
 
 function renderTradingFriendChooser() {
@@ -7055,8 +8071,8 @@ function renderTradingFriendChooser() {
   intro.innerHTML = `
     <div class="box-secret-visual" aria-hidden="true">💎</div>
     <div>
-      <h3>Choose a friend</h3>
-      <p>Send a fair preset trade offer. Your friend can accept or decline later.</p>
+      <h3>Choose a Friend</h3>
+      <p>Pick someone from My Friends, then create a fair preset trade offer.</p>
     </div>
   `;
   tradingGameContent.append(intro);
@@ -7065,10 +8081,7 @@ function renderTradingFriendChooser() {
   const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
 
   if (availableFriends.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "empty-leaderboard";
-    empty.textContent = "Add a friend code first, then you can send trades.";
-    tradingGameContent.append(empty, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+    tradingGameContent.append(makeNoGameFriendsMessage(), renderTradingNav(""), renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
     return;
   }
 
@@ -7087,9 +8100,7 @@ function renderTradingFriendChooser() {
     details.className = "friend-details";
     const name = document.createElement("h3");
     name.textContent = friendProfile.nickname;
-    const code = document.createElement("p");
-    code.textContent = friendProfile.friendCode;
-    details.append(name, code, makeFriendPresenceBadge(friendProfile));
+    details.append(name, makeFriendPresenceBadge(friendProfile));
 
     const startButton = document.createElement("button");
     startButton.className = "save-quiz-button";
@@ -7101,7 +8112,7 @@ function renderTradingFriendChooser() {
     list.append(row);
   });
 
-  tradingGameContent.append(list, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(renderTradingNav(""), list, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
 }
 
 function changeTradingDraft(kind, itemId, delta, maxQuantity = 3) {
@@ -7128,12 +8139,23 @@ function renderTradingSelectionGrid(title, items, kind) {
   heading.textContent = title;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
+  const safeItems = normalizeTradingItems(items);
 
-  items.forEach((item) => {
+  if (safeItems.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "empty-leaderboard";
+    empty.textContent = kind === "offered"
+      ? "No tradable items yet."
+      : "No requested items available.";
+    section.append(heading, empty);
+    return section;
+  }
+
+  safeItems.forEach((item) => {
     const selectedQuantity = Number.parseInt(activeTradingDraft[kind]?.[item.itemId] || "0", 10) || 0;
     const maxQuantity = kind === "offered" ? item.quantity : 3;
     const card = document.createElement("article");
-    card.className = "trade-item-card selectable";
+    card.className = `trade-item-card selectable ${getTradingRarityClass(item.rarity)}`;
     const icon = document.createElement("span");
     icon.className = "trade-item-icon";
     icon.textContent = item.emoji;
@@ -7142,7 +8164,7 @@ function renderTradingSelectionGrid(title, items, kind) {
     const meta = document.createElement("span");
     meta.textContent = kind === "offered"
       ? `You have x${item.quantity}`
-      : `${item.rarity} item`;
+      : "Preset collectible";
     const selected = document.createElement("span");
     selected.className = "trade-selected-count";
     selected.textContent = `Selected: x${selectedQuantity}`;
@@ -7167,7 +8189,7 @@ function renderTradingSelectionGrid(title, items, kind) {
       renderTradingOfferBuilder(activeTradingFriendCode, false);
     });
     controls.append(minusButton, plusButton);
-    card.append(icon, name, meta, selected, controls);
+    card.append(icon, name, makeTradingRarityBadge(item), meta, selected, controls);
     grid.append(card);
   });
 
@@ -7241,6 +8263,7 @@ function renderTradingOfferBuilder(friendCode, resetDraft = true) {
   actions.append(sendButton, backButton);
 
   tradingGameContent.append(
+    renderTradingNav(""),
     intro,
     renderTradingSelectionGrid("Offer from my inventory", myInventory, "offered"),
     renderTradingSelectionGrid("Ask for a preset collectible", tradingCollectibles.map((item) => makeTradingItemEntry(item.itemId, 1)), "requested"),
@@ -7375,13 +8398,13 @@ async function completeTradingInventoriesForSharedTrade(trade) {
   const senderUpdatedInventory = addTradingItems(senderAfterRemoval, trade.requestedItems);
   const receiverUpdatedInventory = addTradingItems(receiverAfterRemoval, trade.offeredItems);
 
-  saveTradingInventoryForCode(trade.fromFriendCode, senderUpdatedInventory);
-  saveTradingInventoryForCode(trade.toFriendCode, receiverUpdatedInventory);
+  saveTradingInventoryForCode(trade.fromFriendCode, senderUpdatedInventory, { syncOnline: false });
+  saveTradingInventoryForCode(trade.toFriendCode, receiverUpdatedInventory, { syncOnline: false });
 
   if (onlineFriendGames.isConfigured) {
     await Promise.all([
-      onlineFriendGames.saveInventory(trade.fromFriendCode, senderUpdatedInventory),
-      onlineFriendGames.saveInventory(trade.toFriendCode, receiverUpdatedInventory),
+      onlineFriendGames.saveInventory(trade.fromFriendCode, senderUpdatedInventory, getTradingGems(trade.fromFriendCode)),
+      onlineFriendGames.saveInventory(trade.toFriendCode, receiverUpdatedInventory, getTradingGems(trade.toFriendCode)),
     ]);
   }
 
@@ -7408,9 +8431,19 @@ async function acceptTradingOffer(trade) {
     completedAt: Date.now(),
     updatedAt: Date.now(),
   };
-  const applyResult = onlineFriendGames.isConfigured
-    ? await completeTradingInventoriesForSharedTrade(completedTrade)
-    : applyTradingTradeForCurrentPlayer(completedTrade);
+  let applyResult;
+
+  try {
+    applyResult = onlineFriendGames.isConfigured
+      ? await completeTradingInventoriesForSharedTrade(completedTrade)
+      : applyTradingTradeForCurrentPlayer(completedTrade);
+  } catch (error) {
+    console.error("Trading inventory completion error:", error);
+    applyResult = {
+      ok: false,
+      message: "This trade can’t be completed online yet. Please try again.",
+    };
+  }
 
   if (!applyResult.ok) {
     tradingGameMessage.textContent = applyResult.message;
@@ -7776,6 +8809,47 @@ function getTradingCardButtonLabel(trade) {
   return trade.status === "completed" ? "View Trade" : "Open";
 }
 
+function renderTradingLoadError(message = "Could not load Trading Game.") {
+  tradingGameContent.innerHTML = "";
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-offer-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "!";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trading Game";
+  const title = document.createElement("h3");
+  title.textContent = "Trading Game could not load.";
+  const body = document.createElement("p");
+  body.textContent = message;
+  details.append(eyebrow, title, body);
+  card.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const gamesButton = document.createElement("button");
+  gamesButton.className = "secondary-button";
+  gamesButton.type = "button";
+  gamesButton.textContent = "Back to Games";
+  gamesButton.addEventListener("click", showGames);
+  actions.append(gamesButton);
+
+  tradingGameContent.append(card, actions);
+}
+
+function safelyRenderTradingGame(renderCallback, message = "Could not load Trading Game.") {
+  try {
+    renderCallback();
+  } catch (error) {
+    console.error("Trading Game render error:", error);
+    renderTradingLoadError(message);
+    tradingGameMessage.textContent = "";
+  }
+}
+
 function showTradingGame(friendCode = "") {
   if (!activePlayer) {
     showPlayerGate();
@@ -7788,15 +8862,19 @@ function showTradingGame(friendCode = "") {
   activeTradingDraft = { offered: {}, requested: {} };
   tradingGameMessage.textContent = "";
   tradingGameCard.classList.remove("hidden");
-  renderTradingRules(activeTradingFriendCode);
+  safelyRenderTradingGame(() => {
+    getTradingInventory(activePlayer.friendCode);
+    getTradingGems(activePlayer.friendCode);
+    renderTradingRules(activeTradingFriendCode);
+  }, "Inventory could not be loaded.");
   syncTradingInventoryFromOnline(activePlayer.friendCode).then(() => {
     if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
-      renderTradingRules();
+      safelyRenderTradingGame(() => renderTradingRules(), "Inventory could not be loaded.");
     }
   }).catch((error) => console.error("Trading inventory refresh sync error:", error));
   syncFriendGameStateFromOnline().then(() => {
     if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
-      renderTradingRules();
+      safelyRenderTradingGame(() => renderTradingRules(), "Trade offers could not be loaded.");
     }
   }).catch((error) => console.error("Trading game refresh sync error:", error));
 }
@@ -8357,6 +9435,8 @@ function renderFriends() {
   saveActivePlayerProfile();
   myFriendCode.textContent = activePlayer.friendCode;
   friendsList.innerHTML = "";
+  renderSentFriendRequests();
+  updateNotificationBadge();
 
   const friendCodes = Array.isArray(activePlayer.friends) ? activePlayer.friends : [];
 
@@ -8903,6 +9983,7 @@ async function openSupabaseAccount(session, preferredNickname = "") {
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
+  await syncFriendRequestsFromOnline();
   authMessage.textContent = "Online login is ready. Your player data can sync across devices.";
   showStart();
 }
@@ -9002,6 +10083,7 @@ async function logoutSupabaseAccount() {
   usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
+  notificationsPanel.classList.add("hidden");
   localStorage.removeItem(currentPlayerKey);
   updateProfileBar();
   showPlayerGate();
@@ -9042,17 +10124,17 @@ function collectLocalProgressSnapshot() {
     stars: activePlayer?.stars || Number.parseInt(localStorage.getItem(guestStarsKey) || "0", 10) || 0,
     purchases: getPurchasedRewards(),
     quizzes: getSavedQuizzes(),
-    avatar: activePlayer?.avatar || createDefaultAvatar(),
+    avatar: activePlayer?.avatar || null,
     activeTheme: getActiveTheme(),
   };
 }
 
 function hasLocalProgressSnapshot(snapshot) {
   return Boolean(
-    snapshot.hasActivePlayer
-    || snapshot.stars > 0
+    snapshot.stars > 0
     || snapshot.purchases.length > 0
     || snapshot.quizzes.length > 0
+    || hasMeaningfulSavedAvatar(snapshot.avatar)
     || snapshot.activeTheme !== "default"
   );
 }
@@ -9088,13 +10170,20 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
     ? confirm("Do you want to save this local progress to this player account?")
     : false;
   const onlineProfile = profileFromUsernameAccount(safeAccount);
+  const mergedPurchasedRewards = [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])];
+  const importedAvatar = hasMeaningfulSavedAvatar(localSnapshot.avatar)
+    ? localSnapshot.avatar
+    : onlineProfile.avatar;
+  const importedTheme = localSnapshot.activeTheme !== "default"
+    ? localSnapshot.activeTheme
+    : safeAccount.activeTheme;
   const profile = shouldImport
     ? ensureFriendProfile({
         ...onlineProfile,
         stars: Math.max(onlineProfile.stars || 0, localSnapshot.stars || 0),
-        purchasedRewards: [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])],
-        diaryAccess: [...new Set([...(onlineProfile.purchasedRewards || []), ...localSnapshot.purchases])].includes("daily-diary"),
-        avatar: localSnapshot.avatar || onlineProfile.avatar,
+        purchasedRewards: mergedPurchasedRewards,
+        diaryAccess: mergedPurchasedRewards.includes("daily-diary"),
+        avatar: importedAvatar,
       })
     : onlineProfile;
   const localQuizzes = getSavedQuizzes();
@@ -9106,7 +10195,7 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   onlineAccountSyncInProgress = true;
   setActivePlayer(profile);
   localStorage.setItem(savedQuizzesKey, JSON.stringify(visibleQuizzes));
-  localStorage.setItem(activeThemeKey, shouldImport ? localSnapshot.activeTheme : safeAccount.activeTheme);
+  localStorage.setItem(activeThemeKey, shouldImport ? importedTheme : safeAccount.activeTheme);
   usernamePinSession = {
     username: safeAccount.username,
     pin,
@@ -9127,6 +10216,7 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
+  await syncFriendRequestsFromOnline();
   if (pendingGameInviteId) {
     const inviteId = pendingGameInviteId;
     pendingGameInviteId = "";
@@ -9276,6 +10366,7 @@ function switchPlayer() {
   usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
+  notificationsPanel.classList.add("hidden");
   localStorage.removeItem(currentPlayerKey);
   showPlayerGate();
 }
@@ -9799,8 +10890,21 @@ openShopButton.addEventListener("click", showShop);
 openStarLeaderboardButton.addEventListener("click", showStarLeaderboard);
 openFriendsButton.addEventListener("click", showFriends);
 openChatButton.addEventListener("click", showChat);
+openNotificationsButton.addEventListener("click", showNotifications);
+closeNotificationsButton.addEventListener("click", () => notificationsPanel.classList.add("hidden"));
 copyFriendCodeButton.addEventListener("click", copyFriendCode);
 addFriendButton.addEventListener("click", addFriendByCode);
+friendCodeInput.disabled = false;
+friendCodeInput.readOnly = false;
+friendCodeInput.addEventListener("input", () => {
+  friendsMessage.textContent = "";
+});
+friendCodeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    addFriendByCode();
+  }
+});
 sendFriendChallengeButton.addEventListener("click", createFriendChallenge);
 copyFriendChallengeButton.addEventListener("click", copyFriendChallengeLink);
 chatSendQuizButton.addEventListener("click", openChatQuizPanel);
@@ -9856,13 +10960,22 @@ async function initializeApp() {
   renderSafeQuizzes();
   seedUsedNicknamesFromSavedData();
 
-  await restoreSupabaseAccount();
+  const restoredSupabaseAccount = await restoreSupabaseAccount();
+
+  if (!restoredSupabaseAccount) {
+    const cachedPlayer = loadCurrentPlayer();
+
+    if (cachedPlayer) {
+      setActivePlayer(cachedPlayer);
+    }
+  }
 
   guestMode = false;
   updateAvatarPreview();
   updateProfileBar();
   applyPurchasedEffects();
   updateGamePackStatuses();
+  syncFriendRequestsFromOnline().catch((error) => console.error("Friend request startup sync error:", error));
   const openedGameInvite = await loadGameInviteFromUrl();
   const openedSharedQuiz = openedGameInvite ? false : await loadSharedQuizFromUrl();
 

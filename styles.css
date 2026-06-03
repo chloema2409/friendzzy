@@ -1979,6 +1979,7 @@ h2 {
 .friend-code-card,
 .friend-add-box,
 .friend-entry,
+.friend-request-item,
 .friend-action-panel,
 .friend-activity-item {
   margin-top: 14px;
@@ -1990,12 +1991,85 @@ h2 {
 }
 
 .friend-code-card,
-.friend-entry {
+.friend-entry,
+.friend-request-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 14px;
+}
+
+.notification-button {
+  position: relative;
+}
+
+.notification-count {
+  display: inline-flex;
+  min-width: 22px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #ff7aa8;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 1000;
+}
+
+.notifications-panel {
+  position: sticky;
+  top: 12px;
+  z-index: 8;
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid rgba(183, 156, 255, 0.28);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 36px rgba(109, 74, 130, 0.14);
+}
+
+.notification-list,
+.friend-request-list {
+  display: grid;
+  gap: 12px;
+}
+
+.notification-card {
+  background: linear-gradient(135deg, #ffffff, rgba(255, 214, 232, 0.54));
+}
+
+.friend-add-box {
+  position: relative;
+  z-index: 1;
+}
+
+.friend-add-box .save-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+
+#friend-code-input {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  text-transform: uppercase;
+}
+
+#add-friend-button {
+  position: relative;
+  z-index: 2;
 }
 
 .friend-code-text {
@@ -2228,6 +2302,22 @@ h2 {
   gap: 18px;
 }
 
+.game-friend-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(183, 156, 255, 0.28);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.game-friend-empty .empty-leaderboard {
+  flex: 1 1 220px;
+  margin: 0;
+}
+
 .box-of-lies-intro,
 .box-secret-panel,
 .box-history-panel {
@@ -2347,6 +2437,22 @@ h2 {
   box-shadow: 0 8px 16px rgba(109, 74, 130, 0.08);
 }
 
+.trade-item-card.rarity-uncommon {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(205, 247, 231, 0.44));
+}
+
+.trade-item-card.rarity-rare {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(217, 236, 255, 0.68));
+}
+
+.trade-item-card.rarity-epic {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(231, 220, 255, 0.72));
+}
+
+.trade-item-card.rarity-legendary {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(255, 240, 168, 0.72));
+}
+
 .trade-item-card.selectable {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 214, 232, 0.42));
 }
@@ -2371,6 +2477,56 @@ h2 {
   font-weight: 900;
 }
 
+.trade-rarity-badge {
+  justify-self: start;
+  width: fit-content;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #725692;
+  font-size: 0.74rem;
+  font-weight: 1000;
+}
+
+.trade-rarity-badge.rarity-common {
+  color: #667085;
+}
+
+.trade-rarity-badge.rarity-uncommon {
+  color: #3d7d65;
+}
+
+.trade-rarity-badge.rarity-rare {
+  color: #376a9d;
+}
+
+.trade-rarity-badge.rarity-epic {
+  color: #7555a2;
+}
+
+.trade-rarity-badge.rarity-legendary {
+  color: #a06b00;
+}
+
+.trade-gem-total,
+.trade-shop-cost {
+  color: #7555a2;
+  font-weight: 1000;
+}
+
+.trading-nav {
+  justify-content: flex-start;
+}
+
+.trading-balance {
+  flex: 1 1 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(183, 156, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
 .trade-item-controls,
 .trade-draft-summary {
   display: flex;
@@ -2392,6 +2548,24 @@ h2 {
   color: var(--muted);
   font-weight: 900;
   overflow-wrap: anywhere;
+}
+
+.trade-summary-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trade-summary-item {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--muted);
+  font-weight: 900;
 }
 
 .trade-offer-row {

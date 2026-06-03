@@ -98,6 +98,36 @@ create table if not exists public.friends (
   check (owner_friend_code <> friend_friend_code)
 );
 
+create table if not exists public.friend_requests (
+  id uuid primary key default gen_random_uuid(),
+  request_id text not null unique,
+  from_user_id uuid references auth.users(id) on delete set null,
+  to_user_id uuid references auth.users(id) on delete set null,
+  from_friend_code text not null,
+  to_friend_code text not null,
+  from_nickname text not null,
+  from_emoji_avatar text not null default '🌙',
+  to_nickname text not null,
+  to_emoji_avatar text not null default '🌙',
+  status text not null default 'pending',
+  message text not null default 'Hi! Can we be friends?',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  responded_at timestamptz,
+  check (from_friend_code <> to_friend_code),
+  check (from_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'),
+  check (to_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'),
+  check (char_length(from_nickname) between 1 and 20),
+  check (char_length(to_nickname) between 1 and 20),
+  check (status in ('pending', 'accepted', 'declined', 'cancelled', 'expired')),
+  check (message in (
+    'Hi! Can we be friends?',
+    'It''s me from school!',
+    'Let''s play quizzes together!',
+    'Want to be friends?'
+  ))
+);
+
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),
   conversation_id text not null,
@@ -133,10 +163,13 @@ create table if not exists public.game_invites (
 create table if not exists public.player_inventories (
   id uuid primary key default gen_random_uuid(),
   friend_code text not null unique,
-  inventory_json jsonb not null default '[]'::jsonb,
+  inventory_json jsonb not null default '{"items":[],"gems":0}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.player_inventories
+alter column inventory_json set default '{"items":[],"gems":0}'::jsonb;
 
 -- Auth-backed cross-device account columns.
 -- These keep the older local/friend-code MVP working while adding real
@@ -203,6 +236,7 @@ create table if not exists public.players (
 
 alter table public.profiles enable row level security;
 alter table public.friends enable row level security;
+alter table public.friend_requests enable row level security;
 alter table public.messages enable row level security;
 alter table public.game_invites enable row level security;
 alter table public.player_inventories enable row level security;
@@ -316,6 +350,62 @@ to authenticated
 using (owner_user_id = auth.uid() or friend_user_id = auth.uid())
 with check (owner_user_id = auth.uid() or friend_user_id = auth.uid());
 
+drop policy if exists "Anyone can view temporary friend requests" on public.friend_requests;
+create policy "Anyone can view temporary friend requests"
+on public.friend_requests
+for select
+to anon
+using (true);
+
+drop policy if exists "Anyone can create a safe temporary friend request" on public.friend_requests;
+create policy "Anyone can create a safe temporary friend request"
+on public.friend_requests
+for insert
+to anon
+with check (
+  status = 'pending'
+  and from_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and to_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and from_friend_code <> to_friend_code
+  and char_length(from_nickname) between 1 and 20
+  and char_length(to_nickname) between 1 and 20
+  and message in (
+    'Hi! Can we be friends?',
+    'It''s me from school!',
+    'Let''s play quizzes together!',
+    'Want to be friends?'
+  )
+);
+
+drop policy if exists "Anyone can update temporary friend request status" on public.friend_requests;
+create policy "Anyone can update temporary friend request status"
+on public.friend_requests
+for update
+to anon
+using (true)
+with check (
+  status in ('pending', 'accepted', 'declined', 'cancelled', 'expired')
+  and from_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and to_friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
+  and from_friend_code <> to_friend_code
+  and char_length(from_nickname) between 1 and 20
+  and char_length(to_nickname) between 1 and 20
+  and message in (
+    'Hi! Can we be friends?',
+    'It''s me from school!',
+    'Let''s play quizzes together!',
+    'Want to be friends?'
+  )
+);
+
+drop policy if exists "Logged-in users can manage their friend requests" on public.friend_requests;
+create policy "Logged-in users can manage their friend requests"
+on public.friend_requests
+for all
+to authenticated
+using (from_user_id = auth.uid() or to_user_id = auth.uid())
+with check (from_user_id = auth.uid() or to_user_id = auth.uid());
+
 drop policy if exists "Anyone can add a safe temporary friend message" on public.messages;
 create policy "Anyone can add a safe temporary friend message"
 on public.messages
@@ -422,8 +512,14 @@ with check (
   and exists (
     select 1
     from public.friends approved_friend
-    where approved_friend.owner_friend_code = from_friend_code
+    where (
+      approved_friend.owner_friend_code = from_friend_code
       and approved_friend.friend_friend_code = to_friend_code
+    )
+    or (
+      approved_friend.owner_friend_code = to_friend_code
+      and approved_friend.friend_friend_code = from_friend_code
+    )
   )
 );
 
@@ -436,8 +532,14 @@ using (
   exists (
     select 1
     from public.friends approved_friend
-    where approved_friend.owner_friend_code = from_friend_code
+    where (
+      approved_friend.owner_friend_code = from_friend_code
       and approved_friend.friend_friend_code = to_friend_code
+    )
+    or (
+      approved_friend.owner_friend_code = to_friend_code
+      and approved_friend.friend_friend_code = from_friend_code
+    )
   )
 )
 with check (
@@ -451,8 +553,14 @@ with check (
   and exists (
     select 1
     from public.friends approved_friend
-    where approved_friend.owner_friend_code = from_friend_code
+    where (
+      approved_friend.owner_friend_code = from_friend_code
       and approved_friend.friend_friend_code = to_friend_code
+    )
+    or (
+      approved_friend.owner_friend_code = to_friend_code
+      and approved_friend.friend_friend_code = from_friend_code
+    )
   )
 );
 
@@ -465,8 +573,14 @@ using (
   exists (
     select 1
     from public.friends approved_friend
-    where approved_friend.owner_friend_code = from_friend_code
+    where (
+      approved_friend.owner_friend_code = from_friend_code
       and approved_friend.friend_friend_code = to_friend_code
+    )
+    or (
+      approved_friend.owner_friend_code = to_friend_code
+      and approved_friend.friend_friend_code = from_friend_code
+    )
   )
 );
 
@@ -477,7 +591,20 @@ for insert
 to anon, authenticated
 with check (
   friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
-  and jsonb_typeof(inventory_json) = 'array'
+  and (
+    jsonb_typeof(inventory_json) = 'array'
+    or (
+      jsonb_typeof(inventory_json) = 'object'
+      and (
+        not (inventory_json ? 'items')
+        or jsonb_typeof(inventory_json -> 'items') = 'array'
+      )
+      and (
+        not (inventory_json ? 'gems')
+        or jsonb_typeof(inventory_json -> 'gems') = 'number'
+      )
+    )
+  )
 );
 
 drop policy if exists "Players can refresh their game inventory" on public.player_inventories;
@@ -488,7 +615,20 @@ to anon, authenticated
 using (friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$')
 with check (
   friend_code ~ '^[A-Z0-9]{3,8}-[0-9]{4}$'
-  and jsonb_typeof(inventory_json) = 'array'
+  and (
+    jsonb_typeof(inventory_json) = 'array'
+    or (
+      jsonb_typeof(inventory_json) = 'object'
+      and (
+        not (inventory_json ? 'items')
+        or jsonb_typeof(inventory_json -> 'items') = 'array'
+      )
+      and (
+        not (inventory_json ? 'gems')
+        or jsonb_typeof(inventory_json -> 'gems') = 'number'
+      )
+    )
+  )
 );
 
 drop policy if exists "Players can read game inventories" on public.player_inventories;
@@ -782,6 +922,11 @@ create index if not exists friends_owner_friend_code_idx on public.friends (owne
 create index if not exists friends_friend_friend_code_idx on public.friends (friend_friend_code);
 create index if not exists friends_owner_user_id_idx on public.friends (owner_user_id);
 create index if not exists friends_friend_user_id_idx on public.friends (friend_user_id);
+create index if not exists friend_requests_from_to_updated_idx on public.friend_requests (from_friend_code, to_friend_code, updated_at desc);
+create index if not exists friend_requests_to_status_updated_idx on public.friend_requests (to_friend_code, status, updated_at desc);
+create unique index if not exists friend_requests_pending_pair_idx
+on public.friend_requests (from_friend_code, to_friend_code)
+where status = 'pending';
 create index if not exists messages_conversation_created_idx on public.messages (conversation_id, created_at asc);
 create index if not exists messages_sender_receiver_idx on public.messages (sender_friend_code, receiver_friend_code);
 create index if not exists messages_sender_receiver_user_idx on public.messages (sender_user_id, receiver_user_id);
