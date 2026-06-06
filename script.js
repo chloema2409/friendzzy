@@ -4734,7 +4734,7 @@ async function addToLeaderboard(event) {
       leaderboardNicknameMessage.textContent = "Score saved to this online quiz leaderboard.";
     } catch {
       onlineLeaderboardEntries = sortLeaderboard([...onlineLeaderboardEntries, newEntry]);
-      leaderboardNicknameMessage.textContent = "Score saved temporarily. Online leaderboard needs the Supabase quiz_scores table to be ready.";
+      leaderboardNicknameMessage.textContent = "Score saved for now. If it does not show online yet, please try again later.";
     }
   }
 
@@ -7321,7 +7321,7 @@ function renderBoxOfLiesDeclined(round) {
   body.textContent = "No problem. You can send or accept another safe game later.";
   details.append(eyebrow, title, body);
   declined.append(icon, details);
-  boxOfLiesContent.append(declined, renderBoxOfLiesHistory());
+  boxOfLiesContent.append(declined, renderBoxOfLiesUtilityActions());
 }
 
 function renderBoxOfLiesCancelled(round) {
@@ -7354,7 +7354,7 @@ function renderBoxOfLiesCancelled(round) {
   friendsButton.addEventListener("click", renderBoxOfLiesFriendChooser);
   actions.append(friendsButton);
 
-  boxOfLiesContent.append(cancelled, actions, renderBoxOfLiesHistory());
+  boxOfLiesContent.append(cancelled, actions);
 }
 
 function renderBoxOfLiesExpired(round) {
@@ -7375,7 +7375,7 @@ function renderBoxOfLiesExpired(round) {
   body.textContent = "Send a new invite if you still want to play.";
   details.append(eyebrow, title, body);
   expired.append(icon, details);
-  boxOfLiesContent.append(expired, renderBoxOfLiesHistory());
+  boxOfLiesContent.append(expired, renderBoxOfLiesUtilityActions());
 }
 
 function renderBoxOfLiesRules(round) {
@@ -7669,7 +7669,7 @@ function renderBoxOfLiesResult(round) {
   });
   actions.append(chatButton, copyLinkButton, gamesButton);
 
-  boxOfLiesContent.append(result, actions, renderBoxOfLiesHistory());
+  boxOfLiesContent.append(result, actions);
 }
 
 function getTradingItem(itemId) {
@@ -9130,7 +9130,7 @@ async function buyTradingShopItem(offer) {
       await onlineFriendGames.saveInventory(activePlayer.friendCode, updatedInventory, updatedGemCount);
     } catch (error) {
       console.error("Trading shop inventory sync error:", error);
-      tradingGameMessage.textContent = `You bought ${item.name}, but online sync could not finish yet.`;
+      tradingGameMessage.textContent = `You bought ${item.name}. If it does not appear on another device yet, please try again later.`;
       renderTradingShop();
       return;
     }
@@ -10985,13 +10985,13 @@ async function sendQuizFromChat() {
     const invite = await sendQuizInviteToFriend(selectedChatFriendCode, quiz);
     chatQuizMessage.textContent = invite.online
       ? `Quiz sent to ${friendProfile.nickname}!`
-      : "Quiz invite saved here, but online chat needs the updated messages table.";
+      : "Quiz invite saved. If your friend does not see it, please try again later.";
     renderChatHistory();
   } catch (error) {
     console.error("Friend quiz invite error:", error);
     chatQuizMessage.textContent = String(error?.message || "").includes("Short friend links need")
       ? getOnlineSharingSetupMessage()
-      : "Quiz could not be sent yet. Check Supabase setup and try again.";
+      : "Quiz could not be sent yet. Please try again.";
   }
 }
 
@@ -11656,7 +11656,7 @@ async function openSupabaseAccount(session, preferredNickname = "") {
   applyPurchasedEffects();
   updateGamePackStatuses();
   await syncFriendRequestsFromOnline();
-  authMessage.textContent = "Online login is ready. Your player data can sync across devices.";
+  authMessage.textContent = "Online login is ready. Your player can follow you across devices.";
   showStart();
 }
 
@@ -11715,7 +11715,7 @@ async function handleAuthSignup(event) {
     });
 
     if (!session?.access_token) {
-      authMessage.textContent = "Account created. Check the parent/guardian email if Supabase asks for confirmation, then log in here.";
+      authMessage.textContent = "Account created. If a grown-up confirmation is needed, finish that first, then log in here.";
       return;
     }
 
@@ -11723,7 +11723,7 @@ async function handleAuthSignup(event) {
     authSignupForm.reset();
   } catch (error) {
     console.error("Supabase signup error:", error);
-    authMessage.textContent = "Sign up did not work yet. Check the parent/guardian email, password, and Supabase settings.";
+    authMessage.textContent = "Sign up did not work yet. Please check the details and try again.";
   }
 }
 
@@ -11951,7 +11951,7 @@ function getUsernameAccountErrorMessage(error) {
     return "Please enter a 4 to 6 digit PIN.";
   }
 
-  return "Username login is not ready yet. Check Supabase setup and try again.";
+  return "Username login is not ready yet. Please try again later.";
 }
 
 async function openUsernameAccount(account, pin, { askImport = true } = {}) {
@@ -12385,11 +12385,11 @@ function buildShortFriendLink(quizId) {
 }
 
 function getOnlineSharingSetupMessage() {
-  return `Short friend links need ${onlineQuizProvider} config in config.js. The URL and publishable key must be available in the browser.`;
+  return "Short friend links are not ready yet. Please try again later.";
 }
 
 function getOnlineSharingRequestErrorMessage() {
-  return `Supabase is connected, but the quiz could not be saved or loaded. Check the browser console, then check the quizzes and quiz_scores tables and policies in Supabase.`;
+  return "This quiz could not be saved or loaded online yet. Please try again later.";
 }
 
 function showOnlineSharingNotReady(messageTarget, outputTarget = null) {
@@ -12536,7 +12536,7 @@ async function openOnlineQuizFromLink(quizId) {
   startSharedLinkQuizButton.classList.add("hidden");
 
   if (!onlineQuizSharing.isConfigured) {
-    sharedQuizMessage.textContent = "Short friend links need Supabase config in config.js before this quiz can load.";
+    sharedQuizMessage.textContent = "This quiz link could not be opened yet. Please ask your friend to send it again.";
     return true;
   }
 
