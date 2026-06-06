@@ -29,7 +29,12 @@ const tradingAppliedTradesKey = "friendzzyTradingAppliedTrades";
 const tradingInventoryBoostFlag = "trading_inventory_boost_v1_given";
 const tradingInventoryGrantFlagsKey = "friendzzyTradingInventoryGrantFlags";
 const catGirlInventoryGrantTargetName = "cat-girl1";
-const catGirlInventoryGrantFlag = "trading_inventory_grant_cat_girl1_rare_uncommon_v1";
+const catGirlInventoryGrantFlag = "trading_inventory_grant_cat_girl1_rare_x10_v1";
+const catGirlGemGrantTargetName = "cat-girl";
+const catGirlGemGrantFlag = "trading_gem_grant_cat_girl_min_200_v1";
+const catGirlGemGrantMinimum = 200;
+const catGirlEpicLegendaryGrantFlag = "trading_inventory_grant_cat_girl_epic_legendary_min_10_v1";
+const catGirlEpicLegendaryGrantMinimum = 10;
 const tradingTrainingCompletedKey = "friendzzy_trading_training_completed";
 const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
 const minQuestions = 5;
@@ -1335,6 +1340,16 @@ const tradingCollectibles = [
   { itemId: "apple-badge", emoji: "🍎", name: "Apple Badge", rarity: "Common", source: "starter" },
   { itemId: "paw-print-card", emoji: "🐾", name: "Paw Print Card", rarity: "Common", source: "starter" },
   { itemId: "flower-sticker", emoji: "🌸", name: "Flower Sticker", rarity: "Common", source: "starter" },
+  { itemId: "kitten-sticker", emoji: "🐱", name: "Kitten Sticker", rarity: "Common", source: "shop" },
+  { itemId: "paw-charm", emoji: "🐾", name: "Paw Charm", rarity: "Common", source: "shop" },
+  { itemId: "mini-cupcake", emoji: "🧁", name: "Mini Cupcake", rarity: "Common", source: "shop" },
+  { itemId: "strawberry-badge", emoji: "🍓", name: "Strawberry Badge", rarity: "Common", source: "shop" },
+  { itemId: "tiny-flower", emoji: "🌸", name: "Tiny Flower", rarity: "Common", source: "shop" },
+  { itemId: "baby-duck-card", emoji: "🐥", name: "Baby Duck Card", rarity: "Common", source: "shop" },
+  { itemId: "cookie-charm", emoji: "🍪", name: "Cookie Charm", rarity: "Common", source: "shop" },
+  { itemId: "mouse-sticker", emoji: "🐭", name: "Mouse Sticker", rarity: "Common", source: "shop" },
+  { itemId: "fish-badge", emoji: "🐟", name: "Fish Badge", rarity: "Common", source: "shop" },
+  { itemId: "party-balloon", emoji: "🎈", name: "Party Balloon", rarity: "Common", source: "shop" },
   { itemId: "pink-bow", emoji: "🎀", name: "Pink Bow", rarity: "Uncommon", source: "shop" },
   { itemId: "panda-sticker", emoji: "🐼", name: "Panda Sticker", rarity: "Uncommon", source: "shop" },
   { itemId: "penguin-card", emoji: "🐧", name: "Penguin Card", rarity: "Uncommon", source: "trade" },
@@ -1355,6 +1370,14 @@ const tradingCollectibles = [
   { itemId: "seal-sticker", emoji: "🦭", name: "Seal Sticker", rarity: "Uncommon", source: "starter" },
   { itemId: "balloon-badge", emoji: "🎈", name: "Balloon Badge", rarity: "Uncommon", source: "starter" },
   { itemId: "monkey-card", emoji: "🐵", name: "Monkey Card", rarity: "Uncommon", source: "starter" },
+  { itemId: "sparkle-bow", emoji: "🎀", name: "Sparkle Bow", rarity: "Uncommon", source: "shop" },
+  { itemId: "panda-plushie", emoji: "🐼", name: "Panda Plushie", rarity: "Uncommon", source: "shop" },
+  { itemId: "mini-rainbow", emoji: "🌈", name: "Mini Rainbow", rarity: "Uncommon", source: "shop" },
+  { itemId: "donut-keychain", emoji: "🍩", name: "Donut Keychain", rarity: "Uncommon", source: "shop" },
+  { itemId: "fox-friend", emoji: "🦊", name: "Fox Friend", rarity: "Uncommon", source: "shop" },
+  { itemId: "bunny-shoes", emoji: "🐰", name: "Bunny Shoes", rarity: "Uncommon", source: "shop" },
+  { itemId: "teddy-badge", emoji: "🧸", name: "Teddy Badge", rarity: "Uncommon", source: "shop" },
+  { itemId: "koala-sticker", emoji: "🐨", name: "Koala Sticker", rarity: "Uncommon", source: "shop" },
   { itemId: "small-cat-squishy", emoji: "🐱", name: "Small Cat Squishy", rarity: "Rare", source: "shop" },
   { itemId: "unicorn-card", emoji: "🦄", name: "Unicorn Card", rarity: "Rare", source: "shop" },
   { itemId: "tiny-crown", emoji: "👑", name: "Tiny Crown", rarity: "Rare", source: "shop" },
@@ -1375,6 +1398,8 @@ const tradingCollectibles = [
   { itemId: "fancy-cupcake", emoji: "🧁", name: "Fancy Cupcake", rarity: "Rare", source: "trade" },
   { itemId: "moon-bunny", emoji: "🐇", name: "Moon Bunny", rarity: "Rare", source: "trade" },
   { itemId: "tropical-flower", emoji: "🌺", name: "Tropical Flower", rarity: "Rare", source: "trade" },
+  { itemId: "fluffy-kitten-card", emoji: "🐈", name: "Fluffy Kitten Card", rarity: "Rare", source: "shop" },
+  { itemId: "unicorn-sticker", emoji: "🦄", name: "Unicorn Sticker", rarity: "Rare", source: "shop" },
   { itemId: "glitter-unicorn", emoji: "🦄", name: "Glitter Unicorn", rarity: "Epic", source: "trade" },
   { itemId: "rainbow-dragon", emoji: "🐉", name: "Rainbow Dragon", rarity: "Epic", source: "trade" },
   { itemId: "galaxy-charm", emoji: "🌌", name: "Galaxy Charm", rarity: "Epic", source: "trade" },
@@ -1438,6 +1463,16 @@ const tradingShopOffers = [
   { itemId: "apple-badge", gemCost: 3 },
   { itemId: "paw-print-card", gemCost: 4 },
   { itemId: "flower-sticker", gemCost: 2 },
+  { itemId: "kitten-sticker", gemCost: 2 },
+  { itemId: "paw-charm", gemCost: 3 },
+  { itemId: "mini-cupcake", gemCost: 3 },
+  { itemId: "strawberry-badge", gemCost: 3 },
+  { itemId: "tiny-flower", gemCost: 2 },
+  { itemId: "baby-duck-card", gemCost: 3 },
+  { itemId: "cookie-charm", gemCost: 4 },
+  { itemId: "mouse-sticker", gemCost: 3 },
+  { itemId: "fish-badge", gemCost: 3 },
+  { itemId: "party-balloon", gemCost: 4 },
   { itemId: "pink-bow", gemCost: 5 },
   { itemId: "panda-sticker", gemCost: 6 },
   { itemId: "penguin-card", gemCost: 6 },
@@ -1458,6 +1493,14 @@ const tradingShopOffers = [
   { itemId: "seal-sticker", gemCost: 8 },
   { itemId: "balloon-badge", gemCost: 5 },
   { itemId: "monkey-card", gemCost: 7 },
+  { itemId: "sparkle-bow", gemCost: 6 },
+  { itemId: "panda-plushie", gemCost: 7 },
+  { itemId: "mini-rainbow", gemCost: 8 },
+  { itemId: "donut-keychain", gemCost: 7 },
+  { itemId: "fox-friend", gemCost: 8 },
+  { itemId: "bunny-shoes", gemCost: 8 },
+  { itemId: "teddy-badge", gemCost: 7 },
+  { itemId: "koala-sticker", gemCost: 8 },
   { itemId: "small-cat-squishy", gemCost: 12 },
   { itemId: "unicorn-card", gemCost: 15 },
   { itemId: "tiny-crown", gemCost: 18 },
@@ -1478,6 +1521,8 @@ const tradingShopOffers = [
   { itemId: "fancy-cupcake", gemCost: 12 },
   { itemId: "moon-bunny", gemCost: 18 },
   { itemId: "tropical-flower", gemCost: 12 },
+  { itemId: "fluffy-kitten-card", gemCost: 14 },
+  { itemId: "unicorn-sticker", gemCost: 15 },
   { itemId: "glitter-unicorn", gemCost: 28 },
   { itemId: "rainbow-dragon", gemCost: 38 },
   { itemId: "galaxy-charm", gemCost: 35 },
@@ -3611,6 +3656,8 @@ function setActivePlayer(profile) {
   guestMode = false;
   localStorage.setItem(currentPlayerKey, profile.nickname);
   saveActivePlayerProfile();
+  applyCatGirlGemGrantIfNeeded(activePlayer);
+  applyCatGirlEpicLegendaryGrantToItemsIfNeeded(activePlayer.friendCode, getStoredTradingInventory(activePlayer.friendCode) || []);
   updateProfileBar();
   applyPurchasedEffects();
   startPresenceUpdates();
@@ -8138,15 +8185,20 @@ function getTradingGems(friendCode = activePlayer?.friendCode || "") {
   const migratedGems = migrateTradingGemsFromInventory(safeFriendCode, existingRecord);
 
   if (existingRecord) {
-    return existingRecord.gems;
+    return applyCatGirlGemGrantToValueIfNeeded(safeFriendCode, existingRecord.gems).gems;
   }
 
   if (migratedGems !== null) {
-    return migratedGems;
+    return applyCatGirlGemGrantToValueIfNeeded(safeFriendCode, migratedGems).gems;
   }
 
-  saveTradingGemsForCode(safeFriendCode, starterTradingGems);
-  return starterTradingGems;
+  const starterGrant = applyCatGirlGemGrantToValueIfNeeded(safeFriendCode, starterTradingGems);
+
+  if (!starterGrant.applied) {
+    saveTradingGemsForCode(safeFriendCode, starterTradingGems);
+  }
+
+  return starterGrant.gems;
 }
 
 function getStoredTradingInventoryRecord(friendCode) {
@@ -8200,12 +8252,15 @@ function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
   const existingItems = getStoredTradingInventory(safeFriendCode);
 
   if (existingItems) {
-    return maybeApplyTradingInventoryBoostForCode(safeFriendCode, existingItems);
+    const boostedItems = maybeApplyTradingInventoryBoostForCode(safeFriendCode, existingItems);
+    const catGirlItems = applyCatGirlEpicLegendaryGrantToItemsIfNeeded(safeFriendCode, boostedItems).items;
+    return applyCatGirlInventoryGrantToItemsIfNeeded(safeFriendCode, catGirlItems).items;
   }
 
   const starterItems = createAndSaveStarterTradingInventoryForCode(safeFriendCode);
   getTradingGems(safeFriendCode);
-  return starterItems;
+  const catGirlItems = applyCatGirlEpicLegendaryGrantToItemsIfNeeded(safeFriendCode, starterItems).items;
+  return applyCatGirlInventoryGrantToItemsIfNeeded(safeFriendCode, catGirlItems).items;
 }
 
 function saveTradingInventoryForCode(friendCode, items, { updatedAt = Date.now(), syncOnline = true, boostV1Given = null } = {}) {
@@ -8393,6 +8448,13 @@ function isCatGirlInventoryGrantTarget(profile = activePlayer) {
   return possibleNames.includes(targetName);
 }
 
+function canApplyCatGirlInventoryGrantForCode(friendCode, profile = activePlayer) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const profileFriendCode = normalizeFriendCode(profile?.friendCode || activePlayer?.friendCode || "");
+
+  return Boolean(safeFriendCode && profileFriendCode === safeFriendCode && isCatGirlInventoryGrantTarget(profile));
+}
+
 function hasCatGirlInventoryGrantApplied(friendCode) {
   const safeFriendCode = normalizeFriendCode(friendCode);
   const scopedKey = getScopedCatGirlInventoryGrantKey(safeFriendCode);
@@ -8433,13 +8495,201 @@ function markCatGirlInventoryGrantApplied(friendCode) {
 
 function getCatGirlInventoryGrantItems() {
   return normalizeTradingItems([
-    ...getTradingItemsByRarity("Rare").map((item) => makeTradingItemEntry(item.itemId, 1)),
-    ...getTradingItemsByRarity("Uncommon").map((item) => makeTradingItemEntry(item.itemId, 4)),
+    ...getTradingItemsByRarity("Rare").map((item) => makeTradingItemEntry(item.itemId, 10)),
   ]);
 }
 
+function getScopedTradingAdminGrantKey(grantFlag, friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  return grantFlag && safeFriendCode ? `${grantFlag}:${safeFriendCode}` : "";
+}
+
+function hasTradingAdminGrantApplied(grantFlag, friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const scopedKey = getScopedTradingAdminGrantKey(grantFlag, safeFriendCode);
+
+  if (!safeFriendCode || !scopedKey) {
+    return false;
+  }
+
+  const localFlags = getTradingInventoryGrantFlags();
+  const rewardRecord = getTradingGemRewardRecord(safeFriendCode);
+
+  return localFlags[scopedKey] === true
+    || localFlags[scopedKey]?.applied === true
+    || Boolean(rewardRecord.rewards?.[grantFlag])
+    || Boolean(rewardRecord.rewards?.[scopedKey]);
+}
+
+function markTradingAdminGrantApplied(grantFlag, friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const scopedKey = getScopedTradingAdminGrantKey(grantFlag, safeFriendCode);
+
+  if (!safeFriendCode || !scopedKey) {
+    return;
+  }
+
+  const appliedAt = Date.now();
+  const localFlags = getTradingInventoryGrantFlags();
+  localFlags[scopedKey] = true;
+  saveTradingInventoryGrantFlags(localFlags);
+
+  const rewardRecord = getTradingGemRewardRecord(safeFriendCode);
+  rewardRecord.rewards = rewardRecord.rewards && typeof rewardRecord.rewards === "object" ? rewardRecord.rewards : {};
+  rewardRecord.rewards[grantFlag] = appliedAt;
+  rewardRecord.rewards[scopedKey] = appliedAt;
+  rewardRecord.updatedAt = appliedAt;
+  saveTradingGemRewardRecord(safeFriendCode, rewardRecord);
+}
+
+function isCatGirlAdminGrantTarget(profile = activePlayer) {
+  const targetName = catGirlGemGrantTargetName;
+  const possibleNames = [
+    profile?.nickname,
+    profile?.username,
+    profile?.displayName,
+    usernamePinSession?.username,
+  ].map((name) => String(name || "").trim());
+
+  return possibleNames.includes(targetName);
+}
+
+function canApplyCatGirlAdminGrantForCode(friendCode, profile = activePlayer) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const profileFriendCode = normalizeFriendCode(profile?.friendCode || activePlayer?.friendCode || "");
+
+  return Boolean(safeFriendCode && profileFriendCode === safeFriendCode && isCatGirlAdminGrantTarget(profile));
+}
+
+function applyCatGirlGemGrantToValueIfNeeded(friendCode, gems, { syncOnline = true } = {}) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const currentGems = Math.max(0, Number.parseInt(gems || "0", 10) || 0);
+
+  if (!canApplyCatGirlAdminGrantForCode(safeFriendCode)) {
+    return { applied: false, reason: "not-target", gems: currentGems };
+  }
+
+  if (hasTradingAdminGrantApplied(catGirlGemGrantFlag, safeFriendCode)) {
+    return { applied: false, reason: "already-applied", gems: currentGems };
+  }
+
+  const nextGems = Math.max(currentGems, catGirlGemGrantMinimum);
+  markTradingAdminGrantApplied(catGirlGemGrantFlag, safeFriendCode);
+  saveTradingGemsForCode(safeFriendCode, nextGems, { syncOnline });
+  return { applied: nextGems !== currentGems, reason: "applied", gems: nextGems };
+}
+
+function applyCatGirlGemGrantIfNeeded(profile = activePlayer, { syncOnline = true } = {}) {
+  if (!profile || !canApplyCatGirlAdminGrantForCode(profile.friendCode, profile)) {
+    return { applied: false, reason: "not-target", gems: getStoredTradingGemRecord(profile?.friendCode || "")?.gems ?? 0 };
+  }
+
+  const safeFriendCode = normalizeFriendCode(profile.friendCode || "");
+
+  if (!safeFriendCode) {
+    return { applied: false, reason: "missing-friend-code", gems: 0 };
+  }
+
+  const currentGemRecord = getStoredTradingGemRecord(safeFriendCode);
+  return applyCatGirlGemGrantToValueIfNeeded(safeFriendCode, currentGemRecord?.gems ?? starterTradingGems, { syncOnline });
+}
+
+function getCatGirlEpicLegendaryMinimumItems(inventory) {
+  const currentItems = normalizeTradingItems(inventory);
+  const itemsToEnsure = [
+    ...getTradingItemsByRarity("Legendary"),
+    ...getTradingItemsByRarity("Epic"),
+  ];
+
+  return normalizeTradingItems(itemsToEnsure.map((item) => {
+    const currentQuantity = getTradingItemQuantity(currentItems, item.itemId);
+    return makeTradingItemEntry(item.itemId, Math.max(0, catGirlEpicLegendaryGrantMinimum - currentQuantity));
+  }));
+}
+
+function applyCatGirlEpicLegendaryGrantToItemsIfNeeded(friendCode, items, { syncOnline = true } = {}) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const currentItems = normalizeTradingItems(items);
+
+  if (!canApplyCatGirlAdminGrantForCode(safeFriendCode) || hasTradingAdminGrantApplied(catGirlEpicLegendaryGrantFlag, safeFriendCode)) {
+    return {
+      applied: false,
+      items: currentItems,
+    };
+  }
+
+  const neededItems = getCatGirlEpicLegendaryMinimumItems(currentItems);
+  const updatedInventory = sortTradingItemsByRarity(addTradingItems(currentItems, neededItems));
+  markTradingAdminGrantApplied(catGirlEpicLegendaryGrantFlag, safeFriendCode);
+  saveTradingInventoryForCode(safeFriendCode, updatedInventory, { syncOnline });
+  return {
+    applied: neededItems.length > 0,
+    items: updatedInventory,
+  };
+}
+
+async function applyCatGirlEpicLegendaryGrantIfNeeded(profile = activePlayer) {
+  if (!profile || !canApplyCatGirlAdminGrantForCode(profile.friendCode, profile)) {
+    return { applied: false, reason: "not-target" };
+  }
+
+  const safeFriendCode = normalizeFriendCode(profile.friendCode || "");
+
+  if (!safeFriendCode) {
+    return { applied: false, reason: "missing-friend-code" };
+  }
+
+  if (onlineFriendGames.isConfigured) {
+    await syncTradingInventoryFromOnline(safeFriendCode).catch((error) => {
+      console.error("Supabase cat-girl Epic/Legendary grant inventory sync error:", error);
+    });
+  }
+
+  if (hasTradingAdminGrantApplied(catGirlEpicLegendaryGrantFlag, safeFriendCode)) {
+    return { applied: false, reason: "already-applied" };
+  }
+
+  const grantResult = applyCatGirlEpicLegendaryGrantToItemsIfNeeded(safeFriendCode, getTradingInventory(safeFriendCode), {
+    syncOnline: false,
+  });
+
+  if (onlineFriendGames.isConfigured) {
+    await onlineFriendGames.saveInventory(
+      safeFriendCode,
+      grantResult.items,
+      getTradingGems(safeFriendCode),
+      getTradingGemRewardRecord(safeFriendCode),
+    ).catch((error) => {
+      console.error("Supabase cat-girl Epic/Legendary grant inventory save error:", error);
+    });
+  }
+
+  syncUsernameProgressOnlineSoon();
+  return { applied: grantResult.applied, reason: grantResult.applied ? "applied" : "already-applied" };
+}
+
+function applyCatGirlInventoryGrantToItemsIfNeeded(friendCode, items, { syncOnline = true } = {}) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const currentItems = normalizeTradingItems(items);
+
+  if (!canApplyCatGirlInventoryGrantForCode(safeFriendCode) || hasCatGirlInventoryGrantApplied(safeFriendCode)) {
+    return {
+      applied: false,
+      items: currentItems,
+    };
+  }
+
+  const updatedInventory = sortTradingItemsByRarity(addTradingItems(currentItems, getCatGirlInventoryGrantItems()));
+  markCatGirlInventoryGrantApplied(safeFriendCode);
+  saveTradingInventoryForCode(safeFriendCode, updatedInventory, { syncOnline });
+  return {
+    applied: true,
+    items: updatedInventory,
+  };
+}
+
 async function applyCatGirlInventoryGrantIfNeeded(profile = activePlayer) {
-  if (!profile || !isCatGirlInventoryGrantTarget(profile)) {
+  if (!profile || !canApplyCatGirlInventoryGrantForCode(profile.friendCode, profile)) {
     return { applied: false, reason: "not-target" };
   }
 
@@ -8459,15 +8709,14 @@ async function applyCatGirlInventoryGrantIfNeeded(profile = activePlayer) {
     return { applied: false, reason: "already-applied" };
   }
 
-  const grantItems = getCatGirlInventoryGrantItems();
-  const updatedInventory = sortTradingItemsByRarity(addTradingItems(getTradingInventory(safeFriendCode), grantItems));
-  markCatGirlInventoryGrantApplied(safeFriendCode);
-  saveTradingInventoryForCode(safeFriendCode, updatedInventory, { syncOnline: false });
+  const grantResult = applyCatGirlInventoryGrantToItemsIfNeeded(safeFriendCode, getTradingInventory(safeFriendCode), {
+    syncOnline: false,
+  });
 
   if (onlineFriendGames.isConfigured) {
     await onlineFriendGames.saveInventory(
       safeFriendCode,
-      updatedInventory,
+      grantResult.items,
       getTradingGems(safeFriendCode),
       getTradingGemRewardRecord(safeFriendCode),
     ).catch((error) => {
@@ -8476,7 +8725,7 @@ async function applyCatGirlInventoryGrantIfNeeded(profile = activePlayer) {
   }
 
   syncUsernameProgressOnlineSoon();
-  return { applied: true, reason: "applied", items: grantItems };
+  return { applied: grantResult.applied, reason: grantResult.applied ? "applied" : "already-applied", items: getCatGirlInventoryGrantItems() };
 }
 
 function tradingDraftToItems(selection = {}) {
@@ -12054,6 +12303,9 @@ function applyUsernameAccountProgressToLocal(account, { importSnapshot = null } 
   if (Number.isFinite(chosenGems)) {
     saveTradingGemsForCode(safeAccount.friendCode, chosenGems, { syncOnline: false });
   }
+
+  applyCatGirlGemGrantIfNeeded(activePlayer, { syncOnline: false });
+  applyCatGirlEpicLegendaryGrantToItemsIfNeeded(safeAccount.friendCode, getStoredTradingInventory(safeAccount.friendCode) || [], { syncOnline: false });
 }
 
 function collectLocalProgressSnapshot() {
@@ -12163,6 +12415,8 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   await syncFriendRequestsFromOnline();
   await syncFriendGameStateFromOnline();
   await syncTradingInventoryFromOnline(activePlayer.friendCode);
+  await applyCatGirlGemGrantIfNeeded(activePlayer);
+  await applyCatGirlEpicLegendaryGrantIfNeeded(activePlayer);
   await applyCatGirlInventoryGrantIfNeeded(activePlayer);
   syncUsernameProgressOnlineSoon();
 
