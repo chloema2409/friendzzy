@@ -27,6 +27,7 @@ const tradingGemRewardsKey = "friendzzyTradingGemRewards";
 const tradingTradesKey = "friendzzyTradingTrades";
 const tradingAppliedTradesKey = "friendzzyTradingAppliedTrades";
 const tradingInventoryBoostFlag = "trading_inventory_boost_v1_given";
+const tradingTrainingCompletedKey = "friendzzy_trading_training_completed";
 const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
 const minQuestions = 5;
 const maxQuestions = 30;
@@ -1414,14 +1415,93 @@ const tradingStarterInventory = [
 ];
 const starterTradingGems = 5;
 const tradingShopOffers = [
-  { itemId: "strawberry-sticker", gemCost: 1 },
-  { itemId: "pink-bow", gemCost: 1 },
-  { itemId: "panda-sticker", gemCost: 2 },
-  { itemId: "small-cat-squishy", gemCost: 2 },
-  { itemId: "bee-badge", gemCost: 2 },
-  { itemId: "unicorn-card", gemCost: 4 },
-  { itemId: "tiny-crown", gemCost: 5 },
-  { itemId: "moon-crystal", gemCost: 6 },
+  { itemId: "star-sticker", gemCost: 2 },
+  { itemId: "cat-card", gemCost: 3 },
+  { itemId: "puppy-card", gemCost: 3 },
+  { itemId: "frog-sticker", gemCost: 2 },
+  { itemId: "pizza-badge", gemCost: 4 },
+  { itemId: "cupcake-charm", gemCost: 4 },
+  { itemId: "strawberry-sticker", gemCost: 3 },
+  { itemId: "duck-card", gemCost: 3 },
+  { itemId: "daisy-charm", gemCost: 2 },
+  { itemId: "cookie-badge", gemCost: 4 },
+  { itemId: "fish-sticker", gemCost: 3 },
+  { itemId: "watermelon-badge", gemCost: 4 },
+  { itemId: "bear-card", gemCost: 4 },
+  { itemId: "mouse-charm", gemCost: 3 },
+  { itemId: "lollipop-sticker", gemCost: 3 },
+  { itemId: "ladybug-charm", gemCost: 2 },
+  { itemId: "shell-sticker", gemCost: 3 },
+  { itemId: "apple-badge", gemCost: 3 },
+  { itemId: "paw-print-card", gemCost: 4 },
+  { itemId: "flower-sticker", gemCost: 2 },
+  { itemId: "pink-bow", gemCost: 5 },
+  { itemId: "panda-sticker", gemCost: 6 },
+  { itemId: "penguin-card", gemCost: 6 },
+  { itemId: "donut-charm", gemCost: 7 },
+  { itemId: "rainbow-sticker", gemCost: 8 },
+  { itemId: "fox-plushie", gemCost: 9 },
+  { itemId: "bunny-roller-skates", gemCost: 9 },
+  { itemId: "teddy-charm", gemCost: 8 },
+  { itemId: "bee-badge", gemCost: 5 },
+  { itemId: "bubble-tea-charm", gemCost: 7 },
+  { itemId: "dolphin-card", gemCost: 7 },
+  { itemId: "cherry-charm", gemCost: 5 },
+  { itemId: "lion-sticker", gemCost: 8 },
+  { itemId: "koala-badge", gemCost: 9 },
+  { itemId: "sunflower-charm", gemCost: 6 },
+  { itemId: "owl-card", gemCost: 7 },
+  { itemId: "ice-cream-charm", gemCost: 7 },
+  { itemId: "seal-sticker", gemCost: 8 },
+  { itemId: "balloon-badge", gemCost: 5 },
+  { itemId: "monkey-card", gemCost: 7 },
+  { itemId: "small-cat-squishy", gemCost: 12 },
+  { itemId: "unicorn-card", gemCost: 15 },
+  { itemId: "tiny-crown", gemCost: 18 },
+  { itemId: "baby-dragon-card", gemCost: 18 },
+  { itemId: "moon-crystal", gemCost: 16 },
+  { itemId: "bestie-heart", gemCost: 14 },
+  { itemId: "disco-gem", gemCost: 13 },
+  { itemId: "butterfly-wings", gemCost: 15 },
+  { itemId: "mushroom-house", gemCost: 12 },
+  { itemId: "sparkle-fish", gemCost: 12 },
+  { itemId: "parrot-plushie", gemCost: 14 },
+  { itemId: "strawberry-cake-charm", gemCost: 13 },
+  { itemId: "octopus-card", gemCost: 12 },
+  { itemId: "ocean-pearl", gemCost: 17 },
+  { itemId: "swan-sticker", gemCost: 15 },
+  { itemId: "whale-plushie", gemCost: 17 },
+  { itemId: "carousel-horse", gemCost: 18 },
+  { itemId: "fancy-cupcake", gemCost: 12 },
+  { itemId: "moon-bunny", gemCost: 18 },
+  { itemId: "tropical-flower", gemCost: 12 },
+  { itemId: "glitter-unicorn", gemCost: 28 },
+  { itemId: "rainbow-dragon", gemCost: 38 },
+  { itemId: "galaxy-charm", gemCost: 35 },
+  { itemId: "tiny-castle", gemCost: 40 },
+  { itemId: "golden-cupcake", gemCost: 25 },
+  { itemId: "fluffy-cat-squishy", gemCost: 32 },
+  { itemId: "fairy-wings", gemCost: 34 },
+  { itemId: "magic-crystal", gemCost: 36 },
+  { itemId: "shooting-star", gemCost: 28 },
+  { itemId: "crystal-butterfly", gemCost: 30 },
+  { itemId: "royal-teddy", gemCost: 32 },
+  { itemId: "crystal-wolf", gemCost: 39 },
+  { itemId: "peacock-feather", gemCost: 30 },
+  { itemId: "magic-flower", gemCost: 26 },
+  { itemId: "turtle-island", gemCost: 38 },
+  { itemId: "golden-crown", gemCost: 75 },
+  { itemId: "rainbow-phoenix", gemCost: 95 },
+  { itemId: "giant-diamond", gemCost: 90 },
+  { itemId: "golden-cat-squishy", gemCost: 85 },
+  { itemId: "secret-bestie-star", gemCost: 100 },
+  { itemId: "crystal-unicorn", gemCost: 88 },
+  { itemId: "golden-dragon", gemCost: 98 },
+  { itemId: "ultimate-star", gemCost: 80 },
+  { itemId: "bestie-trophy", gemCost: 72 },
+  { itemId: "angel-wings", gemCost: 76 },
+  { itemId: "cloud-castle", gemCost: 92 },
+  { itemId: "moon-princess-charm", gemCost: 90 },
 ];
 const defaultEmojiAvatar = "🌙";
 
@@ -4534,13 +4614,13 @@ function awardQuizGemRewardsForCurrentAttempt() {
   const attemptKey = activeQuizChallengeId || `daily:${getTradingDateKey()}`;
   const playerReward = grantTradingGemsForCode(
     playerCode,
-    1,
+    2,
     `quiz-play-gems:${activeOnlineQuizId}:${attemptKey}:${playerCode}`,
   );
   const ownerReward = ownerCode && ownerCode !== playerCode
     ? grantTradingGemsForCode(
       ownerCode,
-      1,
+      2,
       `quiz-owner-gems:${activeOnlineQuizId}:${attemptKey}:${ownerCode}`,
     )
     : { awarded: false };
@@ -4661,8 +4741,8 @@ async function addToLeaderboard(event) {
   const quizGemReward = awardQuizGemRewardsForCurrentAttempt();
   if (quizGemReward.playerAwarded || quizGemReward.ownerAwarded) {
     const rewardText = [
-      quizGemReward.playerAwarded ? "You earned 1 Gem for playing this friend quiz." : "",
-      quizGemReward.ownerAwarded ? "The quiz owner earned 1 Gem too." : "",
+      quizGemReward.playerAwarded ? "You earned 2 Gems for playing this friend quiz." : "",
+      quizGemReward.ownerAwarded ? "The quiz owner earned 2 Gems too." : "",
     ].filter(Boolean).join(" ");
     leaderboardNicknameMessage.textContent = `${leaderboardNicknameMessage.textContent} ${rewardText}`.trim();
   }
@@ -4864,6 +4944,58 @@ function getSentFriendRequests() {
     .sort((firstRequest, secondRequest) => getFriendRequestTime(secondRequest) - getFriendRequestTime(firstRequest));
 }
 
+function getIncomingPendingBoxOfLiesInvites() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  if (!ownerCode) {
+    return [];
+  }
+
+  return getBoxOfLiesRounds()
+    .map(getBoxOfLiesDisplayRound)
+    .filter((round) => (
+      round?.status === "pending"
+      && normalizeFriendCode(round.toFriendCode || "") === ownerCode
+    ))
+    .sort((firstRound, secondRound) => getBoxOfLiesRoundTime(secondRound) - getBoxOfLiesRoundTime(firstRound));
+}
+
+function getIncomingPendingTradingInvites() {
+  const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  if (!ownerCode) {
+    return [];
+  }
+
+  return getTradingTrades()
+    .map(getTradingDisplayTrade)
+    .filter((trade) => (
+      trade?.status === "pending"
+      && normalizeFriendCode(trade.toFriendCode || "") === ownerCode
+    ))
+    .sort((firstTrade, secondTrade) => getTradingTradeTime(secondTrade) - getTradingTradeTime(firstTrade));
+}
+
+function getIncomingMiniGameNotifications() {
+  return [
+    ...getIncomingPendingBoxOfLiesInvites().map((round) => ({
+      type: "box_of_lies",
+      id: round.id,
+      createdAt: round.updatedAt || round.createdAt,
+      round,
+    })),
+    ...getIncomingPendingTradingInvites().map((trade) => ({
+      type: "trading_game",
+      id: trade.id,
+      createdAt: trade.updatedAt || trade.createdAt,
+      trade,
+    })),
+  ].sort((firstNotification, secondNotification) => (
+    Number.parseInt(secondNotification.createdAt || "0", 10)
+    - Number.parseInt(firstNotification.createdAt || "0", 10)
+  ));
+}
+
 function getPendingFriendRequestForPair(friendCode) {
   const ownerCode = normalizeFriendCode(activePlayer?.friendCode || "");
   const safeFriendCode = normalizeFriendCode(friendCode);
@@ -4940,7 +5072,7 @@ function updateNotificationBadge() {
     return;
   }
 
-  const incomingCount = getIncomingPendingFriendRequests().length;
+  const incomingCount = getIncomingPendingFriendRequests().length + getIncomingMiniGameNotifications().length;
   notificationCount.textContent = String(incomingCount);
   notificationCount.classList.toggle("hidden", incomingCount === 0);
   openNotificationsButton.setAttribute("aria-label", incomingCount > 0 ? `Notifications, ${incomingCount} pending` : "Notifications");
@@ -5002,15 +5134,114 @@ function renderSentFriendRequests() {
   });
 }
 
+async function acceptTradingGameInvite(trade) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade || !isTradingReceiver(safeTrade) || safeTrade.status !== "pending") {
+    tradingGameMessage.textContent = "This game invite could not be opened. Please ask your friend to send it again.";
+    return;
+  }
+
+  const acceptedTrade = normalizeTradingTradeRecord({
+    ...safeTrade,
+    status: "accepted",
+    inviteAcceptedAt: Date.now(),
+    respondedAt: Date.now(),
+    updatedAt: Date.now(),
+  });
+
+  if (notificationsPanel) {
+    notificationsPanel.classList.add("hidden");
+  }
+
+  saveTradingTrade(acceptedTrade);
+  tradingGameMessage.textContent = "Accepting Trading Board invite...";
+
+  try {
+    await saveTradingTradeMessage(
+      acceptedTrade,
+      acceptedTrade.fromFriendCode,
+      `${activePlayer.nickname} accepted your Trading Board invite.`,
+    );
+  } catch (error) {
+    console.error("Trading invite accept sync error:", error);
+  }
+
+  hideMainSections();
+  updateProfileBar();
+  tradingGameCard.classList.remove("hidden");
+  tradingGameMessage.textContent = "Invite accepted. Add items to your side of the board.";
+  renderTradingBoard(acceptedTrade);
+  updateNotificationBadge();
+}
+
+function renderMiniGameNotification(notification) {
+  const item = document.createElement("article");
+  item.className = "friend-request-item notification-card";
+
+  const avatar = document.createElement("div");
+  const details = document.createElement("div");
+  details.className = "friend-details";
+  const title = document.createElement("h3");
+  const message = document.createElement("p");
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const acceptButton = document.createElement("button");
+  acceptButton.className = "save-quiz-button";
+  acceptButton.type = "button";
+  acceptButton.textContent = "Accept";
+  const declineButton = document.createElement("button");
+  declineButton.className = "secondary-button";
+  declineButton.type = "button";
+  declineButton.textContent = "Decline";
+
+  if (notification.type === "box_of_lies") {
+    const round = notification.round;
+    renderAvatar(avatar, getFriendProfileSnapshot(round.fromFriendCode).avatar || null);
+    title.textContent = `${round.fromNickname} invited you to play Box of Lies.`;
+    message.textContent = "Accept to read the rules and start the round.";
+    acceptButton.addEventListener("click", () => {
+      if (notificationsPanel) {
+        notificationsPanel.classList.add("hidden");
+      }
+      acceptBoxOfLiesInvite(round);
+    });
+    declineButton.addEventListener("click", () => {
+      if (notificationsPanel) {
+        notificationsPanel.classList.add("hidden");
+      }
+      declineBoxOfLiesInvite(round);
+    });
+  } else {
+    const trade = notification.trade;
+    renderAvatar(avatar, getFriendProfileSnapshot(trade.fromFriendCode).avatar || null);
+    title.textContent = `${trade.fromNickname} invited you to a Trading Board.`;
+    message.textContent = "Accept to open the shared board and place your items.";
+    acceptButton.addEventListener("click", () => acceptTradingGameInvite(trade));
+    declineButton.addEventListener("click", () => {
+      if (notificationsPanel) {
+        notificationsPanel.classList.add("hidden");
+      }
+      declineTradingOffer(trade);
+    });
+  }
+
+  details.append(title, message);
+  actions.append(acceptButton, declineButton);
+  item.append(avatar, details, actions);
+  return item;
+}
+
 function renderNotifications() {
   if (!notificationsList) {
     return;
   }
 
   const incomingRequests = getIncomingPendingFriendRequests();
+  const miniGameNotifications = getIncomingMiniGameNotifications();
   notificationsList.innerHTML = "";
 
-  if (incomingRequests.length === 0) {
+  if (incomingRequests.length === 0 && miniGameNotifications.length === 0) {
     notificationsList.innerHTML = '<p class="empty-leaderboard">No new notifications right now.</p>';
     updateNotificationBadge();
     return;
@@ -5047,6 +5278,10 @@ function renderNotifications() {
     notificationsList.append(item);
   });
 
+  miniGameNotifications.forEach((notification) => {
+    notificationsList.append(renderMiniGameNotification(notification));
+  });
+
   updateNotificationBadge();
 }
 
@@ -5059,7 +5294,10 @@ function showNotifications() {
   notificationsPanel.classList.toggle("hidden");
 
   if (!notificationsPanel.classList.contains("hidden")) {
-    syncFriendRequestsFromOnline().finally(renderNotifications);
+    Promise.all([
+      syncFriendRequestsFromOnline(),
+      syncFriendGameStateFromOnline(),
+    ]).finally(renderNotifications);
   }
 }
 
@@ -5192,6 +5430,12 @@ async function syncFriendGameStateFromOnline() {
   }
 
   if (!onlineFriendMessages.isConfigured) {
+    updateNotificationBadge();
+
+    if (notificationsPanel && !notificationsPanel.classList.contains("hidden")) {
+      renderNotifications();
+    }
+
     return;
   }
 
@@ -5208,6 +5452,12 @@ async function syncFriendGameStateFromOnline() {
       console.error("Friend game sync error:", error);
     }
   }));
+
+  updateNotificationBadge();
+
+  if (notificationsPanel && !notificationsPanel.classList.contains("hidden")) {
+    renderNotifications();
+  }
 }
 
 async function copyFriendCode() {
@@ -5331,7 +5581,7 @@ async function addFriendByCode() {
         renderSentFriendRequests();
         return;
       }
-      friendsMessage.textContent = "Friend request saved here. Online requests need the friend_requests table to be ready.";
+      friendsMessage.textContent = "Friend request saved. If your friend does not see it, please try again later.";
     }
   }
 
@@ -6311,6 +6561,37 @@ function renderBoxOfLiesHistory() {
   return history;
 }
 
+function renderBoxOfLiesUtilityActions() {
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const historyButton = document.createElement("button");
+  historyButton.className = "secondary-button";
+  historyButton.type = "button";
+  historyButton.textContent = "Game History";
+  historyButton.addEventListener("click", renderBoxOfLiesHistoryView);
+  const gamesButton = document.createElement("button");
+  gamesButton.className = "secondary-button";
+  gamesButton.type = "button";
+  gamesButton.textContent = "Back to Games";
+  gamesButton.addEventListener("click", showGames);
+  actions.append(historyButton, gamesButton);
+  return actions;
+}
+
+function renderBoxOfLiesHistoryView() {
+  boxOfLiesContent.innerHTML = "";
+  boxOfLiesMessage.textContent = "";
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  const backButton = document.createElement("button");
+  backButton.className = "save-quiz-button";
+  backButton.type = "button";
+  backButton.textContent = "Back to Invite Friends";
+  backButton.addEventListener("click", renderBoxOfLiesFriendChooser);
+  actions.append(backButton);
+  boxOfLiesContent.append(actions, renderBoxOfLiesHistory());
+}
+
 function getActiveBoxOfLiesRoundForFriendFromCache(friendCode) {
   const safeFriendCode = normalizeFriendCode(friendCode);
 
@@ -6414,7 +6695,7 @@ function renderBoxOfLiesFriendChooser() {
   const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
 
   if (availableFriends.length === 0) {
-    boxOfLiesContent.append(makeNoGameFriendsMessage(), renderBoxOfLiesHistory());
+    boxOfLiesContent.append(makeNoGameFriendsMessage(), renderBoxOfLiesUtilityActions());
     return;
   }
 
@@ -6467,7 +6748,7 @@ function renderBoxOfLiesFriendChooser() {
       const startButton = document.createElement("button");
       startButton.className = "save-quiz-button";
       startButton.type = "button";
-      startButton.textContent = "Invite to Box of Lies";
+      startButton.textContent = "Invite";
       startButton.addEventListener("click", () => startBoxOfLiesForFriend(friendProfile.friendCode));
       actions.append(startButton);
     }
@@ -6476,7 +6757,7 @@ function renderBoxOfLiesFriendChooser() {
     list.append(row);
   });
 
-  boxOfLiesContent.append(list, renderBoxOfLiesPendingInvites(), renderBoxOfLiesHistory());
+  boxOfLiesContent.append(list, renderBoxOfLiesPendingInvites(), renderBoxOfLiesUtilityActions());
 }
 
 function showBoxOfLies(friendCode = "") {
@@ -6633,7 +6914,7 @@ function renderBoxOfLiesInvitePreview(round) {
   const sendButton = document.createElement("button");
   sendButton.className = "save-quiz-button";
   sendButton.type = "button";
-  sendButton.textContent = "Invite to Box of Lies";
+  sendButton.textContent = "Send Invite";
   sendButton.addEventListener("click", () => sendBoxOfLiesInvite(round));
   const backButton = document.createElement("button");
   backButton.className = "secondary-button";
@@ -6642,7 +6923,7 @@ function renderBoxOfLiesInvitePreview(round) {
   backButton.addEventListener("click", renderBoxOfLiesFriendChooser);
   actions.append(sendButton, backButton);
 
-  boxOfLiesContent.append(preview, actions, renderBoxOfLiesHistory());
+  boxOfLiesContent.append(preview, actions);
 }
 
 async function saveBoxOfLiesRoundMessage(round, receiverCode, messageText) {
@@ -6678,9 +6959,7 @@ async function sendBoxOfLiesInvite(round) {
       text: `You invited ${pendingRound.toNickname} to play Box of Lies.`,
     });
 
-    boxOfLiesMessage.textContent = result.online
-      ? `Invite sent! You can invite another friend or keep playing.${earnedStar ? " You earned 1 star." : ""}`
-      : `Invite saved here. You can invite another friend or keep playing.${earnedStar ? " You earned 1 star." : ""}`;
+    boxOfLiesMessage.textContent = `Invite sent! You can invite another friend or keep playing.${earnedStar ? " You earned 1 star." : ""}`;
     renderBoxOfLiesSent(pendingRound);
   } catch (error) {
     console.error("Box of Lies invite error:", error);
@@ -6782,9 +7061,7 @@ async function sendBoxOfLiesChallenge(round, option) {
       text: `You sent ${updatedRound.toNickname} a Box of Lies message.`,
     });
 
-    boxOfLiesMessage.textContent = result.online
-      ? `Box message sent to ${updatedRound.toNickname}!`
-      : `Box message saved here for ${updatedRound.toNickname}.`;
+    boxOfLiesMessage.textContent = `Box message sent to ${updatedRound.toNickname}!`;
     renderBoxOfLiesSent(updatedRound);
   } catch (error) {
     console.error("Box of Lies send error:", error);
@@ -6807,8 +7084,8 @@ function renderBoxOfLiesSent(round) {
   sentEyebrow.textContent = round.status === "pending" ? "Invite Sent" : "Box Message Sent";
   const sentTitle = document.createElement("h3");
   sentTitle.textContent = round.status === "pending"
-    ? `${round.toNickname} can accept or decline in Friend Chat.`
-    : `${round.toNickname} can guess Truth or Lie in Friend Chat.`;
+    ? `${round.toNickname} can accept or decline in Notifications.`
+    : `${round.toNickname} can guess Truth or Lie from their invite.`;
   const sentText = document.createElement("p");
   sentText.textContent = round.selectedMessage
     ? `Message sent: “${round.selectedMessage}”`
@@ -6853,7 +7130,7 @@ function renderBoxOfLiesSent(round) {
     actions.append(cancelButton);
   }
 
-  boxOfLiesContent.append(sent, actions, renderBoxOfLiesHistory());
+  boxOfLiesContent.append(sent, actions);
 }
 
 function getBoxOfLiesRoundFromMessage(message) {
@@ -7266,15 +7543,15 @@ function grantBoxOfLiesGemRewards(round) {
   }
 
   const otherCode = winnerCode === fromCode ? toCode : fromCode;
-  const winnerReward = grantTradingGemsForCode(winnerCode, 2, `box-of-lies-gems:${round.id}:${winnerCode}`);
-  const otherReward = grantTradingGemsForCode(otherCode, 1, `box-of-lies-gems:${round.id}:${otherCode}`);
+  const winnerReward = grantTradingGemsForCode(winnerCode, 4, `box-of-lies-gems:${round.id}:${winnerCode}`);
+  const otherReward = grantTradingGemsForCode(otherCode, 2, `box-of-lies-gems:${round.id}:${otherCode}`);
   const activeCode = normalizeFriendCode(activePlayer?.friendCode || "");
 
   return {
     activeAward: activeCode === winnerCode && winnerReward.awarded
-      ? 2
+      ? 4
       : activeCode === otherCode && otherReward.awarded
-        ? 1
+        ? 2
         : 0,
     winnerAwarded: winnerReward.awarded,
     otherAwarded: otherReward.awarded,
@@ -7763,8 +8040,8 @@ function claimDailyTradingGems() {
   rewardRecord.dailyGemClaimDate = today;
   rewardRecord.updatedAt = Date.now();
   saveTradingGemRewardRecord(safeFriendCode, rewardRecord);
-  const result = grantTradingGemsForCode(safeFriendCode, 5, rewardKey);
-  tradingGameMessage.textContent = result.awarded ? "Daily Gift claimed. You earned 5 Gems!" : "You already claimed today’s Daily Gems.";
+  const result = grantTradingGemsForCode(safeFriendCode, 10, rewardKey);
+  tradingGameMessage.textContent = result.awarded ? "Daily Gift claimed. You earned 10 Gems!" : "You already claimed today’s Daily Gems.";
   renderTradingShop();
 }
 
@@ -8750,10 +9027,10 @@ function renderTradingGemEarningPanel() {
   title.textContent = "How to earn Gems";
   const list = document.createElement("ul");
   [
-    "Claim your daily gift",
-    "Complete trades with friends",
-    "Play Box of Lies",
-    "Play friend quizzes",
+    "Daily gift: +10 Gems",
+    "Complete trades: +3 Gems",
+    "Play Box of Lies: +2 to +4 Gems",
+    "Play friend quizzes: +2 Gems",
   ].forEach((text) => {
     const item = document.createElement("li");
     item.textContent = text;
@@ -8786,33 +9063,49 @@ function renderTradingShop() {
   heading.textContent = "Trading Shop";
   const intro = document.createElement("p");
   intro.className = "friendly-message";
-  intro.textContent = `You have ${gemCount} Gems. Trading is still item-for-item on the board.`;
-  const grid = document.createElement("div");
-  grid.className = "trade-item-grid";
+  intro.textContent = `💎 Gems: ${gemCount}. How to earn Gems: Daily Gift +10, complete trades +3, Box of Lies +2 to +4, and friend quizzes +2.`;
 
-  tradingShopOffers.forEach((offer) => {
-    const item = makeTradingItemEntry(offer.itemId, 1);
-    const card = document.createElement("article");
-    card.className = `trade-item-card trading-shop-item ${getTradingRarityClass(item.rarity)}`;
-    const icon = document.createElement("span");
-    icon.className = "trade-item-icon";
-    icon.textContent = item.emoji;
-    const name = document.createElement("strong");
-    name.textContent = item.name;
-    const cost = document.createElement("span");
-    cost.className = "trade-shop-cost";
-    cost.textContent = `${offer.gemCost} Gems`;
-    const buyButton = document.createElement("button");
-    buyButton.className = gemCount >= offer.gemCost ? "save-quiz-button" : "secondary-button";
-    buyButton.type = "button";
-    buyButton.textContent = gemCount >= offer.gemCost ? "Buy" : "Not enough Gems";
-    buyButton.disabled = gemCount < offer.gemCost;
-    buyButton.addEventListener("click", () => buyTradingShopItem(offer));
-    card.append(icon, name, makeTradingRarityBadge(item), cost, buyButton);
-    grid.append(card);
+  ["Common", "Uncommon", "Rare", "Epic", "Legendary"].forEach((rarity) => {
+    const rarityOffers = tradingShopOffers.filter((offer) => makeTradingItemEntry(offer.itemId, 1).rarity === rarity);
+
+    if (rarityOffers.length === 0) {
+      return;
+    }
+
+    const section = document.createElement("section");
+    section.className = "trading-shop-rarity-section";
+    const rarityHeading = document.createElement("h4");
+    rarityHeading.textContent = `${rarity} Items`;
+    const grid = document.createElement("div");
+    grid.className = "trade-item-grid";
+
+    rarityOffers.forEach((offer) => {
+      const item = makeTradingItemEntry(offer.itemId, 1);
+      const card = document.createElement("article");
+      card.className = `trade-item-card trading-shop-item ${getTradingRarityClass(item.rarity)}`;
+      const icon = document.createElement("span");
+      icon.className = "trade-item-icon";
+      icon.textContent = item.emoji;
+      const name = document.createElement("strong");
+      name.textContent = item.name;
+      const cost = document.createElement("span");
+      cost.className = "trade-shop-cost";
+      cost.textContent = `${offer.gemCost} Gems`;
+      const buyButton = document.createElement("button");
+      buyButton.className = gemCount >= offer.gemCost ? "save-quiz-button" : "secondary-button";
+      buyButton.type = "button";
+      buyButton.textContent = gemCount >= offer.gemCost ? "Buy" : "Not enough Gems";
+      buyButton.disabled = gemCount < offer.gemCost;
+      buyButton.addEventListener("click", () => buyTradingShopItem(offer));
+      card.append(icon, name, makeTradingRarityBadge(item), cost, buyButton);
+      grid.append(card);
+    });
+
+    section.append(rarityHeading, grid);
+    shopPanel.append(section);
   });
 
-  shopPanel.append(heading, intro, grid);
+  shopPanel.prepend(heading, intro);
   tradingGameContent.append(renderTradingNav("shop"), renderTradingGemEarningPanel(), shopPanel, renderTradingInventoryPanel("My Inventory", inventory));
 }
 
@@ -8847,7 +9140,130 @@ async function buyTradingShopItem(offer) {
   renderTradingShop();
 }
 
-function renderTradingRules(friendCode = "") {
+function getTradingTrainingCompletedStorageKey(friendCode = activePlayer?.friendCode || "") {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const fallbackId = normalizeNickname(activePlayer?.nickname || "guest") || "guest";
+  return `${tradingTrainingCompletedKey}_${safeFriendCode || fallbackId}`;
+}
+
+function hasCompletedTradingTraining(friendCode = activePlayer?.friendCode || "") {
+  return localStorage.getItem(getTradingTrainingCompletedStorageKey(friendCode)) === "true";
+}
+
+function saveTradingTrainingCompleted(friendCode = activePlayer?.friendCode || "") {
+  localStorage.setItem(getTradingTrainingCompletedStorageKey(friendCode), "true");
+}
+
+function renderTradingHome() {
+  stopTradingBoardPolling();
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = "";
+
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-home-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "↔";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trading Game";
+  const title = document.createElement("h3");
+  title.textContent = "Trading Board";
+  const body = document.createElement("p");
+  body.textContent = "Choose a friend, place items on the board, and both accept when the trade looks fair.";
+  details.append(eyebrow, title, body);
+  card.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+  [
+    { label: "Start Trading", className: "save-quiz-button", action: renderTradingFriendChooser },
+    { label: "Trading Board", className: "secondary-button", action: renderTradingOffersView },
+    { label: "My Inventory", className: "secondary-button", action: renderTradingInventoryView },
+    { label: "Trade History", className: "secondary-button", action: renderTradingHistoryView },
+    { label: "Replay Training", className: "secondary-button", action: () => renderTradingRules("", { replay: true }) },
+    { label: "Back to Games", className: "secondary-button", action: showGames },
+    { label: "Home", className: "secondary-button", action: showStart },
+  ].forEach((item) => {
+    const button = document.createElement("button");
+    button.className = item.className;
+    button.type = "button";
+    button.textContent = item.label;
+    button.addEventListener("click", item.action);
+    actions.append(button);
+  });
+
+  tradingGameContent.append(renderTradingNav(""), card, actions);
+}
+
+function renderTradingTrainingComplete(friendCode = "") {
+  stopTradingBoardPolling();
+  saveTradingTrainingCompleted();
+  tradingGameContent.innerHTML = "";
+  tradingGameMessage.textContent = "";
+
+  const card = document.createElement("div");
+  card.className = "box-secret-panel trading-training-complete-panel";
+  const icon = document.createElement("div");
+  icon.className = "box-secret-visual";
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "✓";
+  const details = document.createElement("div");
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "Trading Game";
+  const title = document.createElement("h3");
+  title.textContent = "Training Complete!";
+  const body = document.createElement("p");
+  body.textContent = "You're ready to start trading.";
+  details.append(eyebrow, title, body);
+  card.append(icon, details);
+
+  const actions = document.createElement("div");
+  actions.className = "result-actions";
+
+  const boardButton = document.createElement("button");
+  boardButton.className = "save-quiz-button";
+  boardButton.type = "button";
+  boardButton.textContent = "Go to Trading Board";
+  boardButton.addEventListener("click", () => {
+    if (friendCode && isApprovedFriendCode(friendCode)) {
+      startTradingBoardForFriend(friendCode);
+      return;
+    }
+
+    renderTradingFriendChooser();
+  });
+
+  const tradingButton = document.createElement("button");
+  tradingButton.className = "secondary-button";
+  tradingButton.type = "button";
+  tradingButton.textContent = "Back to Trading Game";
+  tradingButton.addEventListener("click", renderTradingHome);
+
+  const gamesButton = document.createElement("button");
+  gamesButton.className = "secondary-button";
+  gamesButton.type = "button";
+  gamesButton.textContent = "Back to Games";
+  gamesButton.addEventListener("click", showGames);
+
+  const homeButton = document.createElement("button");
+  homeButton.className = "secondary-button";
+  homeButton.type = "button";
+  homeButton.textContent = "Home";
+  homeButton.addEventListener("click", showStart);
+
+  actions.append(boardButton, tradingButton, gamesButton, homeButton);
+  tradingGameContent.append(card, actions);
+}
+
+function finishTradingTraining(friendCode = "") {
+  renderTradingTrainingComplete(friendCode);
+}
+
+function renderTradingRules(friendCode = "", { replay = false } = {}) {
   stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   tradingGameMessage.textContent = "";
@@ -8879,28 +9295,24 @@ function renderTradingRules(friendCode = "") {
   gotItButton.className = "secondary-button";
   gotItButton.type = "button";
   gotItButton.textContent = "Got it";
-  gotItButton.addEventListener("click", () => {
-    if (friendCode && isApprovedFriendCode(friendCode)) {
-      startTradingBoardForFriend(friendCode);
-      return;
-    }
-
-    renderTradingFriendChooser();
-  });
+  gotItButton.addEventListener("click", () => finishTradingTraining(friendCode));
   const startButton = document.createElement("button");
   startButton.className = "save-quiz-button";
   startButton.type = "button";
   startButton.textContent = "Start Trading";
-  startButton.addEventListener("click", () => {
-    if (friendCode && isApprovedFriendCode(friendCode)) {
-      startTradingBoardForFriend(friendCode);
-      return;
-    }
-
-    renderTradingFriendChooser();
-  });
+  startButton.addEventListener("click", () => finishTradingTraining(friendCode));
   actions.append(gotItButton, startButton);
-  tradingGameContent.append(renderTradingNav(""), rules, actions, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+
+  if (replay) {
+    const backButton = document.createElement("button");
+    backButton.className = "secondary-button";
+    backButton.type = "button";
+    backButton.textContent = "Back to Trading Game";
+    backButton.addEventListener("click", renderTradingHome);
+    actions.append(backButton);
+  }
+
+  tradingGameContent.append(renderTradingNav(""), rules, actions);
 }
 
 function renderTradingFriendChooser() {
@@ -8922,7 +9334,7 @@ function renderTradingFriendChooser() {
   const availableFriends = friendCodes.filter((friendCode) => !isFriendBlocked(friendCode));
 
   if (availableFriends.length === 0) {
-    tradingGameContent.append(makeNoGameFriendsMessage(), renderTradingNav(""), renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+    tradingGameContent.append(makeNoGameFriendsMessage(), renderTradingNav(""));
     return;
   }
 
@@ -8946,14 +9358,14 @@ function renderTradingFriendChooser() {
     const startButton = document.createElement("button");
     startButton.className = "save-quiz-button";
     startButton.type = "button";
-    startButton.textContent = "Open Board";
+    startButton.textContent = "Invite";
     startButton.addEventListener("click", () => startTradingBoardForFriend(friendProfile.friendCode));
 
     row.append(avatar, details, startButton);
     list.append(row);
   });
 
-  tradingGameContent.append(renderTradingNav(""), list, renderTradingOffersPanel(), renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(renderTradingNav(""), list);
 }
 
 function renderTradingBoardItems(trade, side, { title, canEdit = false } = {}) {
@@ -9118,7 +9530,6 @@ function renderTradingBoard(trade, { preserveMessage = false } = {}) {
     board,
     actions,
     renderTradingInventoryPanel("My Inventory"),
-    renderTradingHistory(),
   );
 }
 
@@ -9174,7 +9585,7 @@ async function startTradingBoardForFriend(friendCode) {
   }
 
   tradingGameMessage.textContent = "";
-  renderTradingBoard(trade);
+  renderTradingByStatus(trade);
 }
 
 function changeTradingDraft(kind, itemId, delta, maxQuantity = 3) {
@@ -9347,7 +9758,6 @@ function renderTradingOfferBuilder(tradeOrFriendCode, resetDraft = true) {
     renderTradingSelectionGrid("Place items from my inventory", myInventory, "offered"),
     renderTradingDraftSummary(),
     actions,
-    renderTradingHistory(),
   );
 }
 
@@ -9424,9 +9834,7 @@ async function sendTradingOffer() {
       text: `You updated a Trading Board with ${friendProfile.nickname}.`,
     });
 
-    tradingGameMessage.textContent = result.online
-      ? `Trading Board updated for ${friendProfile.nickname}!${earnedStar ? " You earned 1 star." : ""}`
-      : `Trading Board saved here for ${friendProfile.nickname}.${earnedStar ? " You earned 1 star." : ""}`;
+    tradingGameMessage.textContent = `Trading Board updated for ${friendProfile.nickname}!${earnedStar ? " You earned 1 star." : ""}`;
     renderTradingBoard(trade);
   } catch (error) {
     console.error("Trading offer send error:", error);
@@ -9495,13 +9903,13 @@ async function completeTradingInventoriesForSharedTrade(trade) {
   const receiverUpdatedInventory = addTradingItems(receiverAfterRemoval, trade.offeredItems);
   const senderGemReward = grantTradingGemsForCode(
     trade.fromFriendCode,
-    1,
+    3,
     `trade-complete-gems:${trade.id}:${trade.fromFriendCode}`,
     { syncOnline: false },
   );
   const receiverGemReward = grantTradingGemsForCode(
     trade.toFriendCode,
-    1,
+    3,
     `trade-complete-gems:${trade.id}:${trade.toFriendCode}`,
     { syncOnline: false },
   );
@@ -9516,7 +9924,13 @@ async function completeTradingInventoriesForSharedTrade(trade) {
     ]);
   }
 
-  return { ok: true, gemRewards: { sender: senderGemReward.awarded, receiver: receiverGemReward.awarded } };
+  return {
+    ok: true,
+    gemRewards: {
+      sender: senderGemReward.awarded ? senderGemReward.amount : 0,
+      receiver: receiverGemReward.awarded ? receiverGemReward.amount : 0,
+    },
+  };
 }
 
 async function acceptTradingOffer(trade) {
@@ -9624,7 +10038,7 @@ async function acceptTradingOffer(trade) {
     tradingGameMessage.textContent = [
       "Trade completed.",
       earnedStars ? "You earned 2 stars!" : "",
-      activeGemReward ? "You earned 1 Gem." : "",
+      activeGemReward ? `You earned ${activeGemReward} Gems.` : "",
     ].filter(Boolean).join(" ");
     hideMainSections();
     updateProfileBar();
@@ -9632,7 +10046,7 @@ async function acceptTradingOffer(trade) {
     renderTradingResult(completedTrade);
   } catch (error) {
     console.error("Trading accept sync error:", error);
-    tradingGameMessage.textContent = "Trade completed here. Online sync could not finish yet.";
+    tradingGameMessage.textContent = "Trade completed. If your friend does not see it yet, please try refreshing.";
     hideMainSections();
     updateProfileBar();
     tradingGameCard.classList.remove("hidden");
@@ -9696,7 +10110,7 @@ async function declineTradingOffer(trade) {
     renderTradingDeclined(declinedTrade);
   } catch (error) {
     console.error("Trading decline sync error:", error);
-    tradingGameMessage.textContent = "Trade declined here. Online sync could not finish yet.";
+    tradingGameMessage.textContent = "Trade declined. If your friend does not see it yet, please try refreshing.";
     hideMainSections();
     updateProfileBar();
     tradingGameCard.classList.remove("hidden");
@@ -9755,6 +10169,11 @@ function renderTradingByStatus(trade) {
     return;
   }
 
+  if (safeTrade.status === "pending" && isTradingReceiver(safeTrade) && !safeTrade.inviteAcceptedAt) {
+    renderIncomingTradingOffer(safeTrade);
+    return;
+  }
+
   if (isTradingBoardOpenStatus(safeTrade.status)) {
     renderTradingBoard(safeTrade);
     return;
@@ -9784,10 +10203,12 @@ function renderIncomingTradingOffer(trade) {
   const details = document.createElement("div");
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow";
-  eyebrow.textContent = "Incoming Trade";
+  eyebrow.textContent = "Incoming Invite";
   const title = document.createElement("h3");
-  title.textContent = `${trade.fromNickname} opened a Trading Board with you.`;
-  details.append(eyebrow, title, renderTradeItemList("They offer", trade.offeredItems), renderTradeItemList("They ask for", trade.requestedItems));
+  title.textContent = `${trade.fromNickname} invited you to a Trading Board.`;
+  const body = document.createElement("p");
+  body.textContent = "Accept to open the shared board. No items swap until both players accept the final trade.";
+  details.append(eyebrow, title, body, renderTradeItemList("They placed", trade.offeredItems), renderTradeItemList("Your side", trade.requestedItems));
   card.append(icon, details);
 
   const actions = document.createElement("div");
@@ -9796,7 +10217,7 @@ function renderIncomingTradingOffer(trade) {
   acceptButton.className = "save-quiz-button";
   acceptButton.type = "button";
   acceptButton.textContent = "Accept";
-  acceptButton.addEventListener("click", () => acceptTradingOffer(trade));
+  acceptButton.addEventListener("click", () => acceptTradingGameInvite(trade));
   const declineButton = document.createElement("button");
   declineButton.className = "secondary-button";
   declineButton.type = "button";
@@ -9804,7 +10225,7 @@ function renderIncomingTradingOffer(trade) {
   declineButton.addEventListener("click", () => declineTradingOffer(trade));
   actions.append(acceptButton, declineButton);
 
-  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"));
 }
 
 function renderTradingSent(trade) {
@@ -9852,7 +10273,7 @@ function renderTradingSent(trade) {
   });
   actions.append(chatButton, copyLinkButton, gamesButton);
 
-  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"));
 }
 
 function renderTradingDeclined(trade) {
@@ -9878,7 +10299,7 @@ function renderTradingDeclined(trade) {
   body.textContent = "No items were swapped.";
   details.append(eyebrow, title, body);
   card.append(icon, details);
-  tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"));
 }
 
 function renderTradingExpired(trade) {
@@ -9900,7 +10321,7 @@ function renderTradingExpired(trade) {
   body.textContent = "Open a fresh board if you still want to swap items.";
   details.append(eyebrow, title, body);
   card.append(icon, details);
-  tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(card, renderTradingInventoryPanel("My Inventory"));
 }
 
 function renderTradingResult(trade) {
@@ -9961,7 +10382,7 @@ function renderTradingResult(trade) {
   gamesButton.addEventListener("click", showGames);
   actions.append(chatButton, gamesButton);
 
-  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"), renderTradingHistory());
+  tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"));
 }
 
 function getTradingCardLine(trade) {
@@ -10053,6 +10474,20 @@ function safelyRenderTradingGame(renderCallback, message = "Could not load Tradi
   }
 }
 
+function renderTradingOpeningScreen() {
+  if (hasCompletedTradingTraining(activePlayer?.friendCode || "")) {
+    if (activeTradingFriendCode && isApprovedFriendCode(activeTradingFriendCode)) {
+      startTradingBoardForFriend(activeTradingFriendCode);
+      return;
+    }
+
+    renderTradingHome();
+    return;
+  }
+
+  renderTradingRules(activeTradingFriendCode);
+}
+
 function showTradingGame(friendCode = "") {
   if (!activePlayer) {
     showPlayerGate();
@@ -10069,21 +10504,21 @@ function showTradingGame(friendCode = "") {
   safelyRenderTradingGame(() => {
     getTradingInventory(activePlayer.friendCode);
     getTradingGems(activePlayer.friendCode);
-    renderTradingRules(activeTradingFriendCode);
+    renderTradingOpeningScreen();
   }, "Inventory could not be loaded.");
   syncTradingInventoryFromOnline(activePlayer.friendCode).then(() => {
-    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
-      safelyRenderTradingGame(() => renderTradingRules(), "Inventory could not be loaded.");
+    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode && !hasCompletedTradingTraining(activePlayer.friendCode)) {
+      safelyRenderTradingGame(renderTradingOpeningScreen, "Inventory could not be loaded.");
     }
   }).catch((error) => console.error("Trading inventory refresh sync error:", error));
   syncOnlineFriendsToLocal().then(() => {
-    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
-      safelyRenderTradingGame(() => renderTradingRules(), "Could not load friends for Trading Game.");
+    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode && !hasCompletedTradingTraining(activePlayer.friendCode)) {
+      safelyRenderTradingGame(renderTradingOpeningScreen, "Could not load friends for Trading Game.");
     }
   }).catch((error) => console.error("Trading friends refresh sync error:", error));
   syncFriendGameStateFromOnline().then(() => {
-    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode) {
-      safelyRenderTradingGame(() => renderTradingRules(), "Trading Boards could not be loaded.");
+    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode && !hasCompletedTradingTraining(activePlayer.friendCode)) {
+      safelyRenderTradingGame(renderTradingOpeningScreen, "Trading Boards could not be loaded.");
     }
   }).catch((error) => console.error("Trading game refresh sync error:", error));
 }
@@ -10127,7 +10562,7 @@ async function openGameInviteFromLink(inviteId) {
   }
 
   if (!onlineFriendGames.isConfigured) {
-    showGameInviteLoadError("Game invite links need Supabase game tables before they can work across devices.");
+    showGameInviteLoadError("This game invite could not be opened yet. Please try again later.");
     return true;
   }
 

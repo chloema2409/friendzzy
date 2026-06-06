@@ -2425,6 +2425,18 @@ h2 {
   gap: 12px;
 }
 
+.trading-shop-rarity-section {
+  display: grid;
+  gap: 12px;
+}
+
+.trading-shop-rarity-section h4 {
+  margin: 0;
+  color: #7555a2;
+  font-size: 1rem;
+  font-weight: 1000;
+}
+
 .trade-item-card {
   display: grid;
   gap: 7px;
