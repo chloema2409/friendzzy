@@ -27,6 +27,9 @@ const tradingGemRewardsKey = "friendzzyTradingGemRewards";
 const tradingTradesKey = "friendzzyTradingTrades";
 const tradingAppliedTradesKey = "friendzzyTradingAppliedTrades";
 const tradingInventoryBoostFlag = "trading_inventory_boost_v1_given";
+const tradingInventoryGrantFlagsKey = "friendzzyTradingInventoryGrantFlags";
+const catGirlInventoryGrantTargetName = "cat-girl1";
+const catGirlInventoryGrantFlag = "trading_inventory_grant_cat_girl1_rare_uncommon_v1";
 const tradingTrainingCompletedKey = "friendzzy_trading_training_completed";
 const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
 const minQuestions = 5;
@@ -6757,7 +6760,7 @@ function renderBoxOfLiesFriendChooser() {
     list.append(row);
   });
 
-  boxOfLiesContent.append(list, renderBoxOfLiesPendingInvites(), renderBoxOfLiesUtilityActions());
+  boxOfLiesContent.append(list, renderBoxOfLiesUtilityActions());
 }
 
 function showBoxOfLies(friendCode = "") {
@@ -8354,6 +8357,128 @@ function subtractTradingItems(inventory, items) {
   return [...quantities.entries()].map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity)).filter((item) => item.quantity > 0);
 }
 
+function getTradingInventoryGrantFlags() {
+  const savedFlags = localStorage.getItem(tradingInventoryGrantFlagsKey);
+
+  if (!savedFlags) {
+    return {};
+  }
+
+  try {
+    const flags = JSON.parse(savedFlags);
+    return flags && typeof flags === "object" ? flags : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTradingInventoryGrantFlags(flags) {
+  localStorage.setItem(tradingInventoryGrantFlagsKey, JSON.stringify(flags));
+}
+
+function getScopedCatGirlInventoryGrantKey(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  return safeFriendCode ? `${catGirlInventoryGrantFlag}:${safeFriendCode}` : "";
+}
+
+function isCatGirlInventoryGrantTarget(profile = activePlayer) {
+  const targetName = normalizeNickname(catGirlInventoryGrantTargetName);
+  const possibleNames = [
+    profile?.nickname,
+    profile?.username,
+    profile?.displayName,
+    usernamePinSession?.username,
+  ].map(normalizeNickname);
+
+  return possibleNames.includes(targetName);
+}
+
+function hasCatGirlInventoryGrantApplied(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const scopedKey = getScopedCatGirlInventoryGrantKey(safeFriendCode);
+
+  if (!safeFriendCode || !scopedKey) {
+    return false;
+  }
+
+  const localFlags = getTradingInventoryGrantFlags();
+  const rewardRecord = getTradingGemRewardRecord(safeFriendCode);
+
+  return localFlags[scopedKey] === true
+    || localFlags[scopedKey]?.applied === true
+    || Boolean(rewardRecord.rewards?.[catGirlInventoryGrantFlag])
+    || Boolean(rewardRecord.rewards?.[scopedKey]);
+}
+
+function markCatGirlInventoryGrantApplied(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const scopedKey = getScopedCatGirlInventoryGrantKey(safeFriendCode);
+
+  if (!safeFriendCode || !scopedKey) {
+    return;
+  }
+
+  const appliedAt = Date.now();
+  const localFlags = getTradingInventoryGrantFlags();
+  localFlags[scopedKey] = true;
+  saveTradingInventoryGrantFlags(localFlags);
+
+  const rewardRecord = getTradingGemRewardRecord(safeFriendCode);
+  rewardRecord.rewards = rewardRecord.rewards && typeof rewardRecord.rewards === "object" ? rewardRecord.rewards : {};
+  rewardRecord.rewards[catGirlInventoryGrantFlag] = appliedAt;
+  rewardRecord.rewards[scopedKey] = appliedAt;
+  rewardRecord.updatedAt = appliedAt;
+  saveTradingGemRewardRecord(safeFriendCode, rewardRecord);
+}
+
+function getCatGirlInventoryGrantItems() {
+  return normalizeTradingItems([
+    ...getTradingItemsByRarity("Rare").map((item) => makeTradingItemEntry(item.itemId, 1)),
+    ...getTradingItemsByRarity("Uncommon").map((item) => makeTradingItemEntry(item.itemId, 4)),
+  ]);
+}
+
+async function applyCatGirlInventoryGrantIfNeeded(profile = activePlayer) {
+  if (!profile || !isCatGirlInventoryGrantTarget(profile)) {
+    return { applied: false, reason: "not-target" };
+  }
+
+  const safeFriendCode = normalizeFriendCode(profile.friendCode || "");
+
+  if (!safeFriendCode) {
+    return { applied: false, reason: "missing-friend-code" };
+  }
+
+  if (onlineFriendGames.isConfigured) {
+    await syncTradingInventoryFromOnline(safeFriendCode).catch((error) => {
+      console.error("Supabase cat-girl1 grant inventory sync error:", error);
+    });
+  }
+
+  if (hasCatGirlInventoryGrantApplied(safeFriendCode)) {
+    return { applied: false, reason: "already-applied" };
+  }
+
+  const grantItems = getCatGirlInventoryGrantItems();
+  const updatedInventory = sortTradingItemsByRarity(addTradingItems(getTradingInventory(safeFriendCode), grantItems));
+  markCatGirlInventoryGrantApplied(safeFriendCode);
+  saveTradingInventoryForCode(safeFriendCode, updatedInventory, { syncOnline: false });
+
+  if (onlineFriendGames.isConfigured) {
+    await onlineFriendGames.saveInventory(
+      safeFriendCode,
+      updatedInventory,
+      getTradingGems(safeFriendCode),
+      getTradingGemRewardRecord(safeFriendCode),
+    ).catch((error) => {
+      console.error("Supabase cat-girl1 grant inventory save error:", error);
+    });
+  }
+
+  syncUsernameProgressOnlineSoon();
+  return { applied: true, reason: "applied", items: grantItems };
+}
+
 function tradingDraftToItems(selection = {}) {
   return Object.entries(selection)
     .map(([itemId, quantity]) => makeTradingItemEntry(itemId, quantity))
@@ -8938,8 +9063,12 @@ function renderTradingOffersPanel() {
     const openButton = document.createElement("button");
     openButton.className = "save-quiz-button";
     openButton.type = "button";
-    openButton.textContent = "Open Board";
-    openButton.addEventListener("click", () => renderTradingBoard(trade));
+    openButton.textContent = trade.status === "pending"
+      ? trade.toFriendCode === ownerCode
+        ? "Review Invite"
+        : "View Invite"
+      : "Open Board";
+    openButton.addEventListener("click", () => renderTradingByStatus(trade));
     actions.append(openButton);
 
     item.append(text, actions);
@@ -9179,7 +9308,7 @@ function renderTradingHome() {
   const actions = document.createElement("div");
   actions.className = "result-actions";
   [
-    { label: "Start Trading", className: "save-quiz-button", action: renderTradingFriendChooser },
+    { label: "Invite Friend", className: "save-quiz-button", action: renderTradingFriendChooser },
     { label: "Trading Board", className: "secondary-button", action: renderTradingOffersView },
     { label: "My Inventory", className: "secondary-button", action: renderTradingInventoryView },
     { label: "Trade History", className: "secondary-button", action: renderTradingHistoryView },
@@ -9358,7 +9487,7 @@ function renderTradingFriendChooser() {
     const startButton = document.createElement("button");
     startButton.className = "save-quiz-button";
     startButton.type = "button";
-    startButton.textContent = "Invite";
+    startButton.textContent = "Send Invite";
     startButton.addEventListener("click", () => startTradingBoardForFriend(friendProfile.friendCode));
 
     row.append(avatar, details, startButton);
@@ -9568,9 +9697,11 @@ async function startTradingBoardForFriend(friendCode) {
   }
 
   let trade = findActiveTradingBoardForFriend(safeFriendCode);
+  let createdInvite = false;
 
   if (!trade) {
     trade = makeTradingTrade(safeFriendCode);
+    createdInvite = true;
     saveTradingTrade(trade);
 
     try {
@@ -9584,7 +9715,9 @@ async function startTradingBoardForFriend(friendCode) {
     }
   }
 
-  tradingGameMessage.textContent = "";
+  tradingGameMessage.textContent = createdInvite
+    ? `Invite sent to ${trade.toNickname}! Your friend can accept it in Notifications.`
+    : "";
   renderTradingByStatus(trade);
 }
 
@@ -10174,6 +10307,11 @@ function renderTradingByStatus(trade) {
     return;
   }
 
+  if (safeTrade.status === "pending" && isTradingSender(safeTrade) && !safeTrade.inviteAcceptedAt) {
+    renderTradingSent(safeTrade);
+    return;
+  }
+
   if (isTradingBoardOpenStatus(safeTrade.status)) {
     renderTradingBoard(safeTrade);
     return;
@@ -10239,16 +10377,23 @@ function renderTradingSent(trade) {
   const details = document.createElement("div");
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow";
-  eyebrow.textContent = "Trade Sent";
+  eyebrow.textContent = "Invite Sent";
   const title = document.createElement("h3");
-  title.textContent = `${trade.toNickname} can accept or decline this trade.`;
-  details.append(eyebrow, title, renderTradeItemList("You offer", trade.offeredItems), renderTradeItemList("You ask for", trade.requestedItems));
+  title.textContent = `${trade.toNickname} can accept or decline in Notifications.`;
+  const body = document.createElement("p");
+  body.textContent = "The Trading Board opens after your friend accepts. No items swap until both players accept the final board.";
+  details.append(eyebrow, title, body, renderTradeItemList("You placed", trade.offeredItems), renderTradeItemList("Friend's side", trade.requestedItems));
   card.append(icon, details);
 
   const actions = document.createElement("div");
   actions.className = "result-actions";
+  const inviteButton = document.createElement("button");
+  inviteButton.className = "save-quiz-button";
+  inviteButton.type = "button";
+  inviteButton.textContent = "Invite Another Friend";
+  inviteButton.addEventListener("click", renderTradingFriendChooser);
   const chatButton = document.createElement("button");
-  chatButton.className = "save-quiz-button";
+  chatButton.className = "secondary-button";
   chatButton.type = "button";
   chatButton.textContent = "Open Chat";
   chatButton.addEventListener("click", () => showChat(trade.toFriendCode));
@@ -10271,7 +10416,7 @@ function renderTradingSent(trade) {
       tradingGameMessage.textContent = `Trading Game link: ${link}`;
     }
   });
-  actions.append(chatButton, copyLinkButton, gamesButton);
+  actions.append(inviteButton, chatButton, copyLinkButton, gamesButton);
 
   tradingGameContent.append(card, actions, renderTradingInventoryPanel("My Inventory"));
 }
@@ -10506,8 +10651,17 @@ function showTradingGame(friendCode = "") {
     getTradingGems(activePlayer.friendCode);
     renderTradingOpeningScreen();
   }, "Inventory could not be loaded.");
-  syncTradingInventoryFromOnline(activePlayer.friendCode).then(() => {
-    if (!tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode && !hasCompletedTradingTraining(activePlayer.friendCode)) {
+  syncTradingInventoryFromOnline(activePlayer.friendCode).then(async () => {
+    const grantResult = await applyCatGirlInventoryGrantIfNeeded(activePlayer);
+    const shouldRefreshOpening = !tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode;
+
+    if (grantResult.applied && shouldRefreshOpening) {
+      tradingGameMessage.textContent = "cat-girl1 inventory grant applied.";
+      safelyRenderTradingGame(renderTradingOpeningScreen, "Inventory could not be loaded.");
+      return;
+    }
+
+    if (shouldRefreshOpening && !hasCompletedTradingTraining(activePlayer.friendCode)) {
       safelyRenderTradingGame(renderTradingOpeningScreen, "Inventory could not be loaded.");
     }
   }).catch((error) => console.error("Trading inventory refresh sync error:", error));
@@ -12009,6 +12163,7 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
   await syncFriendRequestsFromOnline();
   await syncFriendGameStateFromOnline();
   await syncTradingInventoryFromOnline(activePlayer.friendCode);
+  await applyCatGirlInventoryGrantIfNeeded(activePlayer);
   syncUsernameProgressOnlineSoon();
 
   if (pendingGameInviteId) {
