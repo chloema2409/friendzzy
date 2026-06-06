@@ -8543,13 +8543,13 @@ function markTradingAdminGrantApplied(grantFlag, friendCode) {
 }
 
 function isCatGirlAdminGrantTarget(profile = activePlayer) {
-  const targetName = catGirlGemGrantTargetName;
+  const targetName = normalizeNickname(catGirlGemGrantTargetName);
   const possibleNames = [
     profile?.nickname,
     profile?.username,
     profile?.displayName,
     usernamePinSession?.username,
-  ].map((name) => String(name || "").trim());
+  ].map(normalizeNickname);
 
   return possibleNames.includes(targetName);
 }
@@ -8569,7 +8569,7 @@ function applyCatGirlGemGrantToValueIfNeeded(friendCode, gems, { syncOnline = tr
     return { applied: false, reason: "not-target", gems: currentGems };
   }
 
-  if (hasTradingAdminGrantApplied(catGirlGemGrantFlag, safeFriendCode)) {
+  if (hasTradingAdminGrantApplied(catGirlGemGrantFlag, safeFriendCode) && currentGems >= catGirlGemGrantMinimum) {
     return { applied: false, reason: "already-applied", gems: currentGems };
   }
 
@@ -8611,7 +8611,7 @@ function applyCatGirlEpicLegendaryGrantToItemsIfNeeded(friendCode, items, { sync
   const safeFriendCode = normalizeFriendCode(friendCode);
   const currentItems = normalizeTradingItems(items);
 
-  if (!canApplyCatGirlAdminGrantForCode(safeFriendCode) || hasTradingAdminGrantApplied(catGirlEpicLegendaryGrantFlag, safeFriendCode)) {
+  if (!canApplyCatGirlAdminGrantForCode(safeFriendCode)) {
     return {
       applied: false,
       items: currentItems,
@@ -8619,6 +8619,14 @@ function applyCatGirlEpicLegendaryGrantToItemsIfNeeded(friendCode, items, { sync
   }
 
   const neededItems = getCatGirlEpicLegendaryMinimumItems(currentItems);
+
+  if (hasTradingAdminGrantApplied(catGirlEpicLegendaryGrantFlag, safeFriendCode) && neededItems.length === 0) {
+    return {
+      applied: false,
+      items: currentItems,
+    };
+  }
+
   const updatedInventory = sortTradingItemsByRarity(addTradingItems(currentItems, neededItems));
   markTradingAdminGrantApplied(catGirlEpicLegendaryGrantFlag, safeFriendCode);
   saveTradingInventoryForCode(safeFriendCode, updatedInventory, { syncOnline });
@@ -10901,6 +10909,8 @@ function showTradingGame(friendCode = "") {
     renderTradingOpeningScreen();
   }, "Inventory could not be loaded.");
   syncTradingInventoryFromOnline(activePlayer.friendCode).then(async () => {
+    await applyCatGirlGemGrantIfNeeded(activePlayer);
+    await applyCatGirlEpicLegendaryGrantIfNeeded(activePlayer);
     const grantResult = await applyCatGirlInventoryGrantIfNeeded(activePlayer);
     const shouldRefreshOpening = !tradingGameCard.classList.contains("hidden") && !activeTradingFriendCode;
 
