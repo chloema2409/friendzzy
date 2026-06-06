@@ -23,8 +23,10 @@ const friendRequestsKey = "bestieFriendRequests";
 const boxOfLiesRoundsKey = "friendzzyBoxOfLiesRounds";
 const tradingInventoryKey = "friendzzyTradingInventory";
 const tradingGemsKey = "friendzzyTradingGems";
+const tradingGemRewardsKey = "friendzzyTradingGemRewards";
 const tradingTradesKey = "friendzzyTradingTrades";
 const tradingAppliedTradesKey = "friendzzyTradingAppliedTrades";
+const tradingInventoryBoostFlag = "trading_inventory_boost_v1_given";
 const supabaseAuthSessionKey = "friendzzySupabaseAuthSession";
 const minQuestions = 5;
 const maxQuestions = 30;
@@ -33,6 +35,7 @@ const friendOnlineWindowMs = 5 * 60 * 1000;
 const presenceUpdateIntervalMs = 60 * 1000;
 const boxOfLiesInviteExpiryMs = 24 * 60 * 60 * 1000;
 const tradingOfferExpiryMs = 72 * 60 * 60 * 1000;
+const tradingBoardPollIntervalMs = 3000;
 
 const shopCategories = ["Diary", "Themes", "Games", "Profile"];
 let activeShopCategory = shopCategories[0];
@@ -607,12 +610,19 @@ function normalizeOnlineInventoryRow(row) {
   const gems = Array.isArray(inventoryJson)
     ? getTradingCurrencyQuantity(rawItems)
     : Math.max(0, Number.parseInt(inventoryObject.gems || inventoryObject.gemBalance || "0", 10) || 0);
+  const gemRewardLog = inventoryObject.gemRewardLog && typeof inventoryObject.gemRewardLog === "object"
+    ? inventoryObject.gemRewardLog
+    : inventoryObject.gemRewards && typeof inventoryObject.gemRewards === "object"
+      ? inventoryObject.gemRewards
+      : {};
 
   return {
     friendCode: normalizeFriendCode(row.friend_code || row.friendCode || ""),
     items: normalizeTradingItems(rawItems),
     gems,
     hasGemBalance: hasStoredGemBalance,
+    dailyGemClaimDate: inventoryObject.dailyGemClaimDate || inventoryObject.lastDailyGemClaim || "",
+    gemRewardLog,
     updatedAt: row.updated_at ? new Date(row.updated_at).getTime() : row.updatedAt || Date.now(),
   };
 }
@@ -683,7 +693,7 @@ const onlineFriendGames = {
     const data = await supabaseRequest(`game_invites?${query.toString()}`, { auth: onlineAccountStorage.isLoggedIn });
     return (data || []).map(normalizeOnlineGamePayload).filter(Boolean);
   },
-  async saveInventory(friendCode, items, gems = getTradingGems(friendCode)) {
+  async saveInventory(friendCode, items, gems = getTradingGems(friendCode), gemMeta = getTradingGemRewardRecord(friendCode)) {
     const safeFriendCode = normalizeFriendCode(friendCode);
 
     if (!safeFriendCode) {
@@ -704,6 +714,8 @@ const onlineFriendGames = {
           inventory_json: {
             items: safeItems,
             gems: safeGems,
+            dailyGemClaimDate: gemMeta?.dailyGemClaimDate || "",
+            gemRewardLog: gemMeta?.rewards || {},
           },
           updated_at: updatedAt,
         },
@@ -1314,6 +1326,11 @@ const tradingCollectibles = [
   { itemId: "bear-card", emoji: "🐻", name: "Bear Card", rarity: "Common", source: "starter" },
   { itemId: "mouse-charm", emoji: "🐭", name: "Mouse Charm", rarity: "Common", source: "starter" },
   { itemId: "lollipop-sticker", emoji: "🍭", name: "Lollipop Sticker", rarity: "Common", source: "starter" },
+  { itemId: "ladybug-charm", emoji: "🐞", name: "Ladybug Charm", rarity: "Common", source: "starter" },
+  { itemId: "shell-sticker", emoji: "🐚", name: "Shell Sticker", rarity: "Common", source: "starter" },
+  { itemId: "apple-badge", emoji: "🍎", name: "Apple Badge", rarity: "Common", source: "starter" },
+  { itemId: "paw-print-card", emoji: "🐾", name: "Paw Print Card", rarity: "Common", source: "starter" },
+  { itemId: "flower-sticker", emoji: "🌸", name: "Flower Sticker", rarity: "Common", source: "starter" },
   { itemId: "pink-bow", emoji: "🎀", name: "Pink Bow", rarity: "Uncommon", source: "shop" },
   { itemId: "panda-sticker", emoji: "🐼", name: "Panda Sticker", rarity: "Uncommon", source: "shop" },
   { itemId: "penguin-card", emoji: "🐧", name: "Penguin Card", rarity: "Uncommon", source: "trade" },
@@ -1329,6 +1346,11 @@ const tradingCollectibles = [
   { itemId: "lion-sticker", emoji: "🦁", name: "Lion Sticker", rarity: "Uncommon", source: "starter" },
   { itemId: "koala-badge", emoji: "🐨", name: "Koala Badge", rarity: "Uncommon", source: "starter" },
   { itemId: "sunflower-charm", emoji: "🌻", name: "Sunflower Charm", rarity: "Uncommon", source: "starter" },
+  { itemId: "owl-card", emoji: "🦉", name: "Owl Card", rarity: "Uncommon", source: "starter" },
+  { itemId: "ice-cream-charm", emoji: "🍦", name: "Ice Cream Charm", rarity: "Uncommon", source: "starter" },
+  { itemId: "seal-sticker", emoji: "🦭", name: "Seal Sticker", rarity: "Uncommon", source: "starter" },
+  { itemId: "balloon-badge", emoji: "🎈", name: "Balloon Badge", rarity: "Uncommon", source: "starter" },
+  { itemId: "monkey-card", emoji: "🐵", name: "Monkey Card", rarity: "Uncommon", source: "starter" },
   { itemId: "small-cat-squishy", emoji: "🐱", name: "Small Cat Squishy", rarity: "Rare", source: "shop" },
   { itemId: "unicorn-card", emoji: "🦄", name: "Unicorn Card", rarity: "Rare", source: "shop" },
   { itemId: "tiny-crown", emoji: "👑", name: "Tiny Crown", rarity: "Rare", source: "shop" },
@@ -1344,6 +1366,11 @@ const tradingCollectibles = [
   { itemId: "octopus-card", emoji: "🐙", name: "Octopus Card", rarity: "Rare", source: "trade" },
   { itemId: "ocean-pearl", emoji: "🌊", name: "Ocean Pearl", rarity: "Rare", source: "trade" },
   { itemId: "swan-sticker", emoji: "🦢", name: "Swan Sticker", rarity: "Rare", source: "trade" },
+  { itemId: "whale-plushie", emoji: "🐳", name: "Whale Plushie", rarity: "Rare", source: "trade" },
+  { itemId: "carousel-horse", emoji: "🎠", name: "Carousel Horse", rarity: "Rare", source: "trade" },
+  { itemId: "fancy-cupcake", emoji: "🧁", name: "Fancy Cupcake", rarity: "Rare", source: "trade" },
+  { itemId: "moon-bunny", emoji: "🐇", name: "Moon Bunny", rarity: "Rare", source: "trade" },
+  { itemId: "tropical-flower", emoji: "🌺", name: "Tropical Flower", rarity: "Rare", source: "trade" },
   { itemId: "glitter-unicorn", emoji: "🦄", name: "Glitter Unicorn", rarity: "Epic", source: "trade" },
   { itemId: "rainbow-dragon", emoji: "🐉", name: "Rainbow Dragon", rarity: "Epic", source: "trade" },
   { itemId: "galaxy-charm", emoji: "🌌", name: "Galaxy Charm", rarity: "Epic", source: "trade" },
@@ -1356,6 +1383,9 @@ const tradingCollectibles = [
   { itemId: "peacock-feather", emoji: "🦚", name: "Peacock Feather", rarity: "Epic", source: "trade" },
   { itemId: "magic-crystal", emoji: "🔮", name: "Magic Crystal", rarity: "Epic", source: "trade" },
   { itemId: "turtle-island", emoji: "🐢", name: "Turtle Island", rarity: "Epic", source: "trade" },
+  { itemId: "shooting-star", emoji: "🌠", name: "Shooting Star", rarity: "Epic", source: "trade" },
+  { itemId: "crystal-butterfly", emoji: "🦋", name: "Crystal Butterfly", rarity: "Epic", source: "trade" },
+  { itemId: "royal-teddy", emoji: "🐻", name: "Royal Teddy", rarity: "Epic", source: "trade" },
   { itemId: "golden-crown", emoji: "👑", name: "Golden Crown", rarity: "Legendary", source: "trade" },
   { itemId: "rainbow-phoenix", emoji: "🌈", name: "Rainbow Phoenix", rarity: "Legendary", source: "trade" },
   { itemId: "giant-diamond", emoji: "💎", name: "Giant Diamond", rarity: "Legendary", source: "trade" },
@@ -1366,6 +1396,8 @@ const tradingCollectibles = [
   { itemId: "ultimate-star", emoji: "🌟", name: "Ultimate Star", rarity: "Legendary", source: "trade" },
   { itemId: "bestie-trophy", emoji: "🏆", name: "Bestie Trophy", rarity: "Legendary", source: "trade" },
   { itemId: "angel-wings", emoji: "🪽", name: "Angel Wings", rarity: "Legendary", source: "trade" },
+  { itemId: "cloud-castle", emoji: "🏰", name: "Cloud Castle", rarity: "Legendary", source: "trade" },
+  { itemId: "moon-princess-charm", emoji: "🌙", name: "Moon Princess Charm", rarity: "Legendary", source: "trade" },
 ];
 const tradingRarityRank = {
   Legendary: 5,
@@ -2029,6 +2061,8 @@ let activeQuizSource = "custom";
 let activeQuizMode = "scored";
 let activeQuizId = "";
 let activeOnlineQuizId = "";
+let activeOnlineQuizOwnerCode = "";
+let activeQuizChallengeId = "";
 let onlineLeaderboardEntries = [];
 let sharedQuizMode = "manual";
 let currentSharedQuiz = null;
@@ -2051,6 +2085,8 @@ let activeBoxOfLiesRound = null;
 let activeTradingFriendCode = "";
 let activeTradingBoardId = "";
 let activeTradingDraft = { offered: {}, requested: {} };
+let activeTradingBoardPollTimer = null;
+let activeTradingBoardLastSignature = "";
 let pendingGameInviteId = "";
 let onlineAccountSyncInProgress = false;
 let usernameProgressSyncTimer = null;
@@ -3657,6 +3693,7 @@ function getMissingCreatorFields(quizQuestions) {
 }
 
 function hideMainSections() {
+  stopTradingBoardPolling();
   playerGate.classList.add("hidden");
   createPlayerCard.classList.add("hidden");
   loginPlayerCard.classList.add("hidden");
@@ -3740,6 +3777,8 @@ function showStart() {
 
   activeQuizId = "";
   activeOnlineQuizId = "";
+  activeOnlineQuizOwnerCode = "";
+  activeQuizChallengeId = "";
   onlineLeaderboardEntries = [];
   sharedQuizMode = "manual";
   currentSharedQuiz = null;
@@ -4125,6 +4164,10 @@ function startQuiz(quizQuestions = getSavedQuizzes()[0]?.questions || getSavedQu
   activeQuizMode = mode;
   activeQuizId = source === "custom" ? quizId : "";
   activeOnlineQuizId = source === "online" ? quizId : "";
+  if (source !== "online") {
+    activeOnlineQuizOwnerCode = "";
+    activeQuizChallengeId = "";
+  }
   currentQuestion = 0;
   correctAnswers = 0;
   latestResult = null;
@@ -4197,6 +4240,7 @@ function showResult() {
   }
 
   latestResult = {
+    attemptId: crypto.randomUUID(),
     scorePercentage,
     correctAnswers: activeQuizMode === "opinion" ? totalQuestions : correctAnswers,
     totalQuestions,
@@ -4480,6 +4524,33 @@ function getCurrentLeaderboardNickname() {
   return getGuestStarNickname(true) || "Mystery Player";
 }
 
+function awardQuizGemRewardsForCurrentAttempt() {
+  if (!activePlayer || !activeOnlineQuizId || !latestResult?.attemptId) {
+    return { playerAwarded: false, ownerAwarded: false };
+  }
+
+  const playerCode = normalizeFriendCode(activePlayer.friendCode || "");
+  const ownerCode = normalizeFriendCode(activeOnlineQuizOwnerCode || "");
+  const attemptKey = activeQuizChallengeId || `daily:${getTradingDateKey()}`;
+  const playerReward = grantTradingGemsForCode(
+    playerCode,
+    1,
+    `quiz-play-gems:${activeOnlineQuizId}:${attemptKey}:${playerCode}`,
+  );
+  const ownerReward = ownerCode && ownerCode !== playerCode
+    ? grantTradingGemsForCode(
+      ownerCode,
+      1,
+      `quiz-owner-gems:${activeOnlineQuizId}:${attemptKey}:${ownerCode}`,
+    )
+    : { awarded: false };
+
+  return {
+    playerAwarded: playerReward.awarded,
+    ownerAwarded: ownerReward.awarded,
+  };
+}
+
 function renderGameLeaderboard(gameId) {
   const game = builtInGames[gameId];
   const leaderboard = sortGameLeaderboard(getGameLeaderboard(gameId));
@@ -4585,6 +4656,15 @@ async function addToLeaderboard(event) {
       onlineLeaderboardEntries = sortLeaderboard([...onlineLeaderboardEntries, newEntry]);
       leaderboardNicknameMessage.textContent = "Score saved temporarily. Online leaderboard needs the Supabase quiz_scores table to be ready.";
     }
+  }
+
+  const quizGemReward = awardQuizGemRewardsForCurrentAttempt();
+  if (quizGemReward.playerAwarded || quizGemReward.ownerAwarded) {
+    const rewardText = [
+      quizGemReward.playerAwarded ? "You earned 1 Gem for playing this friend quiz." : "",
+      quizGemReward.ownerAwarded ? "The quiz owner earned 1 Gem too." : "",
+    ].filter(Boolean).join(" ");
+    leaderboardNicknameMessage.textContent = `${leaderboardNicknameMessage.textContent} ${rewardText}`.trim();
   }
 
   renderLeaderboard();
@@ -7176,19 +7256,46 @@ function renderBoxOfLiesGuess(round) {
   boxOfLiesContent.append(prompt, choices);
 }
 
+function grantBoxOfLiesGemRewards(round) {
+  const winnerCode = normalizeFriendCode(round?.winnerCode || "");
+  const fromCode = normalizeFriendCode(round?.fromFriendCode || "");
+  const toCode = normalizeFriendCode(round?.toFriendCode || "");
+
+  if (!round?.id || !winnerCode || !fromCode || !toCode) {
+    return { activeAward: 0, winnerAwarded: false, otherAwarded: false };
+  }
+
+  const otherCode = winnerCode === fromCode ? toCode : fromCode;
+  const winnerReward = grantTradingGemsForCode(winnerCode, 2, `box-of-lies-gems:${round.id}:${winnerCode}`);
+  const otherReward = grantTradingGemsForCode(otherCode, 1, `box-of-lies-gems:${round.id}:${otherCode}`);
+  const activeCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  return {
+    activeAward: activeCode === winnerCode && winnerReward.awarded
+      ? 2
+      : activeCode === otherCode && otherReward.awarded
+        ? 1
+        : 0,
+    winnerAwarded: winnerReward.awarded,
+    otherAwarded: otherReward.awarded,
+  };
+}
+
 async function guessBoxOfLies(round, guess) {
   const correctGuess = round.selectedMessageIsTruth ? "truth" : "lie";
   const isCorrect = guess === correctGuess;
-  const completedRound = {
+  let completedRound = {
     ...round,
     guess,
     isCorrect,
     winnerCode: isCorrect ? round.toFriendCode : round.fromFriendCode,
     winnerNickname: isCorrect ? round.toNickname : round.fromNickname,
     status: "completed",
+    gemRewardGiven: true,
     updatedAt: Date.now(),
     completedAt: Date.now(),
   };
+  const gemReward = grantBoxOfLiesGemRewards(completedRound);
 
   activeBoxOfLiesRound = completedRound;
   saveBoxOfLiesRound(completedRound);
@@ -7214,7 +7321,10 @@ async function guessBoxOfLies(round, guess) {
   }
 
   const earned = (completionStar ? 2 : 0);
-  boxOfLiesMessage.textContent = earned > 0 ? `You earned ${earned} stars for completing the round!` : "";
+  boxOfLiesMessage.textContent = [
+    earned > 0 ? `You earned ${earned} stars for completing the round!` : "",
+    gemReward.activeAward > 0 ? `You earned ${gemReward.activeAward} Gems.` : "",
+  ].filter(Boolean).join(" ");
   renderBoxOfLiesResult(completedRound);
 }
 
@@ -7374,12 +7484,12 @@ function pickTradingStarterItems(rarity, count, quantityMin = 1, quantityMax = 1
 }
 
 function generateTradingStarterInventory() {
-  const commonStacks = getTradingRandomRange(6, 10);
-  const uncommonStacks = getTradingRandomRange(3, 5);
-  const rareStacks = getTradingRandomChance() < 0.35 ? 2 : 1;
+  const commonStacks = getTradingRandomRange(8, 12);
+  const uncommonStacks = getTradingRandomRange(4, 6);
+  const rareStacks = getTradingRandomRange(2, 3);
   const starterItems = [
-    ...pickTradingStarterItems("Common", commonStacks, 2, 5),
-    ...pickTradingStarterItems("Uncommon", uncommonStacks, 1, 3),
+    ...pickTradingStarterItems("Common", commonStacks, 2, 6),
+    ...pickTradingStarterItems("Uncommon", uncommonStacks, 1, 4),
     ...pickTradingStarterItems("Rare", rareStacks, 1, 2),
   ];
 
@@ -7392,6 +7502,28 @@ function generateTradingStarterInventory() {
   }
 
   return normalizeTradingItems(starterItems.length > 0 ? starterItems : tradingStarterInventory);
+}
+
+function generateTradingStarterBoostPack() {
+  const boostItems = [
+    ...pickTradingStarterItems("Common", 5, 2, 5),
+    ...pickTradingStarterItems("Uncommon", 3, 1, 3),
+    ...pickTradingStarterItems("Rare", 1, 1, 2),
+  ];
+
+  if (getTradingRandomChance() < 0.2) {
+    boostItems.push(...pickTradingStarterItems("Epic", 1, 1, 1));
+  }
+
+  if (getTradingRandomChance() < 0.03) {
+    boostItems.push(...pickTradingStarterItems("Legendary", 1, 1, 1));
+  }
+
+  return normalizeTradingItems(boostItems);
+}
+
+function getTradingTotalQuantity(items = []) {
+  return normalizeTradingItems(items).reduce((total, item) => total + item.quantity, 0);
 }
 
 function createAndSaveStarterTradingInventoryForCode(friendCode) {
@@ -7514,6 +7646,128 @@ function saveTradingGemBalances(balances) {
   localStorage.setItem(tradingGemsKey, JSON.stringify(balances));
 }
 
+function getTradingGemRewardRecords() {
+  const savedRewards = localStorage.getItem(tradingGemRewardsKey);
+
+  if (!savedRewards) {
+    return {};
+  }
+
+  try {
+    const rewards = JSON.parse(savedRewards);
+    return rewards && typeof rewards === "object" ? rewards : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveTradingGemRewardRecords(records) {
+  localStorage.setItem(tradingGemRewardsKey, JSON.stringify(records));
+}
+
+function getTradingGemRewardRecord(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const records = getTradingGemRewardRecords();
+  const entry = records[safeFriendCode] || {};
+
+  return {
+    dailyGemClaimDate: entry.dailyGemClaimDate || "",
+    rewards: entry.rewards && typeof entry.rewards === "object" ? entry.rewards : {},
+    updatedAt: Number.parseInt(entry.updatedAt || "0", 10) || 0,
+  };
+}
+
+function saveTradingGemRewardRecord(friendCode, record) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return;
+  }
+
+  const records = getTradingGemRewardRecords();
+  records[safeFriendCode] = {
+    dailyGemClaimDate: record?.dailyGemClaimDate || "",
+    rewards: record?.rewards && typeof record.rewards === "object" ? record.rewards : {},
+    updatedAt: record?.updatedAt || Date.now(),
+  };
+  saveTradingGemRewardRecords(records);
+}
+
+function mergeTradingGemRewardRecordFromOnline(friendCode, onlineInventory) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode || !onlineInventory) {
+    return getTradingGemRewardRecord(safeFriendCode);
+  }
+
+  const localRecord = getTradingGemRewardRecord(safeFriendCode);
+  const mergedRecord = {
+    dailyGemClaimDate: onlineInventory.dailyGemClaimDate || localRecord.dailyGemClaimDate || "",
+    rewards: {
+      ...(localRecord.rewards || {}),
+      ...(onlineInventory.gemRewardLog || {}),
+    },
+    updatedAt: Math.max(localRecord.updatedAt || 0, onlineInventory.updatedAt || Date.now()),
+  };
+  saveTradingGemRewardRecord(safeFriendCode, mergedRecord);
+  return mergedRecord;
+}
+
+function getTradingDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function grantTradingGemsForCode(friendCode, amount, rewardKey, { syncOnline = true } = {}) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const safeAmount = Math.max(0, Number.parseInt(amount || "0", 10) || 0);
+
+  if (!safeFriendCode || safeAmount <= 0 || !rewardKey) {
+    return { awarded: false, gems: getTradingGems(safeFriendCode), amount: 0 };
+  }
+
+  const rewardRecord = getTradingGemRewardRecord(safeFriendCode);
+
+  if (rewardRecord.rewards[rewardKey]) {
+    return { awarded: false, gems: getTradingGems(safeFriendCode), amount: 0 };
+  }
+
+  const nextGems = getTradingGems(safeFriendCode) + safeAmount;
+  rewardRecord.rewards[rewardKey] = Date.now();
+  rewardRecord.updatedAt = Date.now();
+  saveTradingGemRewardRecord(safeFriendCode, rewardRecord);
+  saveTradingGemsForCode(safeFriendCode, nextGems, { syncOnline });
+  return { awarded: true, gems: nextGems, amount: safeAmount };
+}
+
+function claimDailyTradingGems() {
+  const safeFriendCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  if (!safeFriendCode) {
+    tradingGameMessage.textContent = "Log in to claim Daily Gems.";
+    return;
+  }
+
+  const today = getTradingDateKey();
+  const rewardKey = `daily-gems:${today}`;
+  const rewardRecord = getTradingGemRewardRecord(safeFriendCode);
+
+  if (rewardRecord.dailyGemClaimDate === today || rewardRecord.rewards[rewardKey]) {
+    tradingGameMessage.textContent = "You already claimed today’s Daily Gems.";
+    renderTradingShop();
+    return;
+  }
+
+  rewardRecord.dailyGemClaimDate = today;
+  rewardRecord.updatedAt = Date.now();
+  saveTradingGemRewardRecord(safeFriendCode, rewardRecord);
+  const result = grantTradingGemsForCode(safeFriendCode, 5, rewardKey);
+  tradingGameMessage.textContent = result.awarded ? "Daily Gift claimed. You earned 5 Gems!" : "You already claimed today’s Daily Gems.";
+  renderTradingShop();
+}
+
 function getStoredTradingGemRecord(friendCode) {
   const safeFriendCode = normalizeFriendCode(friendCode);
   const balances = getTradingGemBalances();
@@ -7553,7 +7807,7 @@ function saveTradingGemsForCode(friendCode, gems, { updatedAt = Date.now(), sync
 
   if (syncOnline && onlineFriendGames.isConfigured) {
     const inventory = getStoredTradingInventory(safeFriendCode) || createAndSaveStarterTradingInventoryForCode(safeFriendCode);
-    onlineFriendGames.saveInventory(safeFriendCode, inventory, safeGems).catch((error) => {
+    onlineFriendGames.saveInventory(safeFriendCode, inventory, safeGems, getTradingGemRewardRecord(safeFriendCode)).catch((error) => {
       console.error("Supabase trading gems save error:", error);
     });
   }
@@ -7627,11 +7881,33 @@ function getStoredTradingInventoryRecord(friendCode) {
   return {
     items: normalizeTradingItems(entry.items || entry),
     updatedAt: Number.parseInt(entry.updatedAt || "0", 10) || 0,
+    boostV1Given: entry.boostV1Given === true || entry[tradingInventoryBoostFlag] === true,
   };
 }
 
 function getStoredTradingInventory(friendCode) {
   return getStoredTradingInventoryRecord(friendCode)?.items || null;
+}
+
+function maybeApplyTradingInventoryBoostForCode(friendCode, items = []) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  const currentItems = normalizeTradingItems(items);
+
+  if (!safeFriendCode || getTradingTotalQuantity(currentItems) >= 12) {
+    return currentItems;
+  }
+
+  const record = getStoredTradingInventoryRecord(safeFriendCode);
+
+  if (record?.boostV1Given) {
+    return currentItems;
+  }
+
+  const boostedItems = addTradingItems(currentItems, generateTradingStarterBoostPack());
+  saveTradingInventoryForCode(safeFriendCode, boostedItems, {
+    boostV1Given: true,
+  });
+  return boostedItems;
 }
 
 function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
@@ -7644,7 +7920,7 @@ function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
   const existingItems = getStoredTradingInventory(safeFriendCode);
 
   if (existingItems) {
-    return existingItems;
+    return maybeApplyTradingInventoryBoostForCode(safeFriendCode, existingItems);
   }
 
   const starterItems = createAndSaveStarterTradingInventoryForCode(safeFriendCode);
@@ -7652,7 +7928,7 @@ function getTradingInventory(friendCode = activePlayer?.friendCode || "") {
   return starterItems;
 }
 
-function saveTradingInventoryForCode(friendCode, items, { updatedAt = Date.now(), syncOnline = true } = {}) {
+function saveTradingInventoryForCode(friendCode, items, { updatedAt = Date.now(), syncOnline = true, boostV1Given = null } = {}) {
   const safeFriendCode = normalizeFriendCode(friendCode);
 
   if (!safeFriendCode) {
@@ -7660,14 +7936,18 @@ function saveTradingInventoryForCode(friendCode, items, { updatedAt = Date.now()
   }
 
   const inventories = getTradingInventories();
+  const existingRecord = getStoredTradingInventoryRecord(safeFriendCode);
+  const safeBoostFlag = boostV1Given === null ? existingRecord?.boostV1Given === true : boostV1Given === true;
   inventories[safeFriendCode] = {
     items: normalizeTradingItems(items),
     updatedAt,
+    boostV1Given: safeBoostFlag,
+    [tradingInventoryBoostFlag]: safeBoostFlag,
   };
   saveTradingInventories(inventories);
 
   if (syncOnline && onlineFriendGames.isConfigured) {
-    onlineFriendGames.saveInventory(safeFriendCode, inventories[safeFriendCode].items, getTradingGems(safeFriendCode)).catch((error) => {
+    onlineFriendGames.saveInventory(safeFriendCode, inventories[safeFriendCode].items, getTradingGems(safeFriendCode), getTradingGemRewardRecord(safeFriendCode)).catch((error) => {
       console.error("Supabase trading inventory save error:", error);
     });
   }
@@ -7691,10 +7971,11 @@ async function syncTradingInventoryFromOnline(friendCode = activePlayer?.friendC
     const onlineInventory = await onlineFriendGames.loadInventory(safeFriendCode);
 
     if (onlineInventory) {
+      mergeTradingGemRewardRecordFromOnline(safeFriendCode, onlineInventory);
       if (localUpdatedAt && localUpdatedAt > onlineInventory.updatedAt) {
         const localItems = localRecord?.items || getTradingInventory(safeFriendCode);
         const localGems = localGemRecord?.gems ?? getTradingGems(safeFriendCode);
-        await onlineFriendGames.saveInventory(safeFriendCode, localItems, localGems);
+        await onlineFriendGames.saveInventory(safeFriendCode, localItems, localGems, getTradingGemRewardRecord(safeFriendCode));
         return localItems;
       }
 
@@ -7710,14 +7991,14 @@ async function syncTradingInventoryFromOnline(friendCode = activePlayer?.friendC
         syncOnline: false,
       });
       if (!onlineInventory.hasGemBalance) {
-        await onlineFriendGames.saveInventory(safeFriendCode, onlineInventory.items, onlineGemBalance);
+        await onlineFriendGames.saveInventory(safeFriendCode, onlineInventory.items, onlineGemBalance, getTradingGemRewardRecord(safeFriendCode));
       }
-      return onlineInventory.items;
+      return maybeApplyTradingInventoryBoostForCode(safeFriendCode, onlineInventory.items);
     }
 
     const localInventory = getTradingInventory(safeFriendCode);
     const localGems = getTradingGems(safeFriendCode);
-    await onlineFriendGames.saveInventory(safeFriendCode, localInventory, localGems);
+    await onlineFriendGames.saveInventory(safeFriendCode, localInventory, localGems, getTradingGemRewardRecord(safeFriendCode));
     return localInventory;
   } catch (error) {
     console.error("Supabase trading inventory load error:", error);
@@ -7739,6 +8020,7 @@ async function getSharedTradingInventory(friendCode) {
     });
 
     if (onlineInventory) {
+      mergeTradingGemRewardRecordFromOnline(safeFriendCode, onlineInventory);
       const localGemRecord = getStoredTradingGemRecord(safeFriendCode);
       const onlineGemBalance = onlineInventory.hasGemBalance
         ? onlineInventory.gems
@@ -7752,11 +8034,11 @@ async function getSharedTradingInventory(friendCode) {
         syncOnline: false,
       });
       if (!onlineInventory.hasGemBalance) {
-        onlineFriendGames.saveInventory(safeFriendCode, onlineInventory.items, onlineGemBalance).catch((error) => {
+        onlineFriendGames.saveInventory(safeFriendCode, onlineInventory.items, onlineGemBalance, getTradingGemRewardRecord(safeFriendCode)).catch((error) => {
           console.error("Supabase trading gems migration error:", error);
         });
       }
-      return onlineInventory.items;
+      return maybeApplyTradingInventoryBoostForCode(safeFriendCode, onlineInventory.items);
     }
   }
 
@@ -8030,7 +8312,7 @@ function renderTradingNav(activeView = "") {
   nav.className = "trading-nav result-actions";
   const balance = document.createElement("p");
   balance.className = "trade-gem-total trading-balance";
-  balance.textContent = `Optional Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
+  balance.textContent = `💎 Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
   nav.append(balance);
   [
     { id: "inventory", label: "My Inventory", action: renderTradingInventoryView },
@@ -8151,6 +8433,97 @@ function findActiveTradingBoardForFriend(friendCode) {
     .map(getTradingDisplayTrade)
     .filter(Boolean)
     .find((trade) => isTradingBoardOpenStatus(trade.status) && getTradePairKey(trade.fromFriendCode, trade.toFriendCode) === pairKey) || null;
+}
+
+function getTradingBoardSignature(trade) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  if (!safeTrade) {
+    return "";
+  }
+
+  return JSON.stringify({
+    id: safeTrade.id,
+    status: safeTrade.status,
+    offeredItems: sortTradingItemsByRarity(safeTrade.offeredItems),
+    requestedItems: sortTradingItemsByRarity(safeTrade.requestedItems),
+    fromAccepted: safeTrade.fromAccepted,
+    toAccepted: safeTrade.toAccepted,
+    updatedAt: safeTrade.updatedAt,
+    completedAt: safeTrade.completedAt,
+  });
+}
+
+function stopTradingBoardPolling() {
+  if (activeTradingBoardPollTimer) {
+    clearInterval(activeTradingBoardPollTimer);
+    activeTradingBoardPollTimer = null;
+  }
+}
+
+async function refreshActiveTradingBoardFromOnline({ forceRender = false, silent = false } = {}) {
+  const tradeId = activeTradingBoardId;
+
+  if (!tradeId || tradingGameCard.classList.contains("hidden")) {
+    return null;
+  }
+
+  if (!onlineFriendGames.isConfigured) {
+    return getLatestTradingTrade(tradeId);
+  }
+
+  try {
+    const onlineTrade = await onlineFriendGames.loadGame(tradeId);
+
+    if (!onlineTrade || onlineTrade.gameType !== "trading_game") {
+      return getLatestTradingTrade(tradeId);
+    }
+
+    const previousTrade = getLatestTradingTrade(tradeId);
+    const previousSignature = activeTradingBoardLastSignature || getTradingBoardSignature(previousTrade);
+    mergeTradingTrades([onlineTrade]);
+    const latestTrade = getLatestTradingTrade(tradeId) || onlineTrade;
+    const latestSignature = getTradingBoardSignature(latestTrade);
+    const changed = latestSignature && latestSignature !== previousSignature;
+
+    if (changed || forceRender) {
+      activeTradingBoardLastSignature = latestSignature;
+
+      if (isTradingBoardOpenStatus(latestTrade.status)) {
+        if (changed && previousTrade && getTradingBoardSignature(previousTrade) !== latestSignature) {
+          tradingGameMessage.textContent = "Your friend changed the board. Please check and accept again.";
+        }
+        renderTradingBoard(latestTrade, { preserveMessage: true });
+      } else {
+        renderTradingByStatus(latestTrade);
+      }
+    }
+
+    return latestTrade;
+  } catch (error) {
+    console.error("Trading board polling error:", error);
+    if (!silent) {
+      tradingGameMessage.textContent = "Could not update the trade board. Please try again.";
+    }
+    return getLatestTradingTrade(tradeId);
+  }
+}
+
+function startTradingBoardPolling(trade) {
+  const safeTrade = normalizeTradingTradeRecord(trade);
+
+  stopTradingBoardPolling();
+
+  if (!safeTrade || !isTradingBoardOpenStatus(safeTrade.status) || !onlineFriendGames.isConfigured) {
+    return;
+  }
+
+  activeTradingBoardLastSignature = getTradingBoardSignature(safeTrade);
+  activeTradingBoardPollTimer = window.setInterval(() => {
+    refreshActiveTradingBoardFromOnline({ silent: true }).catch((error) => {
+      console.error("Trading board refresh error:", error);
+    });
+  }, tradingBoardPollIntervalMs);
 }
 
 function makeTradingTrade(friendCode, offeredItems = [], requestedItems = []) {
@@ -8300,6 +8673,7 @@ function renderTradingOffersPanel() {
 }
 
 function renderTradingInventoryView() {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   tradingGameMessage.textContent = "";
   tradingGameContent.append(
@@ -8310,6 +8684,7 @@ function renderTradingInventoryView() {
 }
 
 function renderTradingOffersView() {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   tradingGameMessage.textContent = "";
   tradingGameContent.append(
@@ -8320,6 +8695,7 @@ function renderTradingOffersView() {
 }
 
 function renderTradingHistoryView() {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   tradingGameMessage.textContent = "";
   tradingGameContent.append(
@@ -8335,7 +8711,7 @@ function renderTradingInventoryPanel(title, inventory = getTradingInventory()) {
   heading.textContent = title;
   const gemCount = document.createElement("p");
   gemCount.className = "trade-gem-total";
-  gemCount.textContent = `Optional Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
+  gemCount.textContent = `💎 Gems: ${getTradingGems(activePlayer?.friendCode || "")}`;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
 
@@ -8367,7 +8743,39 @@ function renderTradingInventoryPanel(title, inventory = getTradingInventory()) {
   return panel;
 }
 
+function renderTradingGemEarningPanel() {
+  const panel = document.createElement("div");
+  panel.className = "box-history-panel trading-gem-earning-panel";
+  const title = document.createElement("h3");
+  title.textContent = "How to earn Gems";
+  const list = document.createElement("ul");
+  [
+    "Claim your daily gift",
+    "Complete trades with friends",
+    "Play Box of Lies",
+    "Play friend quizzes",
+  ].forEach((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    list.append(item);
+  });
+
+  const today = getTradingDateKey();
+  const rewardRecord = getTradingGemRewardRecord(activePlayer?.friendCode || "");
+  const alreadyClaimed = rewardRecord.dailyGemClaimDate === today || rewardRecord.rewards[`daily-gems:${today}`];
+  const claimButton = document.createElement("button");
+  claimButton.className = alreadyClaimed ? "secondary-button" : "save-quiz-button";
+  claimButton.type = "button";
+  claimButton.textContent = alreadyClaimed ? "Daily Gems Claimed" : "Claim Daily Gems";
+  claimButton.disabled = alreadyClaimed;
+  claimButton.addEventListener("click", claimDailyTradingGems);
+
+  panel.append(title, list, claimButton);
+  return panel;
+}
+
 function renderTradingShop() {
+  stopTradingBoardPolling();
   const inventory = getTradingInventory();
   const gemCount = getTradingGems(activePlayer?.friendCode || "");
   tradingGameContent.innerHTML = "";
@@ -8378,7 +8786,7 @@ function renderTradingShop() {
   heading.textContent = "Trading Shop";
   const intro = document.createElement("p");
   intro.className = "friendly-message";
-  intro.textContent = `Optional item shop. You have ${gemCount} Gems. Trading is still item-for-item on the board.`;
+  intro.textContent = `You have ${gemCount} Gems. Trading is still item-for-item on the board.`;
   const grid = document.createElement("div");
   grid.className = "trade-item-grid";
 
@@ -8405,7 +8813,7 @@ function renderTradingShop() {
   });
 
   shopPanel.append(heading, intro, grid);
-  tradingGameContent.append(renderTradingNav("shop"), shopPanel, renderTradingInventoryPanel("My Inventory", inventory));
+  tradingGameContent.append(renderTradingNav("shop"), renderTradingGemEarningPanel(), shopPanel, renderTradingInventoryPanel("My Inventory", inventory));
 }
 
 async function buyTradingShopItem(offer) {
@@ -8440,6 +8848,7 @@ async function buyTradingShopItem(offer) {
 }
 
 function renderTradingRules(friendCode = "") {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   tradingGameMessage.textContent = "";
 
@@ -8495,6 +8904,7 @@ function renderTradingRules(friendCode = "") {
 }
 
 function renderTradingFriendChooser() {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
 
   const intro = document.createElement("div");
@@ -8607,7 +9017,7 @@ function renderTradingBoardItems(trade, side, { title, canEdit = false } = {}) {
   return panel;
 }
 
-function renderTradingBoard(trade) {
+function renderTradingBoard(trade, { preserveMessage = false } = {}) {
   const safeTrade = normalizeTradingTradeRecord(trade);
 
   if (!safeTrade) {
@@ -8625,6 +9035,12 @@ function renderTradingBoard(trade) {
   activeTradingBoardId = safeTrade.id;
   activeTradingFriendCode = getTradingPartnerCode(safeTrade);
   tradingGameContent.innerHTML = "";
+  if (!preserveMessage) {
+    tradingGameMessage.textContent = safeTrade.fromAccepted || safeTrade.toAccepted
+      ? "Waiting for your friend..."
+      : "";
+  }
+  startTradingBoardPolling(safeTrade);
 
   const friendProfile = getFriendProfileSnapshot(activeTradingFriendCode);
   const header = document.createElement("div");
@@ -8683,7 +9099,18 @@ function renderTradingBoard(trade) {
   declineButton.textContent = isTradingSender(safeTrade) ? "❌ Cancel Trade" : "❌ Decline Trade";
   declineButton.disabled = !isTradingBoardOpenStatus(safeTrade.status);
   declineButton.addEventListener("click", () => declineTradingOffer(safeTrade));
-  actions.append(changeButton, acceptButton, declineButton);
+  const refreshButton = document.createElement("button");
+  refreshButton.className = "secondary-button";
+  refreshButton.type = "button";
+  refreshButton.textContent = "Refresh Trade";
+  refreshButton.addEventListener("click", () => {
+    tradingGameMessage.textContent = "Checking the latest board...";
+    refreshActiveTradingBoardFromOnline({ forceRender: true }).catch((error) => {
+      console.error("Trading manual refresh error:", error);
+      tradingGameMessage.textContent = "Could not update the trade board. Please try again.";
+    });
+  });
+  actions.append(changeButton, acceptButton, declineButton, refreshButton);
 
   tradingGameContent.append(
     renderTradingNav("offers"),
@@ -8797,8 +9224,9 @@ function renderTradingSelectionGrid(title, items, kind) {
     const name = document.createElement("strong");
     name.textContent = item.name;
     const meta = document.createElement("span");
+    const availableQuantity = Math.max(0, item.quantity - selectedQuantity);
     meta.textContent = kind === "offered"
-      ? `You have x${item.quantity}`
+      ? `Available to add x${availableQuantity} of x${item.quantity}`
       : "Preset collectible";
     const selected = document.createElement("span");
     selected.className = "trade-selected-count";
@@ -8840,6 +9268,7 @@ function renderTradingDraftSummary() {
 }
 
 function renderTradingOfferBuilder(tradeOrFriendCode, resetDraft = true) {
+  stopTradingBoardPolling();
   let trade = typeof tradeOrFriendCode === "string"
     ? findActiveTradingBoardForFriend(tradeOrFriendCode)
     : normalizeTradingTradeRecord(tradeOrFriendCode);
@@ -8936,7 +9365,18 @@ async function saveTradingTradeMessage(trade, receiverCode, messageText) {
 }
 
 async function sendTradingOffer() {
-  const currentTrade = getLatestTradingTrade(activeTradingBoardId) || findActiveTradingBoardForFriend(activeTradingFriendCode);
+  let currentTrade = getLatestTradingTrade(activeTradingBoardId) || findActiveTradingBoardForFriend(activeTradingFriendCode);
+  if (activeTradingBoardId && onlineFriendGames.isConfigured) {
+    const onlineTrade = await onlineFriendGames.loadGame(activeTradingBoardId).catch((error) => {
+      console.error("Trading board latest save lookup error:", error);
+      return null;
+    });
+
+    if (onlineTrade?.gameType === "trading_game") {
+      mergeTradingTrades([onlineTrade]);
+      currentTrade = onlineTrade;
+    }
+  }
   const friendProfile = getFriendProfileSnapshot(activeTradingFriendCode);
   const activeSide = getTradingSideForCode(currentTrade);
   const offeredItems = tradingDraftToItems(activeTradingDraft.offered);
@@ -9053,22 +9493,45 @@ async function completeTradingInventoriesForSharedTrade(trade) {
 
   const senderUpdatedInventory = addTradingItems(senderAfterRemoval, trade.requestedItems);
   const receiverUpdatedInventory = addTradingItems(receiverAfterRemoval, trade.offeredItems);
+  const senderGemReward = grantTradingGemsForCode(
+    trade.fromFriendCode,
+    1,
+    `trade-complete-gems:${trade.id}:${trade.fromFriendCode}`,
+    { syncOnline: false },
+  );
+  const receiverGemReward = grantTradingGemsForCode(
+    trade.toFriendCode,
+    1,
+    `trade-complete-gems:${trade.id}:${trade.toFriendCode}`,
+    { syncOnline: false },
+  );
 
   saveTradingInventoryForCode(trade.fromFriendCode, senderUpdatedInventory, { syncOnline: false });
   saveTradingInventoryForCode(trade.toFriendCode, receiverUpdatedInventory, { syncOnline: false });
 
   if (onlineFriendGames.isConfigured) {
     await Promise.all([
-      onlineFriendGames.saveInventory(trade.fromFriendCode, senderUpdatedInventory, getTradingGems(trade.fromFriendCode)),
-      onlineFriendGames.saveInventory(trade.toFriendCode, receiverUpdatedInventory, getTradingGems(trade.toFriendCode)),
+      onlineFriendGames.saveInventory(trade.fromFriendCode, senderUpdatedInventory, getTradingGems(trade.fromFriendCode), getTradingGemRewardRecord(trade.fromFriendCode)),
+      onlineFriendGames.saveInventory(trade.toFriendCode, receiverUpdatedInventory, getTradingGems(trade.toFriendCode), getTradingGemRewardRecord(trade.toFriendCode)),
     ]);
   }
 
-  return { ok: true };
+  return { ok: true, gemRewards: { sender: senderGemReward.awarded, receiver: receiverGemReward.awarded } };
 }
 
 async function acceptTradingOffer(trade) {
-  const latestTrade = normalizeTradingTradeRecord(getLatestTradingTrade(trade.id) || trade);
+  let latestTrade = normalizeTradingTradeRecord(getLatestTradingTrade(trade.id) || trade);
+  if (latestTrade?.id && onlineFriendGames.isConfigured) {
+    const onlineTrade = await onlineFriendGames.loadGame(latestTrade.id).catch((error) => {
+      console.error("Trading board latest accept lookup error:", error);
+      return null;
+    });
+
+    if (onlineTrade?.gameType === "trading_game") {
+      mergeTradingTrades([onlineTrade]);
+      latestTrade = normalizeTradingTradeRecord(onlineTrade);
+    }
+  }
   hideMainSections();
   updateProfileBar();
   tradingGameCard.classList.remove("hidden");
@@ -9119,6 +9582,7 @@ async function acceptTradingOffer(trade) {
     ...acceptedTrade,
     status: "completed",
     inventoryMode: "shared",
+    gemRewardGiven: true,
     completedAt: Date.now(),
     updatedAt: Date.now(),
   });
@@ -9156,7 +9620,12 @@ async function acceptTradingOffer(trade) {
       friendNickname: getFriendProfileSnapshot(getTradingPartnerCode(completedTrade)).nickname,
       text: "You completed a Trading Board trade.",
     });
-    tradingGameMessage.textContent = earnedStars ? "Trade completed. You earned 2 stars!" : "Trade completed.";
+    const activeGemReward = activeSide === "from" ? applyResult.gemRewards?.sender : applyResult.gemRewards?.receiver;
+    tradingGameMessage.textContent = [
+      "Trade completed.",
+      earnedStars ? "You earned 2 stars!" : "",
+      activeGemReward ? "You earned 1 Gem." : "",
+    ].filter(Boolean).join(" ");
     hideMainSections();
     updateProfileBar();
     tradingGameCard.classList.remove("hidden");
@@ -9172,7 +9641,18 @@ async function acceptTradingOffer(trade) {
 }
 
 async function declineTradingOffer(trade) {
-  const latestTrade = normalizeTradingTradeRecord(getLatestTradingTrade(trade.id) || trade);
+  let latestTrade = normalizeTradingTradeRecord(getLatestTradingTrade(trade.id) || trade);
+  if (latestTrade?.id && onlineFriendGames.isConfigured) {
+    const onlineTrade = await onlineFriendGames.loadGame(latestTrade.id).catch((error) => {
+      console.error("Trading board latest decline lookup error:", error);
+      return null;
+    });
+
+    if (onlineTrade?.gameType === "trading_game") {
+      mergeTradingTrades([onlineTrade]);
+      latestTrade = normalizeTradingTradeRecord(onlineTrade);
+    }
+  }
   hideMainSections();
   updateProfileBar();
   tradingGameCard.classList.remove("hidden");
@@ -9376,6 +9856,7 @@ function renderTradingSent(trade) {
 }
 
 function renderTradingDeclined(trade) {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   const card = document.createElement("div");
   card.className = "box-secret-panel trading-offer-panel";
@@ -9401,6 +9882,7 @@ function renderTradingDeclined(trade) {
 }
 
 function renderTradingExpired(trade) {
+  stopTradingBoardPolling();
   tradingGameContent.innerHTML = "";
   const card = document.createElement("div");
   card.className = "box-secret-panel trading-offer-panel";
@@ -9422,6 +9904,7 @@ function renderTradingExpired(trade) {
 }
 
 function renderTradingResult(trade) {
+  stopTradingBoardPolling();
   const safeTrade = normalizeTradingTradeRecord(trade);
 
   if (!safeTrade) {
@@ -9720,6 +10203,8 @@ function getQuizIdFromInvite(quizInvite) {
 async function playQuizInvite(message) {
   const quizInvite = message.quizInvite || {};
   const quizId = getQuizIdFromInvite(quizInvite);
+  let inviteOwnerCode = normalizeFriendCode(message.senderCode || "");
+  let inviteChallengeId = "";
 
   if (!quizId) {
     if (quizInvite.quizLink) {
@@ -9733,6 +10218,16 @@ async function playQuizInvite(message) {
 
   chatMessage.textContent = "Opening quiz invite...";
 
+  if (quizInvite.quizLink) {
+    try {
+      const inviteUrl = new URL(quizInvite.quizLink, window.location.href);
+      inviteOwnerCode = normalizeFriendCode(inviteUrl.searchParams.get("from") || inviteOwnerCode);
+      inviteChallengeId = inviteUrl.searchParams.get("challenge") || "";
+    } catch {
+      inviteChallengeId = "";
+    }
+  }
+
   try {
     const onlineQuiz = await onlineQuizSharing.loadQuiz(quizId);
     const inviteQuestions = normalizeQuizQuestions(onlineQuiz?.questions || []);
@@ -9745,6 +10240,8 @@ async function playQuizInvite(message) {
     currentSharedQuiz = onlineQuiz;
     sharedLinkQuestions = inviteQuestions;
     activeOnlineQuizId = quizId;
+    activeOnlineQuizOwnerCode = inviteOwnerCode;
+    activeQuizChallengeId = inviteChallengeId;
     onlineLeaderboardEntries = sortLeaderboard(await onlineQuizSharing.loadScores(quizId));
     startQuiz(inviteQuestions, "online", "scored", quizId);
   } catch (error) {
@@ -11587,6 +12084,7 @@ function parseSharedQuizCode(code) {
 }
 
 async function openOnlineQuizFromLink(quizId) {
+  const linkParams = new URLSearchParams(window.location.search);
   hideMainSections();
   sharedQuizMode = "online-link";
   currentSharedQuiz = null;
@@ -11595,6 +12093,8 @@ async function openOnlineQuizFromLink(quizId) {
   sharedQuizCode.value = "";
   sharedQuizMessage.textContent = "Loading shared quiz...";
   activeOnlineQuizId = quizId;
+  activeOnlineQuizOwnerCode = normalizeFriendCode(linkParams.get("from") || "");
+  activeQuizChallengeId = linkParams.get("challenge") || "";
   onlineLeaderboardEntries = [];
   manualSharedQuizPanel.classList.add("hidden");
   sharedLinkPanel.classList.remove("hidden");
