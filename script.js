@@ -1,5 +1,7 @@
 const quizKey = "bestieQuizQuestions";
 const savedQuizzesKey = "bestieSavedQuizzes";
+const playerSavedQuizzesKey = "friendzzyPlayerSavedQuizzes";
+const savedQuizzesVisibleOwnerKey = "friendzzySavedQuizzesVisibleOwner";
 const leaderboardKey = "bestieQuizLeaderboard";
 const quizLeaderboardsKey = "bestieQuizLeaderboardsByQuiz";
 const onlineQuizProvider = "Supabase";
@@ -959,8 +961,15 @@ const onlineAccountStorage = {
     });
   },
   async loadQuizzes() {
+    const userId = this.userId;
+
+    if (!userId) {
+      return [];
+    }
+
     const query = new URLSearchParams({
       select: "id,local_quiz_id,quiz_id,title,theme,questions_json,created_at,updated_at",
+      owner_id: `eq.${userId}`,
       order: "updated_at.desc",
     });
     const data = await supabaseRequest(`quizzes?${query.toString()}`, { auth: true });
@@ -2475,7 +2484,31 @@ function normalizeSavedQuizRecord(quiz, fallbackTitle = "Untitled Quiz") {
   };
 }
 
+function getVisibleSavedQuizzesOwner() {
+  return String(localStorage.getItem(savedQuizzesVisibleOwnerKey) || "").trim();
+}
+
+function markVisibleSavedQuizzesOwner(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+  localStorage.setItem(savedQuizzesVisibleOwnerKey, safeFriendCode || "guest");
+}
+
+function canUseVisibleSavedQuizzes() {
+  const visibleOwner = getVisibleSavedQuizzesOwner();
+
+  if (!visibleOwner || visibleOwner === "guest") {
+    return true;
+  }
+
+  const activeOwner = getActiveQuizOwnerCode();
+  return Boolean(activeOwner && visibleOwner === activeOwner);
+}
+
 function getSavedQuizzesRaw() {
+  if (!canUseVisibleSavedQuizzes()) {
+    return [];
+  }
+
   const savedQuizzes = localStorage.getItem(savedQuizzesKey);
 
   if (!savedQuizzes) {
@@ -2490,11 +2523,89 @@ function getSavedQuizzesRaw() {
   }
 }
 
+function getPlayerSavedQuizCollections() {
+  const savedCollections = localStorage.getItem(playerSavedQuizzesKey);
+
+  if (!savedCollections) {
+    return {};
+  }
+
+  try {
+    const collections = JSON.parse(savedCollections);
+    return collections && typeof collections === "object" && !Array.isArray(collections) ? collections : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePlayerSavedQuizCollections(collections) {
+  localStorage.setItem(playerSavedQuizzesKey, JSON.stringify(collections));
+}
+
+function getActiveQuizOwnerCode() {
+  return normalizeFriendCode(activePlayer?.friendCode || "");
+}
+
+function normalizeSavedQuizList(quizzes = []) {
+  return (Array.isArray(quizzes) ? quizzes : [])
+    .map((quiz, index) => normalizeSavedQuizRecord(quiz, index === 0 ? "My First Quiz" : `Quiz ${index + 1}`))
+    .filter((quiz) => quiz.questions.length > 0);
+}
+
+function getSavedQuizzesForFriendCode(friendCode) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return null;
+  }
+
+  const collections = getPlayerSavedQuizCollections();
+
+  if (!Object.prototype.hasOwnProperty.call(collections, safeFriendCode)) {
+    return null;
+  }
+
+  const entry = collections[safeFriendCode];
+  const rawQuizzes = Array.isArray(entry) ? entry : entry?.quizzes;
+  return normalizeSavedQuizList(rawQuizzes || []);
+}
+
+function saveSavedQuizzesForFriendCode(friendCode, quizzes, { updateVisibleCache = true } = {}) {
+  const safeFriendCode = normalizeFriendCode(friendCode);
+
+  if (!safeFriendCode) {
+    return [];
+  }
+
+  const safeQuizzes = normalizeSavedQuizList(quizzes);
+  const collections = getPlayerSavedQuizCollections();
+  collections[safeFriendCode] = {
+    quizzes: safeQuizzes,
+    updatedAt: Date.now(),
+  };
+  savePlayerSavedQuizCollections(collections);
+
+  if (updateVisibleCache && safeFriendCode === getActiveQuizOwnerCode()) {
+    localStorage.setItem(savedQuizzesKey, JSON.stringify(safeQuizzes));
+    markVisibleSavedQuizzesOwner(safeFriendCode);
+  }
+
+  return safeQuizzes;
+}
+
 function saveSavedQuizzes(quizzes) {
-  localStorage.setItem(savedQuizzesKey, JSON.stringify(quizzes));
+  const safeQuizzes = normalizeSavedQuizList(quizzes);
+  const ownerCode = getActiveQuizOwnerCode();
+
+  if (ownerCode) {
+    saveSavedQuizzesForFriendCode(ownerCode, safeQuizzes);
+  } else {
+    localStorage.setItem(savedQuizzesKey, JSON.stringify(safeQuizzes));
+    markVisibleSavedQuizzesOwner("");
+  }
 
   if (onlineAccountStorage?.isLoggedIn && !onlineAccountSyncInProgress) {
-    onlineAccountStorage.saveQuizzes(quizzes).catch((error) => {
+    onlineAccountStorage.saveQuizzes(safeQuizzes).catch((error) => {
       console.error("Supabase saved quizzes sync error:", error);
     });
   }
@@ -2514,6 +2625,10 @@ function migrateOldQuizToSavedQuizzes() {
     return savedQuizzes;
   }
 
+  if (!canUseVisibleSavedQuizzes()) {
+    return [];
+  }
+
   const oldQuiz = getSavedQuiz();
 
   if (oldQuiz.length > 0) {
@@ -2530,6 +2645,19 @@ function migrateOldQuizToSavedQuizzes() {
 }
 
 function getSavedQuizzes() {
+  const ownerCode = getActiveQuizOwnerCode();
+
+  if (ownerCode) {
+    const playerQuizzes = getSavedQuizzesForFriendCode(ownerCode);
+
+    if (playerQuizzes) {
+      return playerQuizzes;
+    }
+
+    saveSavedQuizzesForFriendCode(ownerCode, []);
+    return [];
+  }
+
   return migrateOldQuizToSavedQuizzes();
 }
 
@@ -12041,7 +12169,7 @@ async function loadSupabaseAccountDataToLocal() {
     localStorage.setItem(diaryEntriesKey, JSON.stringify(mergedDiaryEntries));
 
     const mergedQuizzes = mergeSavedQuizLists(getSavedQuizzes(), onlineQuizzes);
-    localStorage.setItem(savedQuizzesKey, JSON.stringify(mergedQuizzes));
+    saveSavedQuizzesForFriendCode(activePlayer.friendCode, mergedQuizzes);
 
     if (onlineProfile?.activeTheme) {
       localStorage.setItem(activeThemeKey, onlineProfile.activeTheme);
@@ -12168,6 +12296,10 @@ async function logoutSupabaseAccount() {
   usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
+  editingQuizId = "";
+  activeQuizId = "";
+  myQuizzesList.innerHTML = "";
+  myQuizzesMessage.textContent = "";
   notificationsPanel.classList.add("hidden");
   localStorage.removeItem(currentPlayerKey);
   updateProfileBar();
@@ -12292,7 +12424,7 @@ function applyUsernameAccountProgressToLocal(account, { importSnapshot = null } 
     saveActivePlayerProfile();
   }
 
-  localStorage.setItem(savedQuizzesKey, JSON.stringify(mergedQuizzes));
+  saveSavedQuizzesForFriendCode(safeAccount.friendCode, mergedQuizzes);
   localStorage.setItem(diaryEntriesKey, JSON.stringify(mergedDiaryEntries));
   localStorage.setItem(activeThemeKey, importSnapshot?.activeTheme || safeAccount.activeTheme || "default");
 
@@ -12378,7 +12510,13 @@ async function openUsernameAccount(account, pin, { askImport = true } = {}) {
     return;
   }
 
+  const previousFriendCode = normalizeFriendCode(activePlayer?.friendCode || "");
   const localSnapshot = collectLocalProgressSnapshot();
+
+  if (previousFriendCode && previousFriendCode !== safeAccount.friendCode) {
+    localSnapshot.quizzes = [];
+  }
+
   const shouldImport = askImport && hasLocalProgressSnapshot(localSnapshot)
     ? confirm("Do you want to save this local progress to this player account?")
     : false;
@@ -12579,6 +12717,10 @@ function switchPlayer() {
   usernamePinSession = null;
   activePlayer = null;
   guestMode = false;
+  editingQuizId = "";
+  activeQuizId = "";
+  myQuizzesList.innerHTML = "";
+  myQuizzesMessage.textContent = "";
   notificationsPanel.classList.add("hidden");
   localStorage.removeItem(currentPlayerKey);
   showPlayerGate();
