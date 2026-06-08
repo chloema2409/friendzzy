@@ -21,12 +21,20 @@ create table if not exists public.quiz_scores (
   id uuid primary key default gen_random_uuid(),
   quiz_id text not null references public.quizzes(quiz_id) on delete cascade,
   nickname text not null,
+  user_id uuid references auth.users(id) on delete set null,
+  friend_code text,
+  emoji_avatar text,
   score_percent integer not null,
   correct_answers integer not null,
   total_questions integer not null,
   result_message text,
   created_at timestamptz not null default now()
 );
+
+alter table public.quiz_scores
+add column if not exists user_id uuid references auth.users(id) on delete set null,
+add column if not exists friend_code text,
+add column if not exists emoji_avatar text;
 
 alter table public.quizzes enable row level security;
 alter table public.quiz_scores enable row level security;

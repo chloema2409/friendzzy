@@ -197,22 +197,44 @@ const onlineQuizSharing = {
     } : null;
   },
   async saveScore(score) {
-    await supabaseRequest("quiz_scores", {
-      method: "POST",
-      prefer: "return=minimal",
-      body: {
-        quiz_id: score.quizId,
-        nickname: score.nickname,
-        score_percent: score.scorePercent,
-        correct_answers: score.correctAnswers,
-        total_questions: score.totalQuestions,
-        result_message: score.resultMessage,
-      },
-    });
+    const legacyBody = {
+      quiz_id: score.quizId,
+      nickname: score.nickname,
+      score_percent: score.scorePercent,
+      correct_answers: score.correctAnswers,
+      total_questions: score.totalQuestions,
+      result_message: score.resultMessage,
+    };
+    const fullBody = {
+      ...legacyBody,
+      friend_code: normalizeFriendCode(score.friendCode || ""),
+      user_id: score.userId || null,
+      emoji_avatar: score.emojiAvatar || score.avatar?.emojiAvatar || null,
+    };
+
+    try {
+      await supabaseRequest("quiz_scores", {
+        method: "POST",
+        prefer: "return=minimal",
+        body: fullBody,
+      });
+    } catch (error) {
+      const errorText = String(error?.message || error?.details || "").toLowerCase();
+
+      if (!errorText.includes("friend_code") && !errorText.includes("emoji_avatar") && !errorText.includes("user_id")) {
+        throw error;
+      }
+
+      await supabaseRequest("quiz_scores", {
+        method: "POST",
+        prefer: "return=minimal",
+        body: legacyBody,
+      });
+    }
   },
   async loadScores(quizId) {
     const query = new URLSearchParams({
-      select: "id,nickname,score_percent,correct_answers,total_questions,result_message,created_at",
+      select: "*",
       quiz_id: `eq.${quizId}`,
       order: "score_percent.desc,created_at.asc",
       limit: String(maxLeaderboardEntries),
@@ -222,7 +244,9 @@ const onlineQuizSharing = {
     return (data || []).map((entry) => ({
       id: entry.id,
       nickname: entry.nickname,
-      avatar: null,
+      userId: entry.user_id || "",
+      friendCode: normalizeFriendCode(entry.friend_code || ""),
+      avatar: entry.emoji_avatar ? { ...createDefaultAvatar(), emojiAvatar: entry.emoji_avatar } : null,
       scorePercentage: entry.score_percent,
       correctAnswers: entry.correct_answers,
       totalQuestions: entry.total_questions,
@@ -497,6 +521,8 @@ function normalizeOnlineMessage(message) {
     receiverCode: normalizeFriendCode(message.receiver_friend_code || message.receiverCode || ""),
     senderNickname: message.sender_nickname || message.senderNickname || "Friend",
     receiverNickname: message.receiver_nickname || message.receiverNickname || "Friend",
+    senderEmojiAvatar: message.sender_emoji_avatar || message.senderEmojiAvatar || defaultEmojiAvatar,
+    receiverEmojiAvatar: message.receiver_emoji_avatar || message.receiverEmojiAvatar || defaultEmojiAvatar,
     text: message.message_text || message.text || "",
     type: message.message_type || message.type || "typed",
     sticker: message.sticker || "",
@@ -534,9 +560,9 @@ const onlineFriendMessages = {
         sender_friend_code: safeMessage.senderCode,
         receiver_friend_code: safeMessage.receiverCode,
         sender_nickname: safeMessage.senderNickname,
-        sender_emoji_avatar: activePlayer?.avatar?.emojiAvatar || defaultEmojiAvatar,
+        sender_emoji_avatar: safeMessage.senderEmojiAvatar || activePlayer?.avatar?.emojiAvatar || defaultEmojiAvatar,
         receiver_nickname: safeMessage.receiverNickname,
-        receiver_emoji_avatar: getFriendProfileSnapshot(safeMessage.receiverCode).avatar?.emojiAvatar || defaultEmojiAvatar,
+        receiver_emoji_avatar: safeMessage.receiverEmojiAvatar || getFriendProfileSnapshot(safeMessage.receiverCode).avatar?.emojiAvatar || defaultEmojiAvatar,
         message_text: safeMessage.text,
         message_type: safeMessage.type,
         sticker: safeMessage.sticker,
@@ -2849,37 +2875,99 @@ function findProfileByNickname(nickname) {
   return getPlayerProfiles().find((profile) => normalizeNickname(profile.nickname) === cleanName) || null;
 }
 
+function getProfileFriendCode(profile) {
+  return normalizeFriendCode(profile?.friendCode || profile?.friend_code || profile?.ownerFriendCode || profile?.friendCodeSnapshot || "");
+}
+
+function getProfileUserId(profile) {
+  return String(profile?.userId || profile?.user_id || profile?.ownerId || "").trim();
+}
+
+function getPlayerIdentity(profile) {
+  return {
+    friendCode: getProfileFriendCode(profile),
+    userId: getProfileUserId(profile),
+    normalizedNickname: normalizeNickname(profile?.nickname || profile?.playerNickname || ""),
+  };
+}
+
+function playerIdentityMatches(firstProfile, secondProfile) {
+  const firstIdentity = getPlayerIdentity(firstProfile);
+  const secondIdentity = getPlayerIdentity(secondProfile);
+
+  if (firstIdentity.friendCode && secondIdentity.friendCode) {
+    return firstIdentity.friendCode === secondIdentity.friendCode;
+  }
+
+  if (firstIdentity.userId && secondIdentity.userId) {
+    return firstIdentity.userId === secondIdentity.userId;
+  }
+
+  return Boolean(firstIdentity.normalizedNickname && firstIdentity.normalizedNickname === secondIdentity.normalizedNickname);
+}
+
+function findProfileByIdentity(identitySource) {
+  const identity = getPlayerIdentity(identitySource);
+
+  if (identity.friendCode) {
+    const friendCodeProfile = findProfileByFriendCode(identity.friendCode);
+
+    if (friendCodeProfile) {
+      return friendCodeProfile;
+    }
+  }
+
+  const profiles = getPlayerProfiles();
+
+  if (identity.userId) {
+    const userProfile = profiles.find((profile) => getProfileUserId(profile) === identity.userId);
+
+    if (userProfile) {
+      return userProfile;
+    }
+  }
+
+  if (identity.normalizedNickname) {
+    return findProfileByNickname(identity.normalizedNickname);
+  }
+
+  return null;
+}
+
+function getLatestAvatarForPlayer(entry, fallbackAvatar = null) {
+  const profile = findProfileByIdentity(entry);
+  return getUnlockedAvatar(profile?.avatar || fallbackAvatar || entry?.avatar || createDefaultAvatar());
+}
+
 function getLatestAvatarForNickname(nickname, fallbackAvatar = null) {
-  const profile = findProfileByNickname(nickname);
-  return getUnlockedAvatar(profile?.avatar || fallbackAvatar || createDefaultAvatar());
+  return getLatestAvatarForPlayer({ nickname }, fallbackAvatar);
 }
 
 function syncLeaderboardAvatarsForProfile(profile) {
-  if (!profile?.nickname) {
+  if (!profile?.nickname && !profile?.friendCode && !profile?.userId) {
     return;
   }
 
-  const profileName = normalizeNickname(profile.nickname);
   const latestAvatar = getUnlockedAvatar(profile.avatar || createDefaultAvatar());
-  const syncedQuizLeaderboard = getLeaderboard().map((entry) => (
-    normalizeNickname(entry.nickname) === profileName
-      ? { ...entry, avatar: latestAvatar }
+  const updateEntry = (entry) => (
+    playerIdentityMatches(entry, profile)
+      ? {
+          ...entry,
+          userId: entry.userId || profile.userId || "",
+          friendCode: entry.friendCode || profile.friendCode || "",
+          avatar: latestAvatar,
+        }
       : entry
+  );
+  const syncedQuizLeaderboard = getLeaderboard().map((entry) => (
+    updateEntry(entry)
   ));
   const syncedStarLeaderboard = getStarLeaderboard().map((entry) => (
-    normalizeNickname(entry.nickname) === profileName
-      ? { ...entry, avatar: latestAvatar }
-      : entry
+    updateEntry(entry)
   ));
   const syncedQuizLeaderboards = Object.fromEntries(Object.entries(getQuizLeaderboards()).map(([quizId, leaderboard]) => [
     quizId,
-    Array.isArray(leaderboard)
-      ? leaderboard.map((entry) => (
-        normalizeNickname(entry.nickname) === profileName
-          ? { ...entry, avatar: latestAvatar }
-          : entry
-      ))
-      : leaderboard,
+    Array.isArray(leaderboard) ? leaderboard.map(updateEntry) : leaderboard,
   ]));
 
   saveLeaderboard(syncedQuizLeaderboard);
@@ -3040,9 +3128,9 @@ function saveActivePlayerProfile() {
   }
 
   const profiles = getPlayerProfiles();
-  const profileExists = profiles.some((profile) => normalizeNickname(profile.nickname) === normalizeNickname(activePlayer.nickname));
+  const profileExists = profiles.some((profile) => playerIdentityMatches(profile, activePlayer));
   const updatedProfiles = profileExists
-    ? profiles.map((profile) => (normalizeNickname(profile.nickname) === normalizeNickname(activePlayer.nickname) ? activePlayer : profile))
+    ? profiles.map((profile) => (playerIdentityMatches(profile, activePlayer) ? activePlayer : profile))
     : [...profiles, activePlayer];
 
   savePlayerProfiles(updatedProfiles);
@@ -4389,6 +4477,8 @@ function finishMiniGame() {
   const gameEntry = {
     id: crypto.randomUUID(),
     nickname,
+    userId: activePlayer?.userId || "",
+    friendCode: activePlayer?.friendCode || "",
     avatar: activePlayer ? activePlayer.avatar : null,
     resultTitle,
     starsEarned: earnedStars,
@@ -4655,10 +4745,16 @@ function updateStarLeaderboard({ askGuestNickname = true } = {}) {
   }
 
   const avatar = activePlayer ? activePlayer.avatar : null;
+  const identity = activePlayer ? {
+    userId: activePlayer.userId || "",
+    friendCode: activePlayer.friendCode || "",
+  } : {};
   const existingLeaderboard = getStarLeaderboard();
-  const existingEntry = existingLeaderboard.find((entry) => normalizeNickname(entry.nickname) === normalizeNickname(nickname));
+  const currentEntryIdentity = { nickname, ...identity };
+  const existingEntry = existingLeaderboard.find((entry) => playerIdentityMatches(entry, currentEntryIdentity));
   const updatedEntry = {
     ...existingEntry,
+    ...identity,
     nickname,
     avatar,
     stars,
@@ -4666,7 +4762,7 @@ function updateStarLeaderboard({ askGuestNickname = true } = {}) {
     updatedAt: new Date().toISOString(),
   };
   const updatedLeaderboard = existingEntry
-    ? existingLeaderboard.map((entry) => (normalizeNickname(entry.nickname) === normalizeNickname(nickname) ? updatedEntry : entry))
+    ? existingLeaderboard.map((entry) => (playerIdentityMatches(entry, currentEntryIdentity) ? updatedEntry : entry))
     : [...existingLeaderboard, updatedEntry];
 
   registerUsedNickname(nickname);
@@ -4695,7 +4791,7 @@ function renderStarLeaderboard() {
     const playerLine = document.createElement("div");
     playerLine.className = "player-line";
     const playerAvatar = document.createElement("div");
-    renderAvatar(playerAvatar, getLatestAvatarForNickname(entry.nickname, entry.avatar));
+    renderAvatar(playerAvatar, getLatestAvatarForPlayer(entry, entry.avatar));
     const playerName = document.createElement("p");
     playerName.className = "player-name";
     playerName.textContent = entry.nickname;
@@ -4832,7 +4928,7 @@ function renderGameLeaderboard(gameId) {
     const playerLine = document.createElement("div");
     playerLine.className = "player-line";
     const playerAvatar = document.createElement("div");
-    renderAvatar(playerAvatar, getLatestAvatarForNickname(entry.nickname, entry.avatar));
+    renderAvatar(playerAvatar, getLatestAvatarForPlayer(entry, entry.avatar));
     const playerName = document.createElement("p");
     playerName.className = "player-name";
     playerName.textContent = entry.nickname;
@@ -4879,6 +4975,8 @@ async function addToLeaderboard(event) {
   const newEntry = {
     id: crypto.randomUUID(),
     nickname: nicknameCheck.displayName,
+    userId: activePlayer?.userId || "",
+    friendCode: activePlayer?.friendCode || "",
     avatar: activePlayer ? activePlayer.avatar : null,
     scorePercentage: latestResult.scorePercentage,
     correctAnswers: latestResult.correctAnswers,
@@ -4903,6 +5001,10 @@ async function addToLeaderboard(event) {
       await onlineQuizSharing.saveScore({
         quizId: activeOnlineQuizId,
         nickname: newEntry.nickname,
+        userId: newEntry.userId,
+        friendCode: newEntry.friendCode,
+        avatar: newEntry.avatar,
+        emojiAvatar: newEntry.avatar?.emojiAvatar || "",
         scorePercent: newEntry.scorePercentage,
         correctAnswers: newEntry.correctAnswers,
         totalQuestions: newEntry.totalQuestions,
@@ -4967,7 +5069,7 @@ function renderLeaderboard() {
     const playerLine = document.createElement("div");
     playerLine.className = "player-line";
     const playerAvatar = document.createElement("div");
-    renderAvatar(playerAvatar, getLatestAvatarForNickname(entry.nickname, entry.avatar));
+    renderAvatar(playerAvatar, getLatestAvatarForPlayer(entry, entry.avatar));
     const playerName = document.createElement("p");
     playerName.className = "player-name";
     playerName.textContent = entry.nickname;
@@ -6010,6 +6112,8 @@ async function saveFriendMessage(friendCode, messageText, messageType = "typed",
     receiverCode: safeFriendCode,
     senderNickname: activePlayer.nickname,
     receiverNickname: friendProfile.nickname,
+    senderEmojiAvatar: activePlayer.avatar?.emojiAvatar || defaultEmojiAvatar,
+    receiverEmojiAvatar: friendProfile.avatar?.emojiAvatar || defaultEmojiAvatar,
     text: messageText,
     type: messageType,
     sticker,
@@ -11314,6 +11418,18 @@ function getBoxOfLiesCardButtonLabel(round) {
   return "Open";
 }
 
+function getMessageSenderAvatar(message) {
+  const senderCode = normalizeFriendCode(message?.senderCode || "");
+  const activeCode = normalizeFriendCode(activePlayer?.friendCode || "");
+
+  if (senderCode && senderCode === activeCode) {
+    return activePlayer?.avatar || { ...createDefaultAvatar(), emojiAvatar: message?.senderEmojiAvatar || defaultEmojiAvatar };
+  }
+
+  const senderProfile = senderCode ? getFriendProfileSnapshot(senderCode) : null;
+  return senderProfile?.avatar || { ...createDefaultAvatar(), emojiAvatar: message?.senderEmojiAvatar || defaultEmojiAvatar };
+}
+
 function renderChatHistory() {
   chatHistory.innerHTML = "";
 
@@ -11336,10 +11452,16 @@ function renderChatHistory() {
     const bubble = document.createElement("article");
     bubble.className = normalizeFriendCode(message.senderCode) === normalizeFriendCode(activePlayer.friendCode) ? "chat-bubble mine" : "chat-bubble";
 
+    const senderLine = document.createElement("div");
+    senderLine.className = "chat-sender-line";
+    const senderAvatar = document.createElement("div");
+    renderAvatar(senderAvatar, getMessageSenderAvatar(message));
+
     const meta = document.createElement("p");
     meta.className = "chat-meta";
     const sentAt = new Date(message.createdAt);
     meta.textContent = `${message.senderNickname} • ${sentAt.toLocaleDateString()} ${sentAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    senderLine.append(senderAvatar, meta);
 
     const text = document.createElement("p");
     text.className = "chat-text";
@@ -11394,7 +11516,7 @@ function renderChatHistory() {
       }
 
       inviteCard.append(inviteIcon, inviteDetails, buttonWrap);
-      bubble.append(meta, inviteCard);
+      bubble.append(senderLine, inviteCard);
     } else if (message.type === "trading_game_offer" && getTradingTradeFromMessage(message)) {
       if (!latestTradingMessageIds.has(message.id)) {
         return;
@@ -11432,7 +11554,7 @@ function renderChatHistory() {
       buttonWrap.append(openButton);
 
       tradeCard.append(tradeIcon, tradeDetails, buttonWrap);
-      bubble.append(meta, tradeCard);
+      bubble.append(senderLine, tradeCard);
     } else if (message.type === "quiz_invite" && (message.quizInvite?.quizLink || message.quizInvite?.quizId)) {
       const inviteCard = document.createElement("div");
       inviteCard.className = "quiz-invite-card";
@@ -11460,9 +11582,9 @@ function renderChatHistory() {
       playButton.addEventListener("click", () => playQuizInvite(message));
 
       inviteCard.append(inviteIcon, inviteDetails, playButton);
-      bubble.append(meta, inviteCard);
+      bubble.append(senderLine, inviteCard);
     } else {
-      bubble.append(meta, text);
+      bubble.append(senderLine, text);
     }
     chatHistory.append(bubble);
   });
@@ -12152,7 +12274,7 @@ async function loadSupabaseAccountDataToLocal() {
         diaryAccess: [...new Set([...(activePlayer?.purchasedRewards || []), ...onlinePurchases])].includes("daily-diary"),
       });
       localStorage.setItem(currentPlayerKey, activePlayer.nickname);
-      savePlayerProfiles(getPlayerProfiles().filter((profile) => normalizeNickname(profile.nickname) !== normalizeNickname(activePlayer.nickname)).concat(activePlayer));
+      savePlayerProfiles(getPlayerProfiles().filter((profile) => !playerIdentityMatches(profile, activePlayer)).concat(activePlayer));
       replaceUsedNickname("", activePlayer.nickname);
     }
 
@@ -12162,7 +12284,7 @@ async function loadSupabaseAccountDataToLocal() {
         purchasedRewards: [...new Set([...(activePlayer.purchasedRewards || []), ...onlinePurchases])],
         diaryAccess: [...new Set([...(activePlayer.purchasedRewards || []), ...onlinePurchases])].includes("daily-diary"),
       });
-      savePlayerProfiles(getPlayerProfiles().map((profile) => normalizeNickname(profile.nickname) === normalizeNickname(activePlayer.nickname) ? activePlayer : profile));
+      savePlayerProfiles(getPlayerProfiles().map((profile) => playerIdentityMatches(profile, activePlayer) ? activePlayer : profile));
     }
 
     const mergedDiaryEntries = mergeDiaryEntryLists(getDiaryEntries(), onlineDiaryEntries);
@@ -12298,6 +12420,7 @@ async function logoutSupabaseAccount() {
   guestMode = false;
   editingQuizId = "";
   activeQuizId = "";
+  selectedAvatar = createDefaultAvatar();
   myQuizzesList.innerHTML = "";
   myQuizzesMessage.textContent = "";
   notificationsPanel.classList.add("hidden");
@@ -12719,6 +12842,7 @@ function switchPlayer() {
   guestMode = false;
   editingQuizId = "";
   activeQuizId = "";
+  selectedAvatar = createDefaultAvatar();
   myQuizzesList.innerHTML = "";
   myQuizzesMessage.textContent = "";
   notificationsPanel.classList.add("hidden");
